@@ -1,0 +1,110 @@
+// The bonus round on the VIC-20: a flashing border and a marquee of lights up the screen's
+// last column. Both are nearly free on this machine; the raster bars the other machines get
+// are not, and the cost is measured, so it is written down here.
+//
+//   * Why no copper bars. The VIC-I has no raster interrupt: @8bitscript/raster applies a list
+//     from waitFrame()'s frame hook, which busy-waits from the top of the frame down to the last
+//     planned line (packages/vic20/AGENTS.md, "Raster splits"). The quadrant composer needs the
+//     better part of a frame for a redraw, so a hook that holds the CPU for even the top third
+//     of the frame pushes every composing frame past its edge. Measured with eight stripes six
+//     lines apart (the top 42 lines): the forced bonus round that the portable stub finishes at
+//     video frame ~10,200 finished at ~18,200 — reels 78% slower — and the code grew by 1.9 KB.
+//     The effect cost the game its speed to draw a few stripes, so there are none.
+//   * The same measure ruled out the first marquee, which rewrote all 23 cells' colours every
+//     frame (a 16-bit multiply a cell for its address): ~13,800, 35% slower, with no hook at all.
+//     A frame that composes a reel has roughly a tenth of a frame to spare. So the marquee below
+//     keeps its 23 addresses in a table and moves three short bars by repainting four cells a bar
+//     every second frame: about a seventh of that work.
+//   * The border flash. $900F's three border bits are written once a frame, right after
+//     waitFrame() (the top of the frame, before the picture starts), so the whole border takes
+//     one colour of a bright eight-step run and changes it every second frame. Bits 3-7 — the
+//     background colour the reels' blank quadrants are drawn on, and the inverse flag — are
+//     read back and kept. A read and a write a frame: no hook, no wait.
+//   * The marquee. The block is 21 columns on a 22-column screen (layout.centre leaves the last
+//     column empty on every row), so column 21 is a 16-pixel strip nothing is drawn in. begin()
+//     fills it with solid blocks in a dim blue; three lit bars (white head, yellow, red) travel
+//     down it, wrapping, eight rows apart. No glyph is redefined; not one reel, panel or meter cell
+//     is touched. end() puts back spaces and the colours it found.
+import { vicColor } from "@8bitscript/vic20";
+import { Video } from "@8bitscript/vic20/geometry";
+
+// The marquee: the screen's last column, all 23 rows, as offsets into the screen and colour
+// RAM (the VIC-20's text grid is always 22 x 23). A table, not 22 * row + 21 a cell.
+const ROWS: utinyint = 23;
+const AT: array<usmallint, 23> = [
+    21, 43, 65, 87, 109, 131, 153, 175, 197, 219, 241, 263,
+    285, 307, 329, 351, 373, 395, 417, 439, 461, 483, 505,
+];
+const SOLID: utinyint = 160;
+const SPACE: utinyint = 32;
+const DIM: utinyint = 6;
+
+// A bar, head first: white, yellow, red, then the dim tube again behind it.
+const TRAIL: array<utinyint, 4> = [1, 7, 2, 6];
+
+// The border's run, in the eight border colours: red, yellow, green, cyan, blue, purple,
+// white, yellow.
+const FLASH: array<utinyint, 8> = [2, 7, 5, 3, 6, 4, 1, 7];
+
+// What colour RAM held in the marquee's cells, and what the border was, to put back; and the
+// first bar's head row.
+let saved: array<utinyint, 23>;
+let border: utinyint = 0;
+let head: utinyint = 0;
+
+// Paint one bar: its head on `top` and its trail up the rows behind it, wrapping at the top.
+function bar(top: utinyint): void {
+    for (let t: utinyint = 0; t < 4; t++) {
+        let row: utinyint = top + ROWS - t;
+        if (row >= ROWS) {
+            row = row - ROWS;
+        }
+        memory.write(Video.COLOR + AT[row], TRAIL[t]);
+    }
+}
+
+export namespace fx {
+    const RASTER: bool = true;
+
+    function begin(): void {
+        border = vicColor & 7;
+        for (let row: utinyint = 0; row < ROWS; row++) {
+            saved[row] = memory.read(Video.COLOR + AT[row]);
+            memory.write(Video.SCREEN + AT[row], SOLID);
+            memory.write(Video.COLOR + AT[row], DIM);
+        }
+        head = 0;
+        bar(0);
+        bar(8);
+        bar(16);
+    }
+
+    function frame(tick: utinyint): void {
+        vicColor = (vicColor & 0xF8) | FLASH[(tick >> 1) & 7];
+        if ((tick & 1) == 0) {
+            head = head + 1;
+            if (head >= ROWS) {
+                head = 0;
+            }
+            let second: utinyint = head + 8;
+            if (second >= ROWS) {
+                second = second - ROWS;
+            }
+            let third: utinyint = head + 16;
+            if (third >= ROWS) {
+                third = third - ROWS;
+            }
+            bar(head);
+            bar(second);
+            bar(third);
+        }
+    }
+
+    function end(): void {
+        vicColor = (vicColor & 0xF8) | border;
+        for (let row: utinyint = 0; row < ROWS; row++) {
+            memory.write(Video.SCREEN + AT[row], SPACE);
+            memory.write(Video.COLOR + AT[row], saved[row]);
+        }
+    }
+}
