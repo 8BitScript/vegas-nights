@@ -50,6 +50,8 @@ const FX = {
   // measured in docs/fx.md), so `before` is after the machine is drawn and before the round, and `after` is
   // well past it.
   pet: { kind: 'margins', frames: [3000, 3012], before: 400, after: 6000, columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 31, 32, 33, 34, 35, 36, 37, 38, 39].map((c) => 32 + 8 * c + 4), colours: 2, moved: 40 },
+  // The X16's border is 16 pixels wide once screen.8bs insets the picture: x = 8 is inside it.
+  cx16: { frames: [1100, 1106], before: 200, after: 4400, column: 8 },
 };
 
 /** The values down one column of a capture. */

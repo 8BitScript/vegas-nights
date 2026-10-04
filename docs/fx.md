@@ -26,7 +26,7 @@ A machine that does better has a twin that **replaces the file whole** (8BitScri
 | `src/shared/fx.8bs` | every machine without a twin | the stub: nothing, free |
 | `src/shared/fx.web.8bs` | web | copper bars (done; the reference twin) |
 | `src/shared/fx.c64.8bs` | Commodore 64 | copper bars (done; see "The C64" below) |
-| `src/shared/fx.cx16.8bs` | Commander X16 | to write |
+| `src/shared/fx.cx16.8bs` | Commander X16 | palette-cycled copper bars (done) |
 | `src/shared/fx.vic20.8bs` | VIC-20 | border flash and a marquee (done; no bars, see below) |
 | `src/shared/fx.pet.8bs` | PET | marquee, coins, stars, banner scanner (done; see "The PET") |
 
@@ -275,3 +275,56 @@ A real PET: the timings are VICE's, and a real machine's 50 Hz or 60 Hz frame ma
 `xpet`'s. The 8032 was looked at in a screenshot after the ring fix (above) but is not in the
 on-screen test, which runs the 4032. The 2001, 3008 and 3016 are not targets of the 5x5 (it does not
 fit their RAM); the 4016 and 3032 were not run.
+
+## The Commander X16's twin
+
+`src/shared/fx.cx16.8bs`: copper bars in both side borders, a glowing band below the credit panel,
+and none of it touches a cell the player reads.
+
+- **Border bars cost no per-frame list writes.** On the X16 a raster `BORDER` value is a *palette
+  index* (0-255), and VERA's palette is video memory the CPU can rewrite in a few dozen bytes. So
+  `begin()` writes the raster list once (twenty stripes, one entry per 12 picture lines, each naming
+  its own palette entry 64-83, which nothing else uses) and `frame(tick)` only rewrites those twenty
+  entries' RGB from a 64-step copper table (four bars of sixteen steps: gold, magenta, cyan, green,
+  each with a white-hot peak). One step further along the table moves the bars down the border.
+  Forty data-port writes a frame, at the top of the frame, inside the blanking.
+- **Background bars** (`Slot.BACKGROUND`, which can only name the 16 stock colours) fill the rows
+  under the panel, picture lines 176-247 (text rows 22-30; the panel ends on row 20). Nine entries,
+  rewritten with `raster.setValue` from a 16-colour blue / red-yellow ramp. Everything above line 176
+  holds black, so no reel, digit or meter ever sits on a bar.
+- **The list is 31 of the 32 entries**, on 29 distinct picture lines (the driver's plan arrays hold 32),
+  no two closer than 4 scanlines, so every split lands on its own line. The last border stripe (line 228) holds to the bottom of the
+  frame, and the same stripe shows above line 0; it fades through the table a step at a time, so the
+  top and bottom edge of the screen glow rather than flash.
+- **No wobble.** `SCROLL_X` would move the title and banner rows, and the list has one entry left.
+- **No tearing against the reel composer.** The composer streams tile bytes through VERA's DATA0, and
+  `frame()` writes the palette through DATA0 too. The raster handler saves and restores ADDR0 and CTRL
+  around every write, `frame()` sets its own address, and the composer sets its own before every copy
+  (`packages/cx16/AGENTS.md`, "Raster splits"); `pnpm run test:machines` (cx16) reads every reel
+  pixel during the round and all of them match the oracle.
+- **`end()` puts everything back.** It saves nothing it did not read: `begin()` reads `DC_BORDER` and
+  the twenty palette entries; `end()` commits a one-entry list (border as it was, background black),
+  waits two frames for the handler to apply it, takes the handler off, and writes the border and the
+  palette entries back. The border column of a capture after the round is identical to the one before
+  it (the test checks).
+
+### Bytes (`8bs build cx16 --program slot5x5 --size`, program / RAM)
+
+| | program | RAM |
+| --- | --- | --- |
+| portable stub (`fx.8bs`) | 17,701 | 197 |
+| `fx.cx16.8bs` | 19,701 | 197 |
+
++2,000 bytes of program, no RAM. Most of it is the raster layer the twin pulls in (the handler,
+`commit`, `at`, the palette write: `packages/cx16/AGENTS.md` measures +1,251 bytes for a two-entry
+list); the rest is the twin's own code and its two 64-byte copper tables. The split was not measured
+separately. The X16 has the room.
+Measured 2026-10-04, x16emu r50 with ROM `fbe32a60`, against 8BitScript trunk.
+
+### On screen
+
+`test/fx.machines.test.mjs` (`MACHINES=cx16`, column x = 8, inside the 16-pixel border): frame 200
+(first base spin) one plain border colour; frames 1100 and 1106 (free spins under way) several colours
+down the column and more than twenty rows different between the two; frame 4400 (round over) the same
+column as at frame 200, pixel for pixel. Leaving `end()`'s restore out fails it. Not checked: a real
+X16, whose VERA may raise the line interrupt at a different point of the line than x16emu does.
