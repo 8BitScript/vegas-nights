@@ -40,6 +40,16 @@ async function art(themeName) {
       writeFileSync(join(dir, 'symbols', `${id}.${machine}.png`), encodePng(w, h, rgba));
     }
   }
+  // Symbols drawn again on a machine's own, smaller design grid: where the master's
+  // fine detail (a word, a thin line) resamples to a smudge. Rendered like the masters,
+  // written as <ID>.<machine>.png, which the converter prefers for that machine.
+  for (const [machine, variant] of Object.entries(mod.variants ?? {})) {
+    for (const [id, draw] of Object.entries(variant.symbols)) {
+      const a = new Art(size, variant.design, 4);
+      draw(a, mod.colors);
+      writeFileSync(join(dir, 'symbols', `${id}.${machine}.png`), encodePng(size, size, a.toRgba()));
+    }
+  }
   console.log(`art: ${themeName}: ${Object.keys(mod.symbols).length} symbols`);
 }
 
