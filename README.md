@@ -175,7 +175,7 @@ they came to rest on.
 
 | machine | how | one pixel step is | measured redraw | program / RAM |
 | --- | --- | --- | --- | --- |
-| C64 | the reel is 27 redefined characters; a frame rewrites their bytes from the symbol bitmaps, in assembly | 1 pixel | ~0.6 frames a reel | 7,768 B / 103 B |
+| C64 | the reel is 48 redefined characters (4 across, 12 down) of 32×32-pixel symbols; a frame rewrites their bytes from the symbol bitmaps, in assembly | 1 pixel | ~0.8 frames a reel | 9,809 B / 119 B |
 | X16 | the same, through VERA's data port | 1 pixel | ~0.25 frames | 8,285 B / 197 B |
 | PET | the reel is built from the 16 quadrant blocks in the character ROM: 6×6-cell symbols (48 px), three precomputed tables, a 6502 block-copy hop | 4 pixels (half a block row) | 1.25 frames to redraw, **0.32 to hop** | 8,439 B / 121 B |
 | VIC-20 | the same, with a colour for every cell (the hop moves the colour RAM too) | 4 pixels | 2.71 frames to redraw, **0.67 to hop 8 px, 0.83 for 16** | 9,452 B / 133 B |
@@ -193,10 +193,51 @@ and finally 2 pixels a redraw, each distance a multiple of the step before, so t
 last step lands exactly on the drawn stop with the reel at rest — the picture never
 decides the outcome. How often a reel is redrawn and how far it hops far out are
 per-machine settings ([`feel.*.8bs`](src/shared)), set from the measured redraw
-cost: the C64 steps 12 pixels every second frame, the X16 8 pixels and the web 8 pixels
+cost: the C64 hops a whole symbol (32 pixels) a redraw until four symbols from its stop and then 8, the X16 8 pixels and the web 8 pixels
 every frame, the PET hops 8 pixels (one block row) every frame, the VIC-20 hops 16 (two
 block rows) about every third frame, and every machine eases in to 2-pixel (the PET,
 VIC-20 and web: 4-pixel) steps at the end.
+
+### The C64's bigger machine
+
+The C64 draws its reels from **32×32-pixel symbols (four cells square)**, where the X16 uses 24×24 (three).
+The block is 16 cells across and 14 down — 22% of the 40×25 text grid, up from 14% — with the credit,
+bet and win rows three rows lower. Symbols are drawn for the C64 at their own size
+(`assets/themes/classic/art.mjs`, `variants.c64`; the theme says `"cells": {"c64": [4, 4]}`), not
+squeezed from the 24×24 master: the extra eight pixels a side buy bevelled bars, a glint on every
+symbol and a real word on BAR (`docs/tiles/classic.c64.png`).
+
+![the C64's 3x3 before (24×24 symbols, 14% of the screen) and after (32×32, 22%): the same winning spin](docs/slot3x3/c64-before-after.png)
+
+The same winning spin, before (left) and after: three BARs on the middle line.
+
+A spin in motion on the new machine, eight consecutive frames each. Far from the stop a reel hops a
+whole symbol at a time (frames 300–307, a blur); in the last stretch it eases through 8, 4 and 2 pixels
+(frames 434–441). Frames 301 and 306, and the second reel in 434 and 437, show the tearing described below.
+
+![eight consecutive frames of a C64 spin, far from the stop](docs/slot3x3/c64-spin-blur.png)
+
+![eight consecutive frames of a C64 spin easing in to the stop](docs/slot3x3/c64-spin-ease-in.png)
+
+**The glyph arithmetic**, which is the limit on a symbol's size (`test/glyph-budget.test.mjs` recomputes it):
+
+| | 3×3-cell symbols (X16) | 4×4-cell symbols (C64) |
+| --- | --- | --- |
+| a reel window is 3 symbols tall | 9 cell rows × 3 = **27** glyphs | 12 cell rows × 4 = **48** glyphs |
+| three reels | 81 | 144 |
+| the frame (bevel, dividers, arrows, panel) | 14 | 14 |
+| **in all** | **95** | **158** |
+| codes the machine has | 127 (128–254) | **164** (91–254) |
+
+The C64's character set has 256 codes, and 127 of them (128–254) are the reverse-video copies a program
+that never prints reverse text may take — enough for 95, 31 short for 158. The 31 came from the codes
+**below** them: screen codes 91–127 are PETSCII graphics in the mixed-case set, and the portable text
+(letters, digits, a few marks) never draws any code above 90. That is 37 more, 164 in all, with six to
+spare (`glyphs.EXTRA`). Nothing was squeezed: no de-duplication of blank cells, no fewer visible rows.
+One catch: `text.putChar` reads its argument as ASCII and translates it, so codes 91–127 come out as the
+letters a–z — the first capture of the new machine showed the alphabet in reel 0 — so the reels' cell map
+is written raw (`glyphs.put`), and the glyph layer selects the mixed-case set itself (`begin()`), which
+`text` used to do as a side effect of its first write.
 
 ### What a redraw costs, and what a hop saves
 
@@ -206,6 +247,16 @@ the C64's was 4.1 frames in compiled script, 2.1 with the copy in assembly, 1.0
 with the row maths in assembly and **0.6 with the whole reel in one assembly call**.
 Taking the redraw out of compiled code is what makes a reel hop every second frame
 possible on a 1 MHz machine.
+
+With 32×32 symbols the same call composes 384 bytes instead of 216 (48 glyphs, not 27) and costs
+**0.82 frames** (0.57 before), plus about a third of a frame to colour 48 cells. The composer no longer
+knows the symbol size: the symbols' addresses come from a table `glyphs.symbols()` fills, and the cell
+width, height and window rows are arguments. A spin on the C64 is a little longer than before — reel 0
+of the `lines` entry comes to rest at frame ~463 against ~424 — because a symbol is a third taller; a
+16-pixel far hop was smoother but rested at ~565. The quadrant machines' trick below would help here too:
+a reel that hops a *whole symbol* needs no recomposing in its lower eight cell rows, only a memory move
+and the new symbol's four rows copied straight from the tile data — roughly half the redraw. That is
+the next thing to try on the C64; it is not done.
 
 The quadrant machines draw reels twice as big as they used to (6×6-cell symbols, 48 pixels: a reel window of
 108 cells instead of 27), and recomposing every cell of a bigger
@@ -248,6 +299,14 @@ there is nothing to copy and a reel is redrawn whole.
   top-first and leaves the old picture below). The motion test knows exactly this and accepts nothing
   else; it is invisible at rest and reads as motion blur while a reel spins. Making the three reels
   finish before the beam reaches the window would need each hop under 0.1 frame.
+  The C64 recomposes whole windows, so a frame there can show a reel part old, part new.
+  `scripts/tear-rate.mjs` counts the frames in which a reel shows no valid window of its strip: on
+  the C64's old 24×24 machine **16 of 24** consecutive frames in the blur and **17 of 24** in the last stretch
+  before the stop; on the 32×32 machine **4 of 24** and **12 of 24**, because it redraws less often.
+  Fewer, not none: a redraw takes most of a frame and the beam crosses the reels in about a third of
+  one, so the beam passes rows the composer has not reached. Ending it takes a double-buffered
+  character set (two copies, flipped at the frame edge) or reels as hardware sprites; neither fits the
+  glyph budget above.
 - **Panels are text.** The credit, bet and win are in the machine's own font; the
   frame, dividers and payline arrows are graphics.
 - **The jackpot is fixed-odds**, not a progressive meter, and there is no bonus
@@ -271,6 +330,13 @@ C64 composer bug that was wrong at six of the eight offsets.
 
 `test/hops.test.mjs` (part of `test:machines`, `src/labs/slot3x3/hops.8bs`) holds a hop to the picture a
 full redraw makes — see [What a redraw costs, and what a hop saves](#what-a-redraw-costs-and-what-a-hop-saves).
+
+`test/glyph-budget.test.mjs` (in `pnpm test`, so CI runs it) is where the C64's and X16's geometry is worked
+out: `src/labs/slot3x3/block.8bs` and `block.c64.8bs` state the machine's size as plain literals (the
+compiler folds a literal, and a 1 MHz machine should not compute them), and this test recomputes every
+one from the tile data and the engine's reels and rows, checks the reels and the frame fit the glyph
+codes the machine has, that the tileset and strips fit the RAM the composer reads, and that the hop
+divides a symbol. It fails when the art's size changes and a literal does not.
 
 `test/odds.test.mjs` enumerates all 64³ outcomes through the payline evaluator and
 holds the result to the engine's exact RTP and hit frequency, checks that the
@@ -302,8 +368,8 @@ Numbers are from `pnpm run test:machines` and `scripts/measure-redraw.mjs` on a 
 
 | machine | builds | program / RAM | reels = engine's evaluator | reel hop while spinning | eases to | what it is |
 | --- | :-: | --- | :-: | --- | --- | --- |
-| C64 | yes | 7,768 / 103 B | exact, pixel for pixel | 12 px every 2nd frame | 2 px | composed glyphs, pixel art |
-| X16 | yes | 8,285 / 197 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs through VERA, pixel art |
+| C64 | yes | 9,809 / 119 B | exact, pixel for pixel | 32 px (a symbol) a redraw far out, 8 within four symbols | 2 px | composed glyphs, 32×32 pixel art |
+| X16 | yes | 9,517 / 198 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs through VERA, 24×24 pixel art |
 | PET | yes (4032, 32K) | 8,439 / 121 B (was 6,689 / 108) | exact, block for block | 8 px every frame (3 reels) | 4 px | 6×6-cell quadrant blocks, no colour; 44% of the screen (was 14%) |
 | VIC-20 | yes (8K) | 9,452 / 133 B (was 7,254 / 111) | exact, block for block | 16 px about every 3rd frame | 4 px | 6×6-cell quadrant blocks, coloured; 87% of the screen (was 28%) |
 | web | yes | 1,327 B const / 82 B (was 798 / 78) | exact, block for block | 8 px every frame | 4 px (over the last 32) | 6×6-cell blocks of the host font, coloured; 44% of a 40×25 grid (34% of the Modern host's) |
