@@ -1,8 +1,31 @@
-// The reels on the PET: the quadrant composer (quad.8bs), in four-pixel steps, no colour.
+// The reels on the PET: the quadrant composer (quad.8bs), in four-pixel steps (a whole cell row, eight pixels,
+// is a block copy), no colour. The block is 22 columns wide on a 40-column screen; under it, four lines of text.
 // The game calls only this interface; see view.8bs for what each function means.
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
 import { quad } from "./quad.8bs";
 
 export namespace view {
+    // ---- where everything else goes, in cells from the block's left edge ----
+    const BLOCK_WIDTH: utinyint = 22;
+    const CREDIT_ROW: utinyint = 21;
+    const CREDIT_NUM: utinyint = 7;
+    const BET_ROW: utinyint = 22;
+    const BET_NUM: utinyint = 7;
+    const WIN_ROW: utinyint = 23;
+    const WIN_NUM: utinyint = 7;
+    const MESSAGE_ROW: utinyint = 24;
+    const MESSAGE_COL: utinyint = 0;
+    const MESSAGE_WIDTH: utinyint = 22;
+
+    function statics(): void {
+        text.print(layout.cell(0, 0), "VEGAS NIGHTS 3X3");
+        text.print(layout.cell(0, 21), "CREDIT");
+        text.print(layout.cell(0, 22), "BET");
+        text.print(layout.cell(0, 23), "WIN");
+        text.print(layout.cell(14, 22), "UP DOWN: BET");
+    }
+
     function begin(): void {
         quad.begin();
     }

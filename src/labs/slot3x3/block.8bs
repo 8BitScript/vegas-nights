@@ -1,0 +1,38 @@
+// How big the machine is on screen: the numbers a layout needs, as plain literals (the compiler
+// folds a literal and nothing cleverer yet, and a 6502 should not work these out at run time).
+// The base answer is the 3x3 art's: three-cell symbols, a frame cell, three reels of three
+// cells with a divider between them, a frame cell (13 across), reel windows nine rows tall. A machine
+// whose art is bigger has a twin beside this file (block.c64.8bs) with its own numbers. Only view.8bs
+// (the C64 and the X16) reads them; the quadrant machines' views state their own.
+//
+// The numbers are derived from the tile data (SYMBOL_CELLS_W / SYMBOL_CELLS_H in
+// src/generated/tiles/classic*.8bs) and the engine's REELS and ROWS, and
+// test/glyph-budget.test.mjs recomputes every one from them and fails if a literal is stale —
+// change the art's size and the test says which line to change.
+//
+//   WIDTH      cells from the frame's left edge to its right (what layout.centre() centres).
+//   PITCH      columns from one reel's first cell to the next's (a reel and its divider).
+//   RIGHT      the column of the frame's right edge (REELS * PITCH).
+//   DOWN       cell rows in a reel window (ROWS symbols tall).
+//   PER_REEL   glyphs one reel owns (DOWN * cells across).
+//   FRAME_AT   the glyph number of the first frame cell (REELS * PER_REEL).
+//   PIXELS     a symbol's height in pixels.
+//   ARROW      the row of the payline arrows: the middle of the middle symbol.
+//   END        the row of the frame's bottom edge (the window starts on row 4).
+//   CREDIT, BET, WIN, MESSAGE, HINT   the text rows below the machine.
+export namespace block {
+    const WIDTH: utinyint = 13;
+    const PITCH: utinyint = 4;
+    const RIGHT: utinyint = 12;
+    const DOWN: utinyint = 9;
+    const PER_REEL: utinyint = 27;
+    const FRAME_AT: utinyint = 81;
+    const PIXELS: utinyint = 24;
+    const ARROW: utinyint = 8;
+    const END: utinyint = 13;
+    const CREDIT: utinyint = 15;
+    const BET: utinyint = 16;
+    const WIN: utinyint = 17;
+    const MESSAGE: utinyint = 19;
+    const HINT: utinyint = 21;
+}

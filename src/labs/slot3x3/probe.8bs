@@ -12,7 +12,7 @@ const REPS: usmallint = 0;
 
 export function main(): void {
     screen.blank();
-    layout.centre(13);
+    layout.centre(view.BLOCK_WIDTH);
     for (let reel: utinyint = 0; reel < 3; reel++) {
         reelscroll.place(reel, 0);
     }

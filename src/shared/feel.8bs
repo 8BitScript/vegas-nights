@@ -10,7 +10,15 @@
 // machine, and FAR sets how coarse the blur is at the speed WAIT allows. FAR must
 // divide 24 (a symbol) so a reel lands exactly on its stop. The base answer is the
 // cautious one; a machine that can do better has a twin (feel.c64.8bs, ...).
+//
+// WAIT and FAR are the 5x5's (labs/slot5x5/spin.8bs); REEL_WAIT and REEL_FAR are the 3x3's (shared/reelscroll.8bs),
+// which on the machines that scroll by copying cells (the PET, VIC-20) moves in whole cell rows and so wants its own.
+// EASE is the pixels before the stop over which the 3x3's steps are four pixels.
 export namespace feel {
     const WAIT: utinyint = 2;
     const FAR: utinyint = 12;
+    const REEL_WAIT: utinyint = 2;
+    const REEL_FAR: utinyint = 12;
+    // The pixels before the stop over which the steps are four pixels (a symbol's worth on the pixel machines).
+    const EASE: utinyint = 24;
 }

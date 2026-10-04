@@ -8,6 +8,7 @@
 // Codes 128-255 are the ISO set's upper half (accented letters and symbols
 // this game never prints); the reels and the frame take 128-222.
 import { setVramAddress } from "@8bitscript/cx16";
+import { text } from "@8bitscript/text";
 
 // The 5x5's pre-composed strips (see glyphs.c64.8bs): in RAM, copied to the tiles
 // through VERA's data port.
@@ -17,6 +18,7 @@ export namespace glyphs {
     const AVAILABLE: bool = true;
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
+    const EXTRA: utinyint = 0;
     const PORT: bool = true;
     const PORT_ADDRESS: usmallint = 0x9F23; // VERA DATA0
     const TILE_RAM: usmallint = 0;
@@ -46,10 +48,18 @@ export namespace glyphs {
     function stage(index: usmallint, value: utinyint): void {
     }
 
+    function symbols(count: utinyint, bytes: usmallint): void {
+    }
+
+    // Every code the X16's glyph block uses is 128 or more, which text.putChar passes through.
+    function put(at: usmallint, code: utinyint): void {
+        text.putChar(at, code);
+    }
+
     function stageStrip(index: usmallint, value: utinyint): void {
     }
 
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
     }
 
     function putStrip(index: usmallint, value: utinyint): void {

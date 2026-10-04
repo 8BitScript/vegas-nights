@@ -64,9 +64,9 @@
     "start:slot5x5:cx16": "8bs run cx16 --program slot5x5",
     "start:slot5x5:web": "8bs run web --program slot5x5",
     "shot:slot5x5": "node scripts/shot.mjs slot5x5",
-    "test": "node --test test/odds.test.mjs test/odds5.test.mjs test/fx.test.mjs",
-    "test:machines": "node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs",
-    "test:c64web": "MACHINES=c64web node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs",
+    "test": "node --test test/odds.test.mjs test/odds5.test.mjs test/fx.test.mjs test/glyph-budget.test.mjs",
+    "test:machines": "node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs test/hops.test.mjs",
+    "test:c64web": "MACHINES=c64web node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs test/hops.test.mjs",
     "motion": "node scripts/motion.mjs",
     "motion:plan": "node scripts/motion-plan.mjs"
   },

@@ -55,7 +55,7 @@ X16, web and PET have twins.
 
 A character cell is 8x8 pixels, 1 bit each, **one ink colour per cell**; the paper (the 0 bits)
 is the screen background, global on all four machines. A symbol is `SYMBOL_CELLS_W x
-SYMBOL_CELLS_H` cells (3x3 = 24x24 pixels by default).
+SYMBOL_CELLS_H` cells (3x3 = 24x24 pixels by default; the classic theme gives the C64 4x4 = 32x32, its own art in `variants.c64`, because its reel composer is the one with room: see the README's glyph arithmetic).
 
 | const | meaning |
 | --- | --- |
@@ -85,6 +85,28 @@ It was read from the real character ROMs (PET `characters-2`, C64 and VIC-20 `ch
 recalled: codes 96-127 hold eight patterns and bit 7 reverses a glyph, so the other eight are
 those +128. The test re-derives it from the ROMs when VICE's data is installed, and it is the
 same table `@8bitscript/pet/blocks` uses.
+
+### Quadrant tables (PET, VIC-20, web: any symbol size)
+
+A theme with `"quad": { "default": 6, "web": 6 }` (cells a side) also gets, for the three machines that build
+a reel from 2×2 block glyphs, `<theme>.quad.8bs` (PET), `<theme>.quad.vic20.8bs` and `<theme>.quad.web.8bs`
+(the machine's twin is chosen by the build, as for any file). A symbol is `QUAD_S` × `QUAD_S` cells, each a
+2×2 picture, so `2·QUAD_S` square "pseudo-pixels" of four screen pixels. A display cell of a scrolling reel
+takes two consecutive pseudo-pixel rows of the window, so its screen code is one of three precomputed tables
+and a redraw is one read and one write a cell:
+
+| table | index | the cell for |
+| --- | --- | --- |
+| `QUAD_C0` | `(symbol * S + k) * S + c` | rows 2k and 2k+1 of the symbol (the window starts on an even row) |
+| `QUAD_C1` | `(symbol * (S - 1) + k) * S + c` | rows 2k+1 and 2k+2 (an odd start), k < S - 1 |
+| `QUAD_CX` | `(symbol * QUAD_SYMBOLS + next) * S + c` | the last row of `symbol` over the first row of `next` |
+| `QUAD_K` | `(symbol * S + k) * S + c` | the ink of symbol cell (k, c) — only where there is colour |
+
+`src/labs/slot3x3/quad.8bs` is the composer. The shape of a symbol is the master PNG resampled to the grid, or,
+if the theme has `symbols/<ID>.quad<S>.png`, that hand-drawn image (`art.mjs` `overrides.quad6`): the three
+BAR symbols are told apart by how many bars they have because the master's lettering does not survive 12×12.
+The ink always comes from the colour master. `test/pipeline.test.mjs` decodes every table back to the
+symbols' pseudo-pixels and checks C1 and CX cover exactly the rows they claim.
 
 ### The frame
 
@@ -116,7 +138,8 @@ on a 24x24 grid with a small vector API (`rect circle ellipse ring rrect poly li
 
 | machine | what you get | what is lost |
 | --- | --- | --- |
-| C64, X16 | the art at 24x24, one colour per cell | multicolour (the C64 could do 2 bits a pixel at half the width) and a second colour in a cell |
+| C64 | the classic theme's art at 32x32 (4x4 cells, drawn for it; the cosmic theme stays 24x24) | multicolour as below |
+| X16 | the art at 24x24, one colour per cell | multicolour (the C64 could do 2 bits a pixel at half the width) and a second colour in a cell |
 | VIC-20 | the same, with ink colours 0-7 | colours 8-15 (they shift to the nearest of eight) |
 | web | 16x16 art (2x2 cells) from the runtime's 80-glyph table | a third of the pixels of the 24x24 art, and bit order differs (mirrored in `classic.web.8bs`): the table holds 80 glyphs, which a scrolling composer fills at 36 for three reels + 14 frame = 50 with 2x2 cells but not with 3x3 (81 + 14) |
 | PET | 6x6 pseudo-pixels in the ROM's block glyphs | everything finer than half a cell, and all colour |
@@ -137,7 +160,7 @@ one RGB per colour index. It passes on the **PET, C64, VIC-20 (8K) and X16** wit
 | machine | where the lab puts the glyphs | data (classic / cosmic) | lab program |
 | --- | --- | --- | --- |
 | PET | no glyphs: block screen codes at `$8000` | 66 B / 84 B | 1,310 B |
-| C64 | character RAM at `$D000` (glyph 0 = code 128), screen at `$E000` | 612 B / 855 B | 2,243 B |
+| C64 | character RAM at `$D000` (glyph 0 = code 128), screen at `$E000` | 990 B / 855 B | 2,243 B |
 | VIC-20 8K | RAM at `$1C00` (`$9005` = `$CF`), codes 60-127; the screen is at `$1000` | 612 B / 855 B | 2,060 B |
 | X16 | VRAM at `L1_TILEBASE`, tiles 128 up, through `text.putChar` | 612 B / 855 B | 2,753 B |
 

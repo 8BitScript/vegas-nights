@@ -37,10 +37,12 @@ test('every symbol the strips use has art, on every machine', () => {
     assert.equal(tiles.consts.ART_SYMBOLS, c.SYMBOL_COUNT, `${file}: one picture per symbol of the odds table`);
     assert.equal(tiles.arrays.SYMBOL_BITMAP.length, c.SYMBOL_COUNT * tiles.consts.SYMBOL_BYTES, `${file}: SYMBOL_BITMAP covers every symbol`);
     assert.equal(tiles.arrays.SYMBOL_COLOR.length, c.SYMBOL_COUNT * tiles.consts.SYMBOL_CELLS, `${file}: SYMBOL_COLOR covers every symbol`);
-    // view.8bs composes 3x3-cell symbols; the web's glyph table holds 80 glyphs, which
-    // a 3-cell window does not fit (81 for the reels and 14 for the frame), so view.web.8bs
-    // composes 2x2-cell symbols (12 glyphs a reel, 36 for the reels and 50 with the frame).
-    const cells = file.includes('web') ? 2 : 3;
+    // view.8bs composes the symbols' cells, whatever their count: 4x4 on the C64 (32x32 pixels,
+    // 48 glyphs a reel, 158 with the frame, of the 164 codes it has: test/glyph-budget.test.mjs),
+    // 3x3 on the X16. The web's glyph table holds 80 glyphs, which a 3-cell window does not fit
+    // (81 for the reels and 14 for the frame), so view.web.8bs composes 2x2-cell symbols (12
+    // glyphs a reel, 36 for the reels and 50 with the frame).
+    const cells = file.includes('web') ? 2 : file === 'tiles/classic.8bs' ? 4 : 3;
     assert.equal(tiles.consts.SYMBOL_CELLS_W, cells, `${file}: ${cells}x${cells}-cell symbols`);
     assert.equal(tiles.consts.SYMBOL_CELLS_H, cells);
     if (file.includes('web')) {

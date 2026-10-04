@@ -19,6 +19,7 @@ import { random } from "@8bitscript/random";
 import { bank } from "@shared/bank.8bs";
 import { reelscroll } from "@shared/reelscroll.8bs";
 import { layout } from "@shared/layout.8bs";
+import { symbolpx } from "@shared/symbolpx.8bs";
 import { sound } from "@shared/sound.8bs";
 import { view } from "./view.8bs";
 import {
@@ -35,14 +36,8 @@ export const DEFAULT_SEED: usmallint = 2026;
 const START_CREDITS: usmallint = 2000;
 const BIG_WIN: usmallint = 2000; // credits at the base bet: twenty bets or more is a big pay
 
-// Layout, in cells from the block's left edge (the machine is 13 cells wide).
-const BLOCK_WIDTH: utinyint = 13;
-const CREDIT_ROW: utinyint = 15;
-const BET_ROW: utinyint = 16;
-const WIN_ROW: utinyint = 17;
-const MESSAGE_ROW: utinyint = 19;
-const HINT_ROW: utinyint = 21;
-const NUMBER_COLUMN: utinyint = 8;
+// Where everything goes is the view's (view.BLOCK_WIDTH, view.CREDIT_ROW, ...): the PET has room for a
+// reel window of 22 columns and four lines of text under it, the VIC-20 has 22 columns in all.
 
 let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying
 let betIndex: utinyint = 0;
@@ -61,32 +56,32 @@ function symbolAt(reel: utinyint, stop: utinyint, row: utinyint): utinyint {
     return STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
 }
 
-function clearRow(row: utinyint): void {
-    text.print(layout.cell(1, row), "                    ");
+function clearMessage(): void {
+    let at: usmallint = layout.cell(view.MESSAGE_COL, view.MESSAGE_ROW);
+    for (let i: utinyint = 0; i < view.MESSAGE_WIDTH; i++) {
+        text.putChar(at + i, 32);
+    }
 }
 
 // Six digits, as two adjacent fields of three (see shared/bank.8bs for why).
 function drawCredit(): void {
-    text.print(layout.cell(1, CREDIT_ROW), "CREDIT");
-    text.printNumber(layout.cell(NUMBER_COLUMN, CREDIT_ROW), bank.high(), 3);
-    text.printNumber(layout.cell(NUMBER_COLUMN + 3, CREDIT_ROW), bank.low(), 3);
+    text.printNumber(layout.cell(view.CREDIT_NUM, view.CREDIT_ROW), bank.high(), 3);
+    text.printNumber(layout.cell(view.CREDIT_NUM + 3, view.CREDIT_ROW), bank.low(), 3);
 }
 
 function drawBet(): void {
-    text.print(layout.cell(1, BET_ROW), "BET");
-    text.printNumber(layout.cell(NUMBER_COLUMN, BET_ROW), 0, 3);
-    text.printNumber(layout.cell(NUMBER_COLUMN + 3, BET_ROW), BET_CREDITS * multiplier, 3);
+    text.printNumber(layout.cell(view.BET_NUM, view.BET_ROW), 0, 3);
+    text.printNumber(layout.cell(view.BET_NUM + 3, view.BET_ROW), BET_CREDITS * multiplier, 3);
 }
 
 function drawWin(): void {
-    text.print(layout.cell(1, WIN_ROW), "WIN");
-    text.printNumber(layout.cell(NUMBER_COLUMN, WIN_ROW), bank.winThousands(), 3);
-    text.printNumber(layout.cell(NUMBER_COLUMN + 3, WIN_ROW), bank.winUnits(), 3);
+    text.printNumber(layout.cell(view.WIN_NUM, view.WIN_ROW), bank.winThousands(), 3);
+    text.printNumber(layout.cell(view.WIN_NUM + 3, view.WIN_ROW), bank.winUnits(), 3);
 }
 
 function message(which: utinyint): void {
-    clearRow(MESSAGE_ROW);
-    let at: usmallint = layout.cell(1, MESSAGE_ROW);
+    clearMessage();
+    let at: usmallint = layout.cell(view.MESSAGE_COL, view.MESSAGE_ROW);
     if (which == 1) {
         text.print(at, "SPINNING");
     } else if (which == 2) {
@@ -100,12 +95,6 @@ function message(which: utinyint): void {
     } else {
         text.print(at, "PRESS CONFIRM");
     }
-}
-
-function drawStatic(): void {
-    text.print(layout.cell(1, 1), "VEGAS NIGHTS");
-    text.print(layout.cell(1, 2), "SLOT 3X3");
-    text.print(layout.cell(1, HINT_ROW), "UP DOWN: BET");
 }
 
 // ---- play ----------------------------------------------------------------
@@ -127,7 +116,7 @@ function startSpin(): void {
         // Each reel runs at least six more symbols than the one before.
         let minimum: usmallint = reel;
         minimum = minimum + 1;
-        minimum = minimum * 144;
+        minimum = minimum * (symbolpx.CELLS_H * 48);
         reelscroll.start(reel, targets[reel], minimum, STOPS);
     }
     let low: utinyint = random.next();
@@ -311,7 +300,7 @@ function frameIdle(): void {
 // screenshots cannot press a key.
 export function play(autoSpins: utinyint, seed: usmallint): void {
     screen.blank();
-    layout.centre(BLOCK_WIDTH);
+    layout.centre(view.BLOCK_WIDTH);
     random.seed(seed);
     input.begin();
     pointer.hide();
@@ -321,7 +310,7 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
         reelscroll.place(reel, 0);
     }
     view.begin();
-    drawStatic();
+    view.statics();
     view.drawAll();
     setBet(0);
     drawCredit();

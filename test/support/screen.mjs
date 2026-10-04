@@ -104,5 +104,10 @@ export function readNumber(png, geo, ref, col, row, width) {
   return value;
 }
 
-// Where the game puts things (src/labs/slot3x3/game.8bs).
-export const LAYOUT = { creditRow: 15, betRow: 16, winRow: 17, numberCol: 8, numberWidth: 6 };
+// Where the game puts things: the view's own constants (src/labs/<lab>/view*.8bs), read from the source so the test and
+// the 6502 build cannot disagree about a row.
+import { labConsts } from './table.mjs';
+export function layoutFor(machine, lab = 'slot3x3') {
+  const v = labConsts(lab, machine);
+  return { creditRow: v.CREDIT_ROW, creditCol: v.CREDIT_NUM, betRow: v.BET_ROW, betCol: v.BET_NUM, winRow: v.WIN_ROW, winCol: v.WIN_NUM, numberWidth: 6 };
+}

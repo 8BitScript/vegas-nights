@@ -45,9 +45,12 @@ async function art(themeName) {
   // written as <ID>.<machine>.png, which the converter prefers for that machine.
   for (const [machine, variant] of Object.entries(mod.variants ?? {})) {
     for (const [id, draw] of Object.entries(variant.symbols)) {
-      const a = new Art(size, variant.design, 4);
+      // a variant may render at its own size: a 32x32 design is drawn at 64 so the converter
+      // averages exactly 2x2 samples to a pixel instead of resampling a 48x48 master
+      const vsize = variant.size ?? size;
+      const a = new Art(vsize, variant.design, 4);
       draw(a, mod.colors);
-      writeFileSync(join(dir, 'symbols', `${id}.${machine}.png`), encodePng(size, size, a.toRgba()));
+      writeFileSync(join(dir, 'symbols', `${id}.${machine}.png`), encodePng(vsize, vsize, a.toRgba()));
     }
   }
   console.log(`art: ${themeName}: ${Object.keys(mod.symbols).length} symbols`);

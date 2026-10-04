@@ -1,0 +1,52 @@
+// Test support, not a game: three reels walked up the strip HOPS times, STEP pixels at a time, and drawn either the
+// way a spin draws them (FULL=0: `view.moved`, which hops where the machine can copy its screen) or by redrawing the
+// whole reel after every move (FULL=1). test/hops.test.mjs captures both and demands the two screens be the same
+// picture, pixel for pixel: a hop must be a cheaper way to the picture a redraw makes, not a different one.
+//   8bs run pet --program slot3x3-hops --define HOPS=20 --define STEP=8 --define FULL=0
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { symbolpx } from "@shared/symbolpx.8bs";
+import { STOP_MASK } from "@generated/classic3x3.8bs";
+import { view } from "./view.8bs";
+
+const HOPS: utinyint = #define("HOPS", 20);
+const STEP: utinyint = #define("STEP", 8);
+const FULL: utinyint = #define("FULL", 0);
+
+let stopOf: array<utinyint, 3>;
+let rowOf: array<utinyint, 3>;
+
+export function main(): void {
+    screen.blank();
+    layout.centre(view.BLOCK_WIDTH);
+    view.begin();
+    for (let reel: utinyint = 0; reel < 3; reel++) {
+        stopOf[reel] = (3 + reel * 5) & STOP_MASK;
+        rowOf[reel] = 0;
+        reelscroll.pin(reel, stopOf[reel], 0);
+        view.draw(reel);
+    }
+    for (let hop: utinyint = 0; hop < HOPS; hop++) {
+        for (let reel: utinyint = 0; reel < 3; reel++) {
+            // the window moves up the strip: the row within the symbol counts down, and past 0 it is the symbol before
+            if (rowOf[reel] < STEP) {
+                rowOf[reel] = rowOf[reel] + symbolpx.CELLS_H * 8;
+                stopOf[reel] = (stopOf[reel] - 1) & STOP_MASK;
+            }
+            rowOf[reel] = rowOf[reel] - STEP;
+            reelscroll.pin(reel, stopOf[reel], rowOf[reel]);
+            if (FULL == 1) {
+                view.draw(reel);
+            } else {
+                view.moved(reel, STEP);
+            }
+        }
+    }
+    // scripts/measure-hops.mjs times the walk by when this appears
+    text.print(layout.cell(1, 22), "DONE");
+    while (true) {
+        waitFrame();
+    }
+}

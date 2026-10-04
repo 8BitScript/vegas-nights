@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { loadTable } from './support/table.mjs';
 import { play } from './support/reference.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
-import { calibrate, reference, readNumber, loadPng, LAYOUT } from './support/screen.mjs';
+import { calibrate, reference, readNumber, loadPng, layoutFor } from './support/screen.mjs';
 import { adapterFor, inkReader, precompute, matches } from './support/adapters.mjs';
 import { bestChain } from './support/chain.mjs';
 
@@ -43,19 +43,20 @@ const PROGRAMS = {
 const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
 // How much longer than the C64's a spin takes to come to rest (a reel redraw costs a
 // VIC-20 more of its frame, and its hops are smaller and less frequent).
-const SETTLE_SCALE = { c64: 1, vic20: 2, pet: 1.4, cx16: 1, web: 1, c64web: 1 };
+const SETTLE_SCALE = { c64: 1.3, vic20: 2, pet: 1.4, cx16: 1, web: 1, c64web: 1 };
 const SAMPLES = { c64: 10, vic20: 10, pet: 10, cx16: 6, web: 10, c64web: 10 };
 
 const log = (...a) => console.log('   ', ...a);
 
 for (const machine of MACHINES) {
   describe(machine, { skip: unavailable(machine) ?? false }, () => {
+    const L = layoutFor(machine);
     let geo;
     let ref;
     let adapter;
     let expectedAt;
     const shoot = async (program, name, frames) => loadPng(await capture(machine, program, name, frames));
-    const creditOf = (png) => readNumber(png, geo, ref, LAYOUT.numberCol, LAYOUT.creditRow, LAYOUT.numberWidth);
+    const creditOf = (png) => readNumber(png, geo, ref, L.creditCol, L.creditRow, L.numberWidth);
 
     test('reads the screen: cell size from the ruler, digits and fallback text from the glyph sheet', async () => {
       geo = calibrate(loadPng(await capture(machine, 'slot3x3-ruler', 'ruler')));
@@ -75,9 +76,9 @@ for (const machine of MACHINES) {
           const want = expectedAt[reel][expected.stops[reel] * adapter.unitsPerSymbol];
           assert.equal(adapter.observe(png, geo, ink, reel), want, `reel ${reel} at stop ${expected.stops[reel]} (the draw plan's byte & ${c.STOP_MASK})`);
         }
-        assert.equal(readNumber(png, geo, ref, LAYOUT.numberCol, LAYOUT.winRow, LAYOUT.numberWidth), expected.win, 'WIN');
+        assert.equal(readNumber(png, geo, ref, L.winCol, L.winRow, L.numberWidth), expected.win, 'WIN');
         assert.equal(creditOf(png), expected.credits, 'CREDIT');
-        assert.equal(readNumber(png, geo, ref, LAYOUT.numberCol, LAYOUT.betRow, LAYOUT.numberWidth), c.BET_CREDITS, 'BET');
+        assert.equal(readNumber(png, geo, ref, L.betCol, L.betRow, L.numberWidth), c.BET_CREDITS, 'BET');
         if (name === 'lines') assert.ok(expected.lines.filter((v) => v > 0).length >= 2, 'the entry is meant to pay on two lines');
         if (name === 'jackpot') assert.ok(expected.jackpot, 'the entry is meant to hit the jackpot');
       });
@@ -100,7 +101,7 @@ for (const machine of MACHINES) {
         const ink = inkReader(png);
         shots.push({ frame: f, png, reels: Array.from({ length: c.REELS }, (_, reel) => {
           const seen = adapter.observe(png, geo, ink, reel);
-          return { seen, cands: matches(adapter, expectedAt[reel], seen) };
+          return { seen, cands: adapter.match ? adapter.match(expectedAt[reel], seen) : matches(adapter, expectedAt[reel], seen) };
         }) });
       }
       return shots;

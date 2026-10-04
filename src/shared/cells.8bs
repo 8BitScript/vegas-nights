@@ -20,4 +20,14 @@ export namespace cells {
 
     function tint(at: usmallint, color: utinyint): void {
     }
+
+    // The code of the block that is `code` inverted (a win flash lights a symbol by inverting it): "not here".
+    function invert(code: utinyint): utinyint {
+        return code;
+    }
+
+    // The screen code to print for frame cell `cell` (FRAME_TL ... in the tile data).
+    function frameCode(cell: utinyint): utinyint {
+        return 143;
+    }
 }

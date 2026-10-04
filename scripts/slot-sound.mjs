@@ -23,11 +23,26 @@ import { loadTable } from '../test/support/table.mjs';
 import { play } from '../test/support/reference.mjs';
 import { MACHINES, EFFECTS, NOTE, FRAMES, FIRST, build, record, eachMachine, attempt, sidTones, vicTones, cents, noteHz } from './sound.mjs';
 
+// Silence: after a program has booted, after a spin has finished and after a bonus round has ended,
+// and the machine is just sitting there, NOTHING may be sounding. A stuck tone (a gate that never
+// closed, a voice left on) is the worst bug a sound system can have, and it is invisible to a check
+// that only looks at the notes that were played, so this one looks at how the run ENDS.
+const SILENT_FRAMES = 60; // the last second of the run
+
 const PROBES = [
   { name: 'lose', program: 'slot3x3-lose', seed: 2026, spins: 3, frames: 2500 },
   { name: 'cherries', program: 'slot3x3-cherries', seed: 304, spins: 3, frames: 2500 },
   { name: 'lines', program: 'slot3x3-lines', seed: 145, spins: 1, frames: 1200 },
   { name: 'jackpot', program: 'slot3x3-jackpot', seed: 315, spins: 1, frames: 1200 },
+];
+// Programs that are only checked for the silence at the end (no effect to compare): the lobby (never
+// sounds), a 5x5 spin that loses, and a 5x5 bonus round that runs to its end and then sits.
+const QUIET_PROBES = [
+  { name: 'lobby', program: 'main', frames: 700 },
+  { name: 'slot5x5 loses and sits', program: 'slot5x5-lose', frames: 2500 },
+  // The C64 finishes the bonus round's free spins around frame 6,400 and the VIC-20 around 11,000
+  // (they compose their reels more slowly than the web does).
+  { name: 'slot5x5 bonus ends and sits', program: 'slot5x5-bonus', frames: 7600, framesOn: { vic20: 11500 } },
 ];
 // game.8bs: a pay of this many credits at the base bet or more is "big".
 const BIG_WIN = 2000;
@@ -154,6 +169,53 @@ function checkWav(machine, analysis, effect) {
   return { lines, bad };
 }
 
+// ---- silence: how the run ENDS ------------------------------------------------------
+
+// The SID's three gates (registers 4, 11, 18) and the VIC-I's four voice registers (10..13, on at 128
+// and up): the last write to each must have turned it off, and long enough ago.
+function chipSilence(machine, events, frames) {
+  const { dump } = MACHINES[machine];
+  const end = (frames + 300) * 17200;
+  const quietFor = SILENT_FRAMES * 17200;
+  const on = new Map();
+  let lastOff = 0;
+  for (const { clock, reg, value } of events) {
+    if (dump === 'sid' && (reg === 4 || reg === 11 || reg === 18)) {
+      if ((value & 1) !== 0) on.set(reg, clock); else { on.delete(reg); lastOff = clock; }
+    }
+    if (dump === 'vic' && reg >= 10 && reg <= 13) {
+      if (value >= 128) on.set(reg, clock); else { on.delete(reg); lastOff = clock; }
+    }
+  }
+  if (on.size > 0) return { bad: 1, text: `FAIL still sounding when the run ended (${dump === 'sid' ? 'SID gate' : 'VIC-I voice'} open on register${on.size > 1 ? 's' : ''} ${[...on.keys()].join(', ')}: a stuck tone)` };
+  if (end - lastOff < quietFor && lastOff > 0) return { bad: 1, text: `FAIL the last sound ended ${((end - lastOff) / 17200).toFixed(0)} frames before the run ended (wanted ${SILENT_FRAMES} of silence)` };
+  return { bad: 0, text: `silent for the last ${SILENT_FRAMES}+ frames` };
+}
+
+// A recording (the PET, the X16): the last sound must end at least a second before the recording does.
+function waveSilence(analysis) {
+  const last = analysis.segments.at(-1);
+  if (!last) return { bad: 0, text: 'silent throughout' };
+  const tail = analysis.seconds - last.end;
+  if (tail < 1) return { bad: 1, text: `FAIL still sounding when the recording ended (the last sound ran ${last.start.toFixed(1)}..${last.end.toFixed(1)} s of ${analysis.seconds.toFixed(1)} s: a stuck tone)` };
+  return { bad: 0, text: `silent for the last ${tail.toFixed(1)} s` };
+}
+
+// The web: the per-frame voice must be off for the last SILENT_FRAMES frames.
+function webSilence(timeline) {
+  const tail = timeline.slice(-SILENT_FRAMES);
+  const on = tail.filter((frame) => frame.on).length;
+  if (on > 0) return { bad: 1, text: `FAIL the voice was on in ${on} of the last ${tail.length} frames (a stuck tone)` };
+  return { bad: 0, text: `voice off for the last ${tail.length} frames` };
+}
+
+function checkSilence(machine, recorded, frames) {
+  const result = machine === 'web' ? webSilence(recorded.timeline)
+    : MACHINES[machine].dump ? chipSilence(machine, recorded, frames)
+      : waveSilence(recorded);
+  return { bad: result.bad, line: `  at rest: ${result.text}` };
+}
+
 // ---- main ------------------------------------------------------------------------
 
 const failed = await eachMachine(async (machine) => {
@@ -164,11 +226,22 @@ const failed = await eachMachine(async (machine) => {
     problems += await attempt(async () => {
       build(machine, probe.program);
       const recorded = await record(machine, probe.program, { frames: probe.frames });
-      if (machine === 'web') return checkTones(machine, webTones(recorded.timeline), effect);
-      return MACHINES[machine].dump ? checkDump(machine, recorded, effect) : checkWav(machine, recorded, effect);
+      const heard = machine === 'web' ? checkTones(machine, webTones(recorded.timeline), effect)
+        : MACHINES[machine].dump ? checkDump(machine, recorded, effect) : checkWav(machine, recorded, effect);
+      const quiet = checkSilence(machine, recorded, probe.frames);
+      return { lines: [...heard.lines, quiet.line], bad: heard.bad + quiet.bad };
+    });
+  }
+  for (const probe of QUIET_PROBES) {
+    console.log(` ${probe.name}:`);
+    problems += await attempt(async () => {
+      build(machine, probe.program);
+      const frames = probe.framesOn?.[machine] ?? probe.frames;
+      const quiet = checkSilence(machine, await record(machine, probe.program, { frames }), frames);
+      return { lines: [quiet.line], bad: quiet.bad };
     });
   }
   return problems;
 });
-console.log(failed === 0 ? 'slot-sound: every spin ends on the sound its result calls for' : `slot-sound: ${failed} problem(s)`);
+console.log(failed === 0 ? 'slot-sound: every spin ends on the sound its result calls for, and the machine falls silent' : `slot-sound: ${failed} problem(s)`);
 process.exit(failed === 0 ? 0 : 1);

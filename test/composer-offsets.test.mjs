@@ -53,9 +53,14 @@ for (const machine of MACHINES) {
       });
 
       // The offsets that differ: every pixel on the pixel machines, one in four on the quadrant ones.
-      for (const row of pixel ? [0, 1, 2, 3, 4, 5, 6, 7] : [0, 4]) {
+      // The pixel machines also draw a few that cross a cell row: the probe puts each further reel 8
+      // pixels on, so 0-7 already visit the first three bands of a symbol, and the later ones reach
+      // the fourth band of a 32-pixel symbol (the C64's) and its last row (11 = band 1 + 3, 21 =
+      // band 2 + 5, 31 = band 3 + 7; only those that fit inside this machine's symbol).
+      const rows = pixel ? [0, 1, 2, 3, 4, 5, 6, 7, 11, 21, 31].filter((r) => r < symbolPixels) : [0, 4];
+      for (const row of rows) {
         for (const stop of STOPS_TRIED) {
-          test(`${row} pixel${row === 1 ? '' : 's'} into a cell row, first reel at stop ${stop}: every reel is exactly the strip's picture`, async () => {
+          test(`${row} pixel${row === 1 ? '' : 's'} into ${row < 8 ? 'a cell row' : 'its symbol'}, first reel at stop ${stop}: every reel is exactly the strip's picture`, async () => {
             const png = loadPng(await capture(machine, game.program, `${game.name}-offset${row}-${stop}`, FRAMES[machine], { ROW: row, STOP: stop }));
             const ink = inkReader(png);
             for (let reel = 0; reel < c.REELS; reel += 1) {

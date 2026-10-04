@@ -1,0 +1,12 @@
+// How fast the VIC-20 can let a reel move.
+export namespace feel {
+    // The 5x5 still recomposes a reel whole (24-pixel symbols): 12 pixels every third frame.
+    const WAIT: utinyint = 2;
+    const FAR: utinyint = 12;
+    // The 3x3 hops a reel two whole cell rows (16 pixels) at a time with a block copy of the screen and of the colour
+    // RAM (shared/move.8bs), one reel a frame in turn: a reel waits two frames between hops. The last 16 pixels are
+    // four pixels a step (a recompose).
+    const REEL_WAIT: utinyint = 2;
+    const REEL_FAR: utinyint = 16;
+    const EASE: utinyint = 16;
+}

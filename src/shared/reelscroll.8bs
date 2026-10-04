@@ -16,7 +16,7 @@
 //
 // Up to five reels, so the 5x5 uses the same file.
 import { feel } from "@shared/feel.8bs";
-import { SYMBOL_CELLS_H } from "@generated/tiles/classic.8bs";
+import { symbolpx } from "@shared/symbolpx.8bs";
 
 // A symbol's height in pixels is the tile data's cell height times eight (24 for
 // three cells, 16 on the web's two), and the speed schedule below is cut from it:
@@ -67,11 +67,11 @@ export namespace reelscroll {
     // land on the target. The reel is at rest when this is called (row 0).
     function start(reel: utinyint, target: utinyint, minimum: usmallint, count: utinyint): void {
         let around: usmallint = count;
-        around = around * (SYMBOL_CELLS_H * 8);
+        around = around * (symbolpx.CELLS_H * 8);
         let origin: usmallint = stops[reel];
-        origin = origin * (SYMBOL_CELLS_H * 8);
+        origin = origin * (symbolpx.CELLS_H * 8);
         let goal: usmallint = target;
-        goal = goal * (SYMBOL_CELLS_H * 8);
+        goal = goal * (symbolpx.CELLS_H * 8);
         // distance down the strip from `origin` to `goal`, wrapping
         let extra: usmallint = origin + around;
         extra = extra - goal;
@@ -106,25 +106,22 @@ export namespace reelscroll {
             return 0;
         }
         let left: usmallint = remaining[reel];
-        let pixels: utinyint = feel.FAR;
-        let wait: utinyint = feel.WAIT;
-        if (pixels > 12 && left <= SYMBOL_CELLS_H * 64) {
-            pixels = 12;
-        }
-        if (pixels > 8 && left <= SYMBOL_CELLS_H * 32) {
+        let pixels: utinyint = feel.REEL_FAR;
+        let wait: utinyint = feel.REEL_WAIT;
+        if (pixels > 8 && left <= symbolpx.CELLS_H * 32) {
             pixels = 8;
         }
-        if (left <= SYMBOL_CELLS_H * 8) {
+        if (left <= feel.EASE) {
             pixels = 4;
         }
         if (left <= 8) {
             pixels = 2;
-            wait = feel.WAIT + 1;
+            wait = feel.REEL_WAIT + 1;
         }
         // slide the window up the strip by `pixels`
         let at: utinyint = rows[reel];
         if (at < pixels) {
-            at = at + SYMBOL_CELLS_H * 8;
+            at = at + symbolpx.CELLS_H * 8;
             stops[reel] = (stops[reel] - 1) & (count - 1);
         }
         rows[reel] = at - pixels;

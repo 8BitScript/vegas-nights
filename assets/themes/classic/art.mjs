@@ -20,6 +20,15 @@ function word(a, text, x0, y0, color, erase) {
   })));
 }
 
+// The same 3x5 letters at `scale` real pixels per letter pixel (gap of `scale`), cut out of what is drawn.
+function wordAt(a, text, x0, y0, scale) {
+  [...text].forEach((ch, k) => LETTER[ch].forEach((row, j) => [...row].forEach((v, i) => {
+    if (v !== '1') return;
+    const x = x0 + k * 4 * scale + i * scale, y = y0 + j * scale;
+    a.erase((px, py) => px >= x && px < x + scale && py >= y && py < y + scale);
+  })));
+}
+
 function bar(a, y0, y1, color, shine = true) {
   a.rrect(color, 2, y0, 22, y1, 1.6);
   if (shine) a.erase((x, y) => y >= y0 + 1 && y < y0 + 2 && x >= 4 && x < 20); // a black glint along the top edge
@@ -66,6 +75,17 @@ export default {
   },
   // hand-tuned art at the PET's resolution: 6x6 pseudo-pixels (a quadrant glyph is a pseudo-pixel pair)
   overrides: {
+    // Hand-drawn on the quadrant machines' 12x12 pseudo-pixel grid (6x6 cells of 2x2 blocks): the master's
+    // word BAR and its fine detail resample to a smudge there, so the three BAR symbols are told apart by how
+    // many bars they have, and the 7 and the cherries are set pixel by pixel.
+    quad6: {
+      SEVEN: ['............', '.##########.', '.##########.', '.##########.', '.........##.', '........##..', '.......##...', '......##....', '......##....', '.....##.....', '.....##.....', '............'],
+      BAR3: ['............', '.##########.', '.##########.', '............', '............', '.##########.', '.##########.', '............', '............', '.##########.', '.##########.', '............'],
+      BAR2: ['............', '............', '.##########.', '.##########.', '.##########.', '............', '............', '.##########.', '.##########.', '.##########.', '............', '............'],
+      BAR1: ['............', '............', '............', '............', '.##########.', '.##########.', '.##########.', '.##########.', '............', '............', '............', '............'],
+      CHERRY: ['........##..', '.......#.##.', '......#...#.', '.....#....#.', '....#.....#.', '.####...####', '######.#####', '######.#####', '######.#####', '.####...####', '............', '............'],
+      BLANK: ['............', '............', '............', '............', '.....##.....', '....####....', '....####....', '.....##.....', '............', '............', '............', '............'],
+    },
     pet: {
       SEVEN: ['######', '.....#', '....##', '...##.', '..##..', '..#...'],
       BAR3: ['######', '......', '######', '......', '######', '......'],
@@ -79,6 +99,54 @@ export default {
   // the master's 3x5 letters resample to smudges at that size, so the word is set here
   // at one letter pixel to one real pixel. The other symbols resample well.
   variants: {
+    // The C64 draws its 3x3 with symbols four cells square (32x32 pixels): the extra
+    // eight pixels of detail per side buy bevelled bars, glints and a real word on BAR.
+    // Drawn on its own 32x32 grid and rendered at 64, so the converter averages exactly
+    // 2x2 samples to a pixel. A cell still holds ONE ink, so the colours change on cell
+    // edges where they can (the 7's lit bar is the top cell row, its stem the rows below)
+    // and detail is carried by black gaps.
+    c64: {
+      design: 32,
+      size: 64,
+      symbols: {
+        SEVEN(a) {
+          a.rrect(C.yellow, 3, 2, 29, 8.4, 1.6); // the bar of the 7, lit yellow, one cell row tall
+          a.poly(C.red, [[29, 8], [21, 8], [8.6, 30.6], [16.8, 30.6]]); // the stem, red
+          a.erase((x, y) => y >= 4 && y < 5 && x >= 6 && x < 26); // glint on the bar
+          a.erase((x, y) => y >= 12 && y < 28 && Math.abs(x - (23.4 - (y - 8) * 0.545)) < 0.55); // glint down the stem
+        },
+        BAR3(a) {
+          for (const y of [2, 12, 22]) {
+            a.rrect(C.purple, 2, y, 30, y + 8, 2);
+            a.erase((x, yy) => yy >= y + 2 && yy < y + 3 && x >= 5 && x < 27); // a black glint along each bar
+          }
+        },
+        BAR2(a) {
+          for (const y of [4, 18]) {
+            a.rrect(C.green, 2, y, 30, y + 10, 2.4);
+            a.erase((x, yy) => yy >= y + 2 && yy < y + 3 && x >= 5 && x < 27);
+          }
+        },
+        BAR1(a) {
+          a.rrect(C.cyan, 2, 7, 30, 25, 2.6);
+          a.erase((x, y) => y >= 9 && y < 10 && x >= 5 && x < 27); // glint above the word
+          wordAt(a, 'BAR', 5, 11, 2);
+        },
+        CHERRY(a) {
+          a.line(C.green, 16, 3, 9.6, 19, 2);
+          a.line(C.green, 16, 3, 22, 18.5, 2);
+          a.ellipse(C.green, 22.5, 5.6, 5.4, 2.4); // the leaf
+          a.circle(C.red, 10, 23.6, 6.9);
+          a.circle(C.red, 22, 23.2, 6.9);
+          a.erase((x, y) => (x - 7.8) ** 2 + (y - 21) ** 2 <= 2.9); // a highlight on each
+          a.erase((x, y) => (x - 19.8) ** 2 + (y - 20.6) ** 2 <= 2.9);
+        },
+        BLANK(a) {
+          // a faint four-point sparkle, so a reel of mostly blanks still reads as a reel
+          a.fill(C.blue, (x, y) => (Math.abs(x - 16) + Math.abs(y - 16) < 3.4) || (Math.abs(x - 16) < 0.9 && Math.abs(y - 16) < 6.8) || (Math.abs(y - 16) < 0.9 && Math.abs(x - 16) < 6.8));
+        },
+      },
+    },
     web: {
       design: 16,
       symbols: {

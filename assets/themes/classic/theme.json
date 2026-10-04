@@ -8,6 +8,7 @@
     "purple": "#8b3f96", "green": "#55a049", "lgreen": "#94e089", "blue": "#40318d", "lblue": "#7869c4",
     "yellow": "#bfce72", "orange": "#8b5429", "grey": "#787878", "dgrey": "#505050", "lgrey": "#9f9f9f"
   },
-  "cells": { "default": [3, 3], "web": [2, 2] },
+  "cells": { "default": [3, 3], "web": [2, 2], "c64": [4, 4] },
+  "quad": {"default": 6, "web": 6},
   "frame": "frame.json"
 }

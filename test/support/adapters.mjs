@@ -11,12 +11,14 @@
 // exact position it shows — or to none, which is a failed test.
 import { loadFile, loadTable } from './table.mjs';
 import { cellKey } from './screen.mjs';
+import { labConsts } from './table.mjs';
+import { quadAdapter as makeQuadAdapter } from './quadadapter.mjs';
 
 const table = loadTable();
 const c = table.consts;
 const strip = table.arrays.STRIPS;
 
-export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'pixel', c64web: 'pixel' };
+export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'quad', c64web: 'pixel' };
 
 /** A background-aware reader of logical pixels of a screenshot. */
 export function inkReader(png) {
@@ -67,7 +69,7 @@ function pixelAdapter(machine) {
     symbolPixels: PX,
     // The cells the flash test compares: the reels with their frame, in block cells.
     window: web ? { col: 1, row: top - 1, cols: 2 + c.REELS * cw + c.REELS - 1, rows: ch * c.ROWS + 2 }
-      : { col: 1, row: 3, cols: 11, rows: 10 },
+      : { col: 1, row: 3, cols: c.REELS * cw + c.REELS - 1, rows: ch * c.ROWS + 1 },
     expected(reel, position) {
       const out = [];
       for (let v = 0; v < ROWS_PX; v += 1) {
@@ -115,37 +117,9 @@ export function quadCell(ink, geo, ox, oy) {
   return (at(1, 1) << 3) | (at(5, 1) << 2) | (at(1, 5) << 1) | at(5, 5);
 }
 
-function quadAdapter() {
-  const tiles = loadFile('tiles/classic.pet.8bs');
-  const pixels = tiles.arrays.SYMBOL_PIXELS;
-  const ROWS = 6; // pseudo-pixel rows in a symbol
-  const pseudo = (symbol, row) => pixels[symbol * ROWS + row];
-  return {
-    unit: 'quadrant row (4 pixels)',
-    positions: c.STOPS * ROWS,
-    unitsPerSymbol: ROWS,
-    symbolPixels: 24,
-    window: { col: 1, row: 3, cols: 11, rows: 10 },
-    expected(reel, position) {
-      const nibbles = [];
-      const rowAt = (a) => pseudo(strip[reel * c.STOPS + (Math.floor(a / ROWS) % c.STOPS)], a % ROWS);
-      for (let down = 0; down < 9; down += 1) {
-        const upper = rowAt(position + down * 2);
-        const lower = rowAt(position + down * 2 + 1);
-        for (let across = 0; across < 3; across += 1) nibbles.push(nibbleOf(upper, lower, across));
-      }
-      return nibbles.join(',');
-    },
-    observe(png, geo, ink, reel) {
-      const out = [];
-      for (let down = 0; down < 9; down += 1) {
-        for (let across = 0; across < 3; across += 1) {
-          out.push(quadCell(ink, geo, geo.x0 + (REEL_COL(reel) + across) * geo.pitchX, geo.y0 + (REEL_TOP + down - 1) * geo.pitchY));
-        }
-      }
-      return out.join(',');
-    },
-  };
+function quadAdapter(machine) {
+  const tiles = machine === 'vic20' ? 'tiles/classic.quad.vic20.8bs' : machine === 'web' ? 'tiles/classic.quad.web.8bs' : 'tiles/classic.quad.8bs';
+  return makeQuadAdapter({ table, tiles, web: machine === 'web', top: labConsts('slot3x3', machine).QUAD_TOP });
 }
 
 // ---- the text fallback --------------------------------------------------------
@@ -175,7 +149,7 @@ function textAdapter(reference) {
 export function adapterFor(machine, textReference) {
   const kind = KINDS[machine];
   if (kind === 'pixel') return pixelAdapter(machine);
-  if (kind === 'quad') return quadAdapter();
+  if (kind === 'quad') return quadAdapter(machine);
   return textAdapter(textReference);
 }
 

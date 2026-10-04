@@ -1,6 +1,14 @@
-// The C64 redraws a reel in ~0.6 of a frame (assembly composer), so three reels fit
-// in two frames: a reel moves 12 pixels every second frame, 6 pixels a frame.
+// The C64 redraws a 3x3 reel in about a frame (an assembly composer for 32x32 symbols: 48 glyphs,
+// 384 bytes a redraw), so far from its stop a reel hops a whole symbol (32 pixels) a redraw: a
+// blur, which is what a fast reel looks like. Within four symbols it steps 8 pixels, within one
+// symbol 4, and the last 8 pixels 2 (reelscroll.8bs). The hop has to divide a symbol's 32 pixels or
+// the reel would not land on its stop. test/glyph-budget.test.mjs checks REEL_FAR and EASE against
+// the tile data, so changing the art's size without changing them fails a test.
+// WAIT and FAR are the 5x5's (its glyph reels ignore FAR and hop 8: src/labs/slot5x5/spin.8bs).
 export namespace feel {
     const WAIT: utinyint = 1;
     const FAR: utinyint = 12;
+    const REEL_WAIT: utinyint = 1;
+    const REEL_FAR: utinyint = 32;
+    const EASE: utinyint = 32; // a symbol (4 cells) here
 }

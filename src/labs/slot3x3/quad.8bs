@@ -1,140 +1,201 @@
-// The reels from the quadrant blocks every Commodore character ROM holds: a
-// character cell is a 2x2 picture, so the screen is 80x50 "pixels". Used by the
-// PET (whose ROM is fixed, so there are no glyphs to redefine) and the VIC-20
-// (whose RAM has no room reserved for a character set yet). A symbol is 6x6 of
-// them (src/generated/tiles/classic.pet.8bs), a reel window 18 rows, and a reel
-// scrolls one such row — four real pixels — at a time.
+// The reels from the quadrant blocks every Commodore character ROM holds (and the web's host font): a character
+// cell is a 2x2 picture, so the screen is a grid of "pseudo-pixels" four real pixels on a side. Used by the PET
+// (whose ROM is fixed, so there are no glyphs to redefine), the VIC-20 (whose RAM has no room reserved for a
+// character set yet) and the web. A symbol is QUAD_S x QUAD_S cells (6 x 6 on the 3x3: 48 pixels a side, twice
+// what the first version drew), and a reel scrolls one pseudo-pixel row, four real pixels, at a time.
 //
-// Each display cell is built from two consecutive rows of the window: the pair of
-// bits of the upper row and the pair of the lower row, together a number 0-15,
-// index the table of quadrant screen codes. The screen map is rewritten (27 cells
-// a reel); there is nothing to compose into, and no colour.
+// Every display cell is built from two consecutive pseudo-pixel rows of the window, so its screen code is one
+// of three precomputed tables (tools/tiles/src/quadtables.mjs): QUAD_C0 when the pair starts on an even row,
+// QUAD_C1 on an odd one, QUAD_CX where an odd pair straddles two symbols. A redraw is one table read and one
+// write a cell; where the machine's screen is in memory (scr.COPY) a reel that moves a whole cell row, eight
+// pixels, does not even do that: it MOVES its cells down one row with a 6502 block copy (the hop,
+// shared/move.8bs) and composes only the new top row. The picture is exactly the one a full redraw makes.
 //
-// A machine's quad.<machine>.8bs wraps this with the interface the game calls;
-// `cells` puts the raw screen codes (and, where there is colour, an ink) down.
+// A machine's `cells` writes the raw screen code (and, where there is colour, an ink) down; `view` wraps
+// this with the interface the game calls.
 import { text } from "@8bitscript/text";
 import { cells } from "@shared/cells.8bs";
 import { layout } from "@shared/layout.8bs";
+import { move } from "@shared/move.8bs";
 import { reelscroll } from "@shared/reelscroll.8bs";
-import { REELS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
+import { scr } from "@shared/scr.8bs";
+import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
 import {
-    SYMBOL_PIXELS, QUAD_CODE, FRAME_CODE,
+    QUAD_S, QUAD_P, QUAD_SYMBOLS, QUAD_C0, QUAD_C1, QUAD_CX, QUAD_K
+} from "@generated/tiles/classic.quad.8bs";
+import {
     FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
     FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R
 } from "@generated/tiles/classic.pet.8bs";
 
-// Per reel: the pseudo-pixel row last drawn (so a 2-pixel step that does not
-// reach the next row costs nothing), and which of its three symbol rows are
-// shown inverted (the win flash).
-let drawnRow: array<utinyint, 5>;
-let drawnStop: array<utinyint, 5>;
-let inverted: array<utinyint, 5>;
+// Per reel: the stop and pseudo-pixel row last drawn (so a 2-pixel step that does not reach the next row costs
+// nothing, and a whole-cell move is told from a jump), and which of its symbol rows are shown inverted (the
+// win flash).
+let drawnRow: array<utinyint, 3>;
+let drawnStop: array<utinyint, 3>;
+let inverted: array<utinyint, 3>;
 
 // 1 << n, as a table: the 6502 backends take no run-time shift amount.
 const BIT: array<utinyint, 3> = [1, 2, 4];
 
 export namespace quad {
-    const TOP: utinyint = 4;
-
+    // The window's first text row (block rows); the frame is the row above and the row below the window.
+    const TOP: utinyint = 2;
 
     function drawFrame(): void {
-        for (let col: utinyint = 0; col < 13; col++) {
+        let width: utinyint = REELS * (QUAD_S + 1) + 1;
+        let bottom: utinyint = quad.TOP + ROWS * QUAD_S;
+        for (let col: utinyint = 0; col < width; col++) {
             let top: utinyint = FRAME_T;
             let low: utinyint = FRAME_B;
             if (col == 0) {
                 top = FRAME_TL;
                 low = FRAME_BL;
-            } else if (col == 12) {
+            } else if (col == width - 1) {
                 top = FRAME_TR;
                 low = FRAME_BR;
-            } else if (col == 4 || col == 8) {
+            } else if ((col % (QUAD_S + 1)) == 0) {
                 top = FRAME_DIVT;
                 low = FRAME_DIVB;
             }
-            let above: usmallint = layout.cell(col, 3);
-            let below: usmallint = layout.cell(col, 13);
-            cells.put(above, FRAME_CODE[top]);
-            cells.put(below, FRAME_CODE[low]);
+            let above: usmallint = layout.cell(col, quad.TOP - 1);
+            let below: usmallint = layout.cell(col, bottom);
+            cells.put(above, cells.frameCode(top));
+            cells.put(below, cells.frameCode(low));
             cells.tint(above, 7);
             cells.tint(below, 7);
         }
-        for (let row: utinyint = 4; row < 13; row++) {
+        // the payline arrows point at the middle of the middle symbol row
+        let arrow: utinyint = quad.TOP + QUAD_S + (QUAD_S >> 1);
+        for (let row: utinyint = quad.TOP; row < bottom; row++) {
             let left: utinyint = FRAME_L;
             let right: utinyint = FRAME_R;
-            if (row == 8) {
+            if (row == arrow) {
                 left = FRAME_ARROW_L;
                 right = FRAME_ARROW_R;
             }
             let side: usmallint = layout.cell(0, row);
-            cells.put(side, FRAME_CODE[left]);
-            cells.put(side + 12, FRAME_CODE[right]);
-            cells.put(side + 4, FRAME_CODE[FRAME_DIV]);
-            cells.put(side + 8, FRAME_CODE[FRAME_DIV]);
+            cells.put(side, cells.frameCode(left));
+            cells.put(side + width - 1, cells.frameCode(right));
             cells.tint(side, 7);
-            cells.tint(side + 12, 7);
-            cells.tint(side + 4, 2);
-            cells.tint(side + 8, 2);
+            cells.tint(side + width - 1, 7);
+            for (let reel: utinyint = 1; reel < REELS; reel++) {
+                cells.put(side + reel * (QUAD_S + 1), cells.frameCode(FRAME_DIV));
+                cells.tint(side + reel * (QUAD_S + 1), 2);
+            }
         }
     }
 
-    // Draw `reel` at its current position: nine cell rows of three cells.
+    // One display row: QUAD_S cells at `at`, from pseudo-pixel row `r` of the strip symbol at stop `i` (`strip` is
+    // the reel's offset into STRIPS). `flip` inverts the cells (the win flash).
+    function drawRow(strip: usmallint, i: utinyint, r: utinyint, at: usmallint, flip: bool): void {
+        let symbol: usmallint = STRIPS[strip + i];
+        let k: usmallint = r >> 1;
+        let base: usmallint = 0;
+        if (cells.COLORED) {
+            // The ink: the symbol cell the row's upper pseudo-pixel row is in; where that cell has no ink (0) and the
+            // row's lower half is in the next cell down (an odd start), that cell's.
+            let inkRow: usmallint = symbol * QUAD_S + k;
+            inkRow = inkRow * QUAD_S;
+            for (let c: utinyint = 0; c < QUAD_S; c++) {
+                let ink: utinyint = QUAD_K[inkRow + c];
+                if (ink == 0 && (r & 1) == 1) {
+                    if (r < QUAD_P - 1) {
+                        ink = QUAD_K[inkRow + QUAD_S + c];
+                    } else {
+                        let after: usmallint = STRIPS[strip + ((i + 1) & STOP_MASK)];
+                        after = after * QUAD_S;
+                        ink = QUAD_K[after * QUAD_S + c];
+                    }
+                }
+                cells.tint(at + c, ink);
+            }
+        }
+        if ((r & 1) == 0) {
+            base = symbol * QUAD_S + k;
+            base = base * QUAD_S;
+            for (let c: utinyint = 0; c < QUAD_S; c++) {
+                let code: utinyint = QUAD_C0[base + c];
+                if (flip) {
+                    code = cells.invert(code);
+                }
+                cells.put(at + c, code);
+            }
+        } else if (r < QUAD_P - 1) {
+            base = symbol * (QUAD_S - 1) + k;
+            base = base * QUAD_S;
+            for (let c: utinyint = 0; c < QUAD_S; c++) {
+                let code: utinyint = QUAD_C1[base + c];
+                if (flip) {
+                    code = cells.invert(code);
+                }
+                cells.put(at + c, code);
+            }
+        } else {
+            let next: usmallint = STRIPS[strip + ((i + 1) & STOP_MASK)];
+            base = symbol * QUAD_SYMBOLS + next;
+            base = base * QUAD_S;
+            for (let c: utinyint = 0; c < QUAD_S; c++) {
+                let code: utinyint = QUAD_CX[base + c];
+                if (flip) {
+                    code = cells.invert(code);
+                }
+                cells.put(at + c, code);
+            }
+        }
+    }
+
+    // Draw `reel` at its current position: ROWS * QUAD_S cell rows of QUAD_S cells.
     function drawReel(reel: utinyint): void {
         let stop: utinyint = reelscroll.stop(reel);
-        // The window's top row within its symbol: six rows of 4 pixels each.
+        // The window's top row within its symbol: QUAD_P rows of 4 pixels each.
         let line: utinyint = reelscroll.row(reel) >> 2;
         drawnRow[reel] = line;
         drawnStop[reel] = stop;
         let strip: usmallint = reel;
         strip = strip * STOPS;
         // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
-        let at: usmallint = layout.cell(1 + reel * 4, quad.TOP);
-        let band: utinyint = 0;  // which symbol row (0-2) this cell row belongs to
+        let at: usmallint = layout.cell(1 + reel * (QUAD_S + 1), quad.TOP);
+        let band: utinyint = 0;  // which symbol row of the window this cell row belongs to
         let third: utinyint = 0;
-        for (let down: utinyint = 0; down < 9; down++) {
-            // The two rows of the window this cell row is made of.
-            let upperSymbol: utinyint = STRIPS[strip + stop];
-            let upper: utinyint = SYMBOL_PIXELS[upperSymbol * 6 + line];
-            let nextLine: utinyint = line + 1;
-            let nextStop: utinyint = stop;
-            if (nextLine == 6) {
-                nextLine = 0;
-                nextStop = (stop + 1) & STOP_MASK;
-            }
-            let lowerSymbol: usmallint = STRIPS[strip + nextStop];
-            let lower: utinyint = SYMBOL_PIXELS[lowerSymbol * 6 + nextLine];
-            let flip: utinyint = 0;
-            if ((inverted[reel] & BIT[band]) != 0) {
-                flip = 15;
-            }
-            // The three cells of the row: the pair of pixels each takes from the
-            // upper and the lower window row (bit 7 is the leftmost pixel).
-            let left: utinyint = (((upper >> 6) & 3) << 2) | ((lower >> 6) & 3);
-            let middle: utinyint = (((upper >> 4) & 3) << 2) | ((lower >> 4) & 3);
-            let right: utinyint = (((upper >> 2) & 3) << 2) | ((lower >> 2) & 3);
-            cells.put(at, QUAD_CODE[left ^ flip]);
-            cells.put(at + 1, QUAD_CODE[middle ^ flip]);
-            cells.put(at + 2, QUAD_CODE[right ^ flip]);
-            if (cells.COLORED) {
-                // Each cell takes the colour of the symbol cell its upper row is in.
-                let symbolIndex: utinyint = upperSymbol;
-                let base: utinyint = (line >> 1) * 3;
-                cells.ink(at, symbolIndex, base);
-                cells.ink(at + 1, symbolIndex, base + 1);
-                cells.ink(at + 2, symbolIndex, base + 2);
-            }
+        for (let down: utinyint = 0; down < ROWS * QUAD_S; down++) {
+            quad.drawRow(strip, stop, line, at, (inverted[reel] & BIT[band]) != 0);
             at = at + text.COLUMNS;
-            // three cell rows to a symbol row
             third = third + 1;
-            if (third == 3) {
+            if (third == QUAD_S) {
                 third = 0;
                 band = band + 1;
             }
-            // two rows on
-            line = nextLine + 1;
-            stop = nextStop;
-            if (line == 6) {
-                line = 0;
+            // two pseudo-pixel rows on
+            line = line + 2;
+            if (line >= QUAD_P) {
+                line = line - QUAD_P;
                 stop = (stop + 1) & STOP_MASK;
+            }
+        }
+    }
+
+    // `by` whole cell rows (8 or 16 pixels) of scroll, the window's phase unchanged: every row of the reel moves down
+    // `by` and the new top rows are composed. `line` and `stop` are the window's new top row and stop.
+    function hop(reel: utinyint, stop: utinyint, line: utinyint, by: utinyint): void {
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        let top: usmallint = layout.cell(1 + reel * (QUAD_S + 1), quad.TOP);
+        move.down(scr.SCREEN + top, ROWS * QUAD_S, QUAD_S, text.COLUMNS, by);
+        if (cells.COLORED) {
+            move.down(scr.COLOR + top, ROWS * QUAD_S, QUAD_S, text.COLUMNS, by);
+        }
+        drawnRow[reel] = line;
+        drawnStop[reel] = stop;
+        let l: utinyint = line;
+        let s: utinyint = stop;
+        for (let i: utinyint = 0; i < by; i++) {
+            quad.drawRow(strip, s, l, top, false);
+            top = top + text.COLUMNS;
+            l = l + 2;
+            if (l >= QUAD_P) {
+                l = l - QUAD_P;
+                s = (s + 1) & STOP_MASK;
             }
         }
     }
@@ -160,12 +221,35 @@ export namespace quad {
         }
     }
 
-    // A reel moved `pixels` down; redraw once it has moved a whole pseudo-pixel row
-    // or past a symbol (a 24-pixel hop keeps the row and changes the symbol).
+    // A reel moved `pixels` down. Nothing to do until it has moved a whole pseudo-pixel row (four pixels); a move of
+    // one or two cell rows (two or four pseudo-pixel rows, the same phase) is a hop where the screen can be copied;
+    // anything else is a full redraw.
     function moved(reel: utinyint, pixels: utinyint): void {
-        if (drawnRow[reel] != (reelscroll.row(reel) >> 2) || drawnStop[reel] != reelscroll.stop(reel)) {
-            quad.drawReel(reel);
+        let stop: utinyint = reelscroll.stop(reel);
+        let line: utinyint = reelscroll.row(reel) >> 2;
+        if (drawnRow[reel] == line && drawnStop[reel] == stop) {
+            return;
         }
+        if (scr.COPY && drawnRow[reel] != 255 && inverted[reel] == 0) {
+            // how many pseudo-pixel rows up the strip the window went: positions are stop * QUAD_P + row
+            let was: usmallint = drawnStop[reel];
+            was = was * QUAD_P + drawnRow[reel];
+            let now: usmallint = stop;
+            now = now * QUAD_P + line;
+            let gone: usmallint = was + STOPS * QUAD_P - now;
+            if (gone >= STOPS * QUAD_P) {
+                gone = gone - STOPS * QUAD_P;
+            }
+            if (gone == 2) {
+                quad.hop(reel, stop, line, 1);
+                return;
+            }
+            if (gone == 4) {
+                quad.hop(reel, stop, line, 2);
+                return;
+            }
+        }
+        quad.drawReel(reel);
     }
 
     // Light payline `line` by inverting the symbols on it, or put them back.

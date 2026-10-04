@@ -1,0 +1,44 @@
+// Move a block of screen bytes down one row: the whole-cell scroll of a reel (src/labs/*/quad.8bs, docs/reel-size.md)
+// is `width` bytes copied from each row to the one below it, bottom row first, 18 cycles a byte. This is the
+// "hop": a reel that moves a whole cell row (8 pixels) does not recompose its cells, it moves them and composes
+// only the new top row.
+export namespace move {
+    // `top` is the address of the block's first byte, `rows` its height, `width` its width, `stride` the
+    // distance between rows (the screen's columns) and `by` how many rows it moves (1 or 2). The top `by` rows are
+    // left as they were; the caller composes them.
+    function down(top: usmallint, rows: utinyint, width: utinyint, stride: utinyint, by: utinyint): void {
+        let dst: usmallint = rows - 1;
+        dst = dst * stride + top;
+        let src: usmallint = dst - stride;
+        if (by == 2) {
+            src = src - stride;
+        }
+        let n: utinyint = rows - by;
+        asm6502 {
+        1:
+            ldy width
+        2:
+            dey
+            lda (src),y
+            sta (dst),y
+            cpy #0
+            bne 2b
+            sec
+            lda dst
+            sbc stride
+            sta dst
+            bcs 3f
+            dec dst+1
+        3:
+            sec
+            lda src
+            sbc stride
+            sta src
+            bcs 4f
+            dec src+1
+        4:
+            dec n
+            bne 1b
+        }
+    }
+}

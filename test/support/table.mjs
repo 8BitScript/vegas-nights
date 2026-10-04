@@ -1,6 +1,6 @@
 // Reads src/generated/<game>.8bs — the tables tools/slotmath emits — back into
 // numbers, so tests check the game against the very file the 6502 builds from.
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,4 +33,35 @@ export function loadTable(game = 'classic3x3') {
   const rtp = /RTP ([\d.]+)% \(exact\)/.exec(text);
   const hit = /hit frequency ([\d.]+)%/.exec(text);
   return { text, consts, arrays, headerRtp: rtp ? Number(rtp[1]) / 100 : null, headerHit: hit ? Number(hit[1]) / 100 : null };
+}
+
+/** The number constants a lab's view (twin first, then the base) and its quadrant composer declare: where the game puts things. */
+export function labConsts(lab, machine) {
+  const dir = join(ROOT, 'src', 'labs', lab);
+  const twins = { pet: 'view.pet.8bs', vic20: 'view.vic20.8bs', web: 'view.web.8bs' };
+  const file = existsSync(join(dir, twins[machine] ?? '-')) ? twins[machine] : 'view.8bs';
+  const read = (name) => {
+    const out = {};
+    for (const m of readFileSync(join(dir, name), 'utf8').matchAll(/^\s*const (\w+): u(?:tiny|small)int = (\d+);/gm)) out[m[1]] = Number(m[2]);
+    return out;
+  };
+  const consts = read(file);
+  // view.8bs serves the C64 and the X16, whose machines differ in size; their layout numbers are
+  // block.8bs's (block.c64.8bs for the C64 and its wasm build), which view.8bs aliases
+  if (file === 'view.8bs' && lab === 'slot3x3') {
+    const block = blockFor(machine);
+    Object.assign(consts, { BLOCK_WIDTH: block.WIDTH, CREDIT_ROW: block.CREDIT, BET_ROW: block.BET, WIN_ROW: block.WIN, MESSAGE_ROW: block.MESSAGE });
+  }
+  const quad = readFileSync(join(dir, 'quad.8bs'), 'utf8').match(/const TOP: utinyint = (\d+);/);
+  if (quad) consts.QUAD_TOP = Number(quad[1]);
+  return consts;
+}
+
+/** The 3x3's on-screen geometry for `machine` (src/labs/slot3x3/block.8bs, or block.c64.8bs for the C64 and its wasm build), as numbers. */
+export function blockFor(machine) {
+  const file = machine === 'c64' || machine === 'c64web' ? 'block.c64.8bs' : 'block.8bs';
+  const text = readFileSync(join(ROOT, 'src', 'labs', 'slot3x3', file), 'utf8');
+  const consts = {};
+  for (const m of text.matchAll(/^\s*const (\w+): \w+ = (\d+);/gm)) consts[m[1]] = Number(m[2]);
+  return consts;
 }
