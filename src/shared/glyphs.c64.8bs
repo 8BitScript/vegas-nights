@@ -29,8 +29,14 @@ let stripBytes: array<utinyint, 320>;
 @address(0x8000)
 let stripBuf: array<utinyint, 5920>;
 
+// …and the colours: for every reel and glyph column, the colour of each cell row of the
+// strip (64 cell rows, then the first ten again), $9800 up.
+@address(0x9800)
+let colorBuf: array<utinyint, 740>;
+
 export namespace glyphs {
     const AVAILABLE: bool = true;
+    const COLOR_STRIP: bool = true;
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
     const PORT: bool = false;
@@ -280,6 +286,37 @@ export namespace glyphs {
             sta (dest),y
             iny
             cpy count
+            bne 1b
+        }
+    }
+
+    function putColorStrip(index: usmallint, value: utinyint): void {
+        colorBuf[index] = value;
+    }
+
+    // `count` colours from the colour buffer at `source` into colour RAM, one a text row
+    // (40 cells) apart, down from text cell `cell`.
+    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
+        let dest: usmallint = 0xD800 + cell;
+        let src: usmallint = 0x9800 + source;
+        asm6502 {
+            ldx count
+            ldy #0
+        1:
+            lda (src),y
+            sta (dest),y
+            inc src
+            bne 2f
+            inc src+1
+        2:
+            clc
+            lda dest
+            adc #40
+            sta dest
+            bcc 3f
+            inc dest+1
+        3:
+            dex
             bne 1b
         }
     }

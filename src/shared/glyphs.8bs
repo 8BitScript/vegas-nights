@@ -31,6 +31,9 @@ export namespace glyphs {
     const PORT_ADDRESS: usmallint = 0;
     const TILE_RAM: usmallint = 0;
     const STRIP_RAM: usmallint = 0;
+    // Whether the colour of a reel's cells is pre-laid-out too (the 5x5 on the C64, where
+    // recolouring a reel cell by cell in compiled code costs more than redrawing its glyphs).
+    const COLOR_STRIP: bool = false;
 
     function begin(): void {
     }
@@ -57,6 +60,13 @@ export namespace glyphs {
     }
 
     function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
+    }
+
+    function putColorStrip(index: usmallint, value: utinyint): void {
+    }
+
+    // `count` colours from the colour buffer at `source` down a screen column from text cell `cell`.
+    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
     }
 
     function open(): void {

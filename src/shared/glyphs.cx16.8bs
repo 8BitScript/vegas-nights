@@ -21,6 +21,8 @@ export namespace glyphs {
     const PORT_ADDRESS: usmallint = 0x9F23; // VERA DATA0
     const TILE_RAM: usmallint = 0;
     const STRIP_RAM: usmallint = 0;
+    // Recolouring a reel cell by cell in compiled code is fast enough at 8 MHz.
+    const COLOR_STRIP: bool = false;
 
     function begin(): void {
     }
@@ -60,6 +62,12 @@ export namespace glyphs {
         for (let i: utinyint = 0; i < count; i++) {
             memory.write(0x9F23, stripBuf[source + i]);
         }
+    }
+
+    function putColorStrip(index: usmallint, value: utinyint): void {
+    }
+
+    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
     }
 
     function open(): void {

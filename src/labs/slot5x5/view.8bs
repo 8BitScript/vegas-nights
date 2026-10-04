@@ -72,6 +72,22 @@ export namespace view {
 
     // ---- the strip buffer ------------------------------------------------------
 
+    // The colour of each cell row of each glyph column of each reel, 64 rows (32 stops x 2) and
+    // the first ten again, so ten consecutive rows never wrap.
+    function buildColors(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            for (let across: utinyint = 0; across < 2; across++) {
+                let base: usmallint = reel * 2 + across;
+                base = base * 74;
+                for (let m: utinyint = 0; m < 74; m++) {
+                    let n: utinyint = m & 63;
+                    let symbol: utinyint = STRIPS[reel * STOPS + (n >> 1)];
+                    glyphs.putColorStrip(base + m, SYMBOL_COLOR[(symbol << 2) + ((n & 1) << 1) + across]);
+                }
+            }
+        }
+    }
+
     // Lay every reel's two glyph columns out as whole strips of bytes: 32 stops of 16
     // rows, then the first five stops again (80 rows) so a window never wraps.
     function buildStrips(): void {
@@ -193,6 +209,14 @@ export namespace view {
             return;
         }
         inkKey[reel] = m0;
+        if (glyphs.COLOR_STRIP) {
+            // two straight copies down the screen column, from the pre-laid-out colours
+            let at: usmallint = reel * 2;
+            at = at * 74 + m0;
+            glyphs.copyColors(layout.cell(1 + reel * 3, view.TOP), at, 10);
+            glyphs.copyColors(layout.cell(2 + reel * 3, view.TOP), at + 74, 10);
+            return;
+        }
         let strip: usmallint = reel;
         strip = strip * STOPS;
         let at: usmallint = layout.cell(1 + reel * 3, view.TOP);
@@ -221,6 +245,9 @@ export namespace view {
         if (glyphs.AVAILABLE) {
             glyphs.begin();
             view.buildStrips();
+            if (glyphs.COLOR_STRIP) {
+                view.buildColors();
+            }
             view.defineFrame();
             view.mapCells();
             view.drawFrame();

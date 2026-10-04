@@ -58,12 +58,12 @@ export function evaluate(table, positions) {
 }
 
 /** What `spins` base spins from `seed` do, at bet level `betIndex`; free spins play themselves. */
-export function play(table, spins, { betIndex = 0, seed = SEED } = {}) {
+export function play(table, spins, { betIndex = 0, seed = SEED, rng = null } = {}) {
   const c = table.consts;
   const a = table.arrays;
   const multiplier = a.BET_LEVELS[betIndex];
   let state = seed;
-  const draw = () => { const r = lcg(state); state = r.state; return r.byte; };
+  const draw = rng ?? (() => { const r = lcg(state); state = r.state; return r.byte; });
   let credits = START_CREDITS;
   const meters = a.JACKPOT_SEED.slice();
   const results = [];

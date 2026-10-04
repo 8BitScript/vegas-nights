@@ -13,14 +13,15 @@ hardware allows. The odds are computed, not guessed (see
 [Generated tables](#generated-tables)).
 
 **What exists today:** the odds engine (`tools/slotmath`), the symbol-art pipeline
-(`tools/tiles`), and the first slot machine, [`slot3x3`](#slot3x3--a-three-by-three-slot-with-three-paylines),
-on all five machines.
+(`tools/tiles`), and two slot machines on all five machines: [`slot3x3`](#slot3x3--a-three-by-three-slot-with-three-paylines)
+and [`slot5x5`](#slot5x5--a-five-by-five-slot-with-a-bonus-round-and-four-jackpots).
 
 | Program | What it is | Status |
 | --- | --- | --- |
 | `main` | The lobby: a title screen that says how to run a lab | builds and runs on all five machines |
 | `hello-reels` | Three text cells that cycle symbols when you press confirm | builds and runs on all five machines |
 | `slot3x3` | A graphical 3×3 slot with three paylines, scrolling reels, bet and win | all five machines; the web needs an 8BitScript newer than 0.24.0 (its glyph table, [below](#where-it-is-not-what-it-should-be)) |
+| `slot5x5` | A graphical 5×5 ways slot with a free-spin bonus round and MINI/MINOR/MAJOR/GRAND meters | all five machines |
 
 ## Run it
 
@@ -267,15 +268,162 @@ slide down by whole pixels, with a symbol cut by the window's edge, in the same 
 
 ![the web slot mid-spin](docs/slot3x3/web-spin.png)
 
-## What the 5x5 reuses
+## slot5x5 — a five-by-five slot with a bonus round and four jackpots
 
-`reelscroll`, `feel`, `glyphs`, `cells`, `bank` and `layout` take their sizes from
-data and are the 5x5's as they are; `quad.8bs`, `view.8bs` and `view.web.8bs` are written for three
-reels and need their reel count, window height and block width lifted into
-constants (the 5×5 needs `REELS = 5`, `ROWS = 5`, 45 glyphs a reel on the glyph
-machines, 225 in all against the C64's and X16's 127 free codes — so a 5×5 on those
-machines wants either the 16×16 art (the web's already is) or a second glyph bank, not a bigger table).
+A graphical 5x5 slot on all five machines: five framed reels of art that scroll pixel by
+pixel (or quadrant row by quadrant row), paid by *ways* — a symbol pays on its longest run of
+adjacent reels from the first that each show it, or a wild, anywhere in the window, times the
+number of ways — with a free-spin bonus round and four progressive jackpot meters, played at
+the exact odds of [`src/generated/grid5x5.8bs`](src/generated/grid5x5.8bs).
 
+```sh
+pnpm start:slot5x5:c64      # or :pet :vic20 :cx16 :web
+```
+
+Confirm spins; up and down change the bet (1×, 2×, 3×, 5× of 1,000 credits). You start with
+100,000 credits and are re-staked when you run out.
+
+![the 5x5 on the PET, VIC-20, C64, X16 and web](docs/slot5x5/at-rest.png)
+
+*The same spin (seed 33: a 6,100-credit win) at rest on, left to right, the PET, VIC-20, C64, X16 and web.*
+
+**The rules** (the proof is [`docs/par/grid5x5.md`](docs/par/grid5x5.md)). Five reels, five rows,
+32 stops a reel (so one random byte & 31 is an exactly uniform stop), 9 symbols (STAR, MOON, SUN,
+COMET, ORB, RING, BLANK, WILD, SCATTER). Low symbols pay from four of a kind, the top three from
+three; the wild substitutes for every symbol but the scatter. **Three or more scatters anywhere**
+pay and start the **bonus round**: 8, 12 or 20 free spins at **triple wins**, with scatters inside
+the round awarding more (a retrigger), up to 50 free spins in all. **MINI, MINOR, MAJOR and GRAND**
+are mystery jackpots — one 16-bit draw on every base spin, split into disjoint ranges (1 in 1,024,
+4,096, 21,845 and 65,536), each opening at a higher bet (1×, 2×, 3×, 5×). Each is a meter that starts at
+its seed (10,000 / 50,000 / 250,000 / 1,000,000 credits at the base bet), grows with every bet, and
+resets to the seed when it is won.
+
+| | exact |
+| --- | --- |
+| **Return to player** | **94.049%** (base game 64.303%, bonus round 23.878%, jackpots 5.868%) |
+| Hit frequency | a win on one spin in 1.23 |
+| The bonus round opens | about one spin in 74 |
+| Volatility | 5.549 bets a spin |
+
+The base game's share is held to the engine *over all 33,554,432 reel positions* by
+`test/odds5.test.mjs`, and the bonus round's rules (triple wins, retrigger, the cap) by
+simulation with a proper generator; see [Tests](#tests-1).
+
+**Rules this lab adds that the table does not fix.** A jackpot's meter grows by `JACKPOT_CONTRIB_Q8 / 256`
+credits for every *base bet* of a spin (so a bet of ×5 feeds it five times as much) and is paid as it stands, not
+multiplied by the bet; a bet below a jackpot's opening bet cannot win it. Free spins cost nothing, take no
+jackpot draw, and leave the meters alone. These are this game's choices, written in `game.8bs` and
+`test/support/reference5.mjs` and tested against each other; the engine's PAR sheet is for the
+bet-funded meter at its opening bet.
+
+Credits are exact to 999,999,999: [`src/shared/purse.8bs`](src/shared/purse.8bs) keeps each number as three
+decimal limbs of three digits, because the 6502 backends do not lower 32-bit values and the GRAND
+seed alone is 1,000,000.
+
+### How the 5x5 is put together
+
+```
+src/generated/grid5x5.8bs        the odds (tools/slotmath): strips, paytable, scatter pays, free-spin awards, jackpots
+src/generated/tiles/cosmic*.8bs  the art (tools/tiles): 16x16 symbols on the C64/X16/web tileset, 6x6 quadrant ones on the PET/VIC-20
+src/shared/purse.8bs             exact credits, nine digits, in named registers (balance, win, session, four meters)
+src/shared/glyphs.*.8bs          + the pre-composed strip buffer and the straight copies out of it
+src/labs/slot5x5/
+  game.8bs                       the machine: spin, stop, ways, scatters, free spins, jackpots, pay, flash (no pixels)
+  spin.8bs                       how a reel moves: the 3x3's schedule with a symbol 16 or 24 pixels tall
+  view.8bs                       the reels where glyphs can be redefined (C64, X16); a text fallback elsewhere
+  view.pet/vic20/web.8bs         thin wrappers over quad.8bs
+  quad.8bs  quadcode*.8bs  ink*.8bs   the quadrant-block composer, its block codes and its colours
+```
+
+The **language cannot pass an array to a function**, so a reel view has to name its own tables:
+`view.8bs` and `quad.8bs` are per-lab copies of the 3x3's, with their geometry (five reels, a window
+of five symbols, 2 or 3 cells a symbol) in constants; everything that does not name a table —
+`purse`, the glyph and cell layers, `layout`, `feel`, `sound` — is shared with the 3x3.
+
+**How a reel is drawn** depends on what the machine can do:
+
+| machine | how | one hop is | program / RAM |
+| --- | --- | --- | --- |
+| C64 | each reel is **20 redefined characters** (two cells by ten) holding a window of five 16x16 symbols. At start-up every reel's two glyph columns are laid out as whole strips of bytes in RAM (512 rows a column + the first 80 again), so a window at *any pixel offset* is ten glyphs' worth of **consecutive bytes**: a redraw is two straight copies in assembly, and the colours are copied the same way | 8 pixels | 10,899 B / 105 B |
+| X16 | the same, through VERA's data port, the colours written cell by cell (it is fast enough) | 8 pixels | 17,173 B / 176 B |
+| PET | the reel is built from the 16 quadrant blocks in the character ROM (a symbol is 6x6 of them, a reel 15 cells by 3), no colour | 12 pixels | 9,077 B / 95 B |
+| VIC-20 | the same, with a colour for every cell | 12 pixels | 9,686 B / 96 B |
+| web | the same quadrant composer on the host font's 2x2 blocks (codes 128-143, in the very order the composer works out), in colour | 12 pixels | 1,160 B const / 161 B |
+
+Why 16x16 and not the 3x3's 24x24 on the glyph machines: five reels of 24x24 symbols are 225 glyphs
+against the 127 codes free on the C64 and X16; the 16x16 art (two cells a symbol) needs 100 for the reels and 14 for
+the frame. The web has 80 redefinable glyphs, 20 short of that, so it takes the quadrant route instead — which
+needs no glyphs at all.
+
+**Floors.** The VIC-20 build needs the 8K expansion (9,686 B of program against an 11,775-byte ceiling;
+the unexpanded machine's 3,583 and the +3K's 6,655 are short by 6,103 and 3,031 bytes); the PET needs 16K
+or more (9,077 B against the 15,359 of the 16K model; the 8K model's 7,167 is 1,910 short). These are arithmetic against the catalog's
+`memory.ram`; the config builds the PET as the 32K 4032 and the VIC-20 with 8K.
+
+### Where it is not what it should be
+
+- **The reels move slower than the 3x3's.** Five reels redraw in the time three did, so a C64 reel
+  hops 8 pixels about every third frame (about 3 pixels a frame), the PET and VIC-20 hop 12 pixels
+  every few frames, and the VIC-20 is the slowest (about 1 pixel a frame). It reads as a spinning
+  reel, not as a blur; redrawing the quadrant reels in assembly, as the C64's are, is the way to more.
+- **The bonus round is not yet a mode of its own.** It changes the frame's colours every few frames,
+  the title for a "FREE SPINS" banner where the screen has one, and shows the counter and ×3; the
+  full-screen, demoscene-style presentation (raster bars, palette cycling, a different reel set) is the next step.
+- **The jackpots are standalone meters**, not linked between machines, and reset when the program does.
+  A jackpot win shows the message and the meter reset; there is no celebration yet.
+- **No sound** beyond the empty hooks in `src/shared/sound.8bs`.
+- **Tearing.** The reel redraw is not synchronised to the raster beam, so a headless screenshot taken
+  mid-spin can catch half of one frame and half of the next (the tests allow for it). It is invisible at rest.
+- **Panels are text**; the frame, dividers and the reels are graphics.
+
+### Tests
+
+```sh
+pnpm test                 # the odds: both slots, from the committed tables; no emulator (this runs in CI)
+pnpm run test:machines    # every machine, headless, under its own emulator (many minutes; the X16 runs in real time)
+MACHINES=c64,web node --test test/slot5x5.machines.test.mjs
+```
+
+`test/odds5.test.mjs` runs the 5x5's rules, in JavaScript, over every one of the 33,554,432 reel positions and
+requires the mean to equal the engine's exact ways + scatter return (61.132% + 3.171%) to within 1e-12; plays
+300,000 spins of the full rules with a proper generator and requires the return including the bonus round
+to be the engine's (88.18% without the jackpots) to within sampling error; holds the jackpot seeds `game.8bs` keeps
+by hand (the 6502 backends cannot read the generated 32-bit ones) to the generated file's; and checks that each
+headless entry's seed shows what the entry is for.
+
+`test/slot5x5.machines.test.mjs` runs on each machine whose emulator is installed. A ruler program calibrates
+the screenshot to the text grid and the 3x3's glyph sheet names the digits; then:
+
+- **exact** — three headless entries play one spin from a fixed seed (a loss; a 6,100-credit win on several ways at once;
+  the MINI jackpot) and each of the five reels on the screen must equal, pixel for pixel (C64, X16) or quadrant block for
+  block (PET, VIC-20, web), the picture the oracle says the drawn stop gives; CREDIT, BET, WIN and all four jackpot meters
+  must match digit for digit;
+- **the bonus round** — from the entry whose first spin lands three scatters, the free-spin counter is read at five points of
+  the round (counting down from 8, never above what was granted), and once the round is over the credit is exactly the
+  oracle's: eight free spins at triple wins; and for the entry whose round retriggers (16 free spins), the same, which holds
+  the retrigger and the cap to the oracle too;
+- **scrolling** — sampled frame after frame while a spin runs, every reel is at a real position on its strip and only
+  ever moves down it.
+
+![the bonus round on the C64](docs/slot5x5/bonus-c64.png)
+
+*The bonus round on the C64, mid-round: the banner, the free-spin counter (FS 04 X3), the frame pulsing.*
+
+### Per machine, as measured
+
+Numbers are from `pnpm run test:machines` on a Mac, NTSC, CLI 0.24.0.
+
+| machine | builds | program / RAM | reels = the oracle's | bonus round (8 and 16 free spins) = the oracle's | reels move (measured) | what it is |
+| --- | :-: | --- | :-: | :-: | --- | --- |
+| C64 | yes | 10,899 / 105 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 2.7 px a frame | composed glyphs, pixel art, colour |
+| X16 | yes | 17,173 / 176 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 3.5 px a frame | composed glyphs through VERA, pixel art, colour |
+| PET (4032, 32K) | yes | 9,077 / 95 B | exact, block for block | exact credit | 12-pixel hops, about 3.4 px a frame | quadrant blocks, no colour |
+| VIC-20 (8K) | yes | 9,686 / 96 B | exact, block for block | exact credit | 12-pixel hops, about 1 px a frame | quadrant blocks, coloured |
+| web | yes | 1,160 B const / 161 B | exact, block for block | exact credit | 12-pixel hops, about 8 px a frame | quadrant blocks on the host font, coloured |
+
+Every cell above passed in one full run of `test/slot5x5.machines.test.mjs` on each machine against the code in this change
+(7 tests a machine). "About N px a frame" is the mean step between screenshots taken five frames apart while a spin runs
+(a frame is the machine's 50 or 60 Hz refresh; the web's is the host's), so it is a mean over hops, not a hop.
 
 ## Cursor / VS Code
 

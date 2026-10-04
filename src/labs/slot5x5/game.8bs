@@ -177,6 +177,17 @@ function drawStatic(): void {
     }
 }
 
+// The bonus round's banner, where the machine has a row above the frame for one.
+function banner(on: bool): void {
+    if (view.TITLE) {
+        if (on) {
+            text.print(layout.cell(0, 1), "-- FREE SPINS --");
+        } else {
+            text.print(layout.cell(0, 1), "COSMIC 5X5      ");
+        }
+    }
+}
+
 // ---- play ------------------------------------------------------------------------
 
 function setBet(index: utinyint): void {
@@ -365,6 +376,7 @@ function settle(): void {
             fsLeft = award;
             fsGranted = award;
             purse.clear(purse.SESSION);
+            banner(true);
         } else if (FREE_SPIN_RETRIGGER != 0) {
             let extra: utinyint = award;
             if (fsGranted + extra > FREE_SPIN_CAP) {
@@ -409,6 +421,7 @@ function finishSpin(): void {
         } else {
             // the round is over: show its total
             inBonus = false;
+            banner(false);
             message(7);
             drawFree();
             drawWin(purse.SESSION);
