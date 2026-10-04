@@ -1,0 +1,13 @@
+{
+  "name": "classic",
+  "title": "Classic fruit machine",
+  "game": "classic3x3",
+  "background": "black",
+  "palette": {
+    "black": "#000000", "white": "#ffffff", "red": "#883932", "lred": "#b86962", "cyan": "#67b6bd",
+    "purple": "#8b3f96", "green": "#55a049", "lgreen": "#94e089", "blue": "#40318d", "lblue": "#7869c4",
+    "yellow": "#bfce72", "orange": "#8b5429", "grey": "#787878", "dgrey": "#505050", "lgrey": "#9f9f9f"
+  },
+  "cells": { "default": [3, 3] },
+  "frame": "frame.json"
+}
