@@ -1,0 +1,64 @@
+// hello-reels — the smallest lab: three text cells that cycle symbols when
+// you press the confirm key. It exists to prove the toolchain end to end
+// (the project's config, the shared module, `8bs run` on every machine, the
+// editor); the real slot machines live in their own labs next to it.
+//
+// What "confirm" is depends on the machine (Return, Space or fire — see
+// @8bitscript/input). `--screenshot` cannot press anything, so a headless
+// capture shows the first draw, from a fixed seed.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { input } from "@8bitscript/input";
+import { random } from "@8bitscript/random";
+import { reels } from "@shared/reels.8bs";
+
+const ROW: usmallint = text.COLUMNS;
+
+// Three reel cells with a blank between each, four columns apart.
+const REEL_SPACING: utinyint = 4;
+const REEL_COUNT: utinyint = 3;
+const SEED: usmallint = 777;
+// Columns the three reels span: three cells, two gaps of REEL_SPACING - 1.
+// A const folds a literal or another const's bare name, so the sum is
+// written out rather than computed.
+const SPAN: utinyint = 9;
+
+let firstReel: usmallint = 0;
+
+// The layout depends on how wide this machine's text screen is, which is a
+// build fact but not a literal, so it is worked out once at run time (the
+// same way examples/joystick centres its map).
+function computeLayout(): void {
+    let indent: utinyint = 0;
+    if (text.COLUMNS > SPAN) {
+        indent = (text.COLUMNS - SPAN) >> 1;
+    }
+    let origin: usmallint = 10;
+    origin = origin * ROW + indent;
+    firstReel = origin;
+}
+
+function spin(): void {
+    for (let i: utinyint = 0; i < REEL_COUNT; i++) {
+        reels.draw(firstReel + i * REEL_SPACING, reels.pick());
+    }
+}
+
+export function main(): void {
+    screen.blank();
+    computeLayout();
+    random.seed(SEED);
+    input.begin();
+
+    text.print(3 * ROW + 1, "HELLO REELS");
+    text.print(5 * ROW + 1, "PRESS CONFIRM");
+    spin();
+
+    while (true) {
+        waitFrame();
+        input.poll();
+        if (input.confirm()) {
+            spin();
+        }
+    }
+}

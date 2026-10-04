@@ -1,0 +1,8 @@
+{
+  "workbench.iconTheme": "8bitscript",
+  "npm.autoDetect": "off",
+  "npm.exclude": [
+    "**/node_modules/**",
+    "**/.pnpm-store/**"
+  ]
+}

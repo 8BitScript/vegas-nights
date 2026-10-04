@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [trunk]
+
+jobs:
+  compile:
+    uses: 8BitScript/8bitscript/.github/workflows/compile.yml@2405573e32f9e3c3d5212c93ddb986d4e32f3c60 # @8bitscript/* release-age exclude
+    with:
+      # No `targets`: builds every artifact 8bitscript.config.8bs declares for
+      # a release (`8bs build --release`): each program for each of the five
+      # machines, so CI catches a lab that stops fitting before a release does.
+      cli-version: 0.24.0

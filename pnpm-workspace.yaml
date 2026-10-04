@@ -1,0 +1,8 @@
+# Single-package repo; `packages` keeps pnpm from treating the parent
+# Development folder as the workspace when the editor opens that path.
+packages:
+  - '.'
+
+# Own org: we publish these and pin them the same day.
+minimumReleaseAgeExclude:
+  - '@8bitscript/*'
