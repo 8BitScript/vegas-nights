@@ -26,7 +26,7 @@ if (!existsSync(capturePath)) {
   console.error(`sound: ${capturePath} not found. Set EIGHTBS_CHECKOUT to an 8BitScript checkout with audio.tone (packages/audio/test/capture.mjs).`);
   process.exit(2);
 }
-const { haveBinary, viceWav, viceDump, x16Wav, analyzeSamples, sidTones, vicTones, cents, noteHz } = await import(pathToFileURL(capturePath));
+export const { haveBinary, viceWav, viceDump, x16Wav, analyzeSamples, sidTones, vicTones, cents, noteHz } = await import(pathToFileURL(capturePath));
 
 // ---- the schedule, read from the source of truth --------------------------------
 
@@ -36,10 +36,10 @@ function table(source, name) {
   return match[1].split(',').map((s) => s.trim()).filter(Boolean).map(Number);
 }
 const sfx = readFileSync('src/shared/sfx.8bs', 'utf8');
-const NOTE = table(sfx, 'NOTE');
-const FRAMES = table(sfx, 'FRAMES');
-const FIRST = table(sfx, 'FIRST');
-const EFFECTS = ['tick', 'stop', 'win', 'big', 'bonus'];
+export const NOTE = table(sfx, 'NOTE');
+export const FRAMES = table(sfx, 'FRAMES');
+export const FIRST = table(sfx, 'FIRST');
+export const EFFECTS = ['tick', 'stop', 'win', 'big', 'bonus'];
 
 // ---- the machines ---------------------------------------------------------------
 
@@ -55,7 +55,7 @@ const EFFECTS = ['tick', 'stop', 'win', 'big', 'bonus'];
 // registers to read (its CB2 wave is not a chip write) and is measured on the
 // WAV. The PET's logical frame is measured at about 58 Hz in xpet, not the
 // catalog's 50, so a window is timed with 60.
-const MACHINES = {
+export const MACHINES = {
   pet: { frameRate: 60, tolerance: 35, emulator: 'xpet', cycles: 12_000_000, modelArgs: ['-model', '4032', '-ramsize', '32'], build: ['--target', 'pet'] },
   vic20: { dump: 'vic', tolerance: 60, emulator: 'xvic', cycles: 11_000_000, modelArgs: ['-model', 'vic20ntsc', '-memory', '8k'], build: ['--target', 'vic20'] },
   c64: { dump: 'sid', tolerance: 3, emulator: 'x64sc', cycles: 12_000_000, modelArgs: ['-model', 'ntsc'], build: ['--target', 'c64'] },
@@ -63,39 +63,43 @@ const MACHINES = {
   web: { frameRate: 60, tolerance: 5, build: ['--target', 'web'] },
 };
 
-function build(machine) {
-  const run = spawnSync(process.execPath, [CLI, 'build', ...MACHINES[machine].build, '--program', 'sound-test', '--checkout', CHECKOUT], { encoding: 'utf8' });
+export function build(machine, program = 'sound-test') {
+  const run = spawnSync(process.execPath, [CLI, 'build', ...MACHINES[machine].build, '--program', program, '--checkout', CHECKOUT], { encoding: 'utf8' });
   if (run.status !== 0) throw new Error(`build failed:\n${run.stderr}${run.stdout}`);
 }
 
-function prgFor(machine) {
-  const prg = readdirSync('dist').find((f) => f.startsWith(`sound-test-${machine}`) && f.endsWith('.prg'));
-  if (!prg) throw new Error(`no dist/sound-test-${machine}*.prg`);
+export function prgFor(machine, program = 'sound-test') {
+  const prg = readdirSync('dist').find((f) => f.startsWith(`${program}-${machine}`) && f.endsWith('.prg'));
+  if (!prg) throw new Error(`no dist/${program}-${machine}*.prg`);
   return resolve('dist', prg);
 }
 
-async function record(machine) {
+// `run` overrides the lab's own length: { frames } for a longer program (a slot that
+// takes several spins by itself); the cycle and millisecond budgets follow from it.
+export async function record(machine, program = 'sound-test', run = {}) {
   const m = MACHINES[machine];
-  if (machine === 'cx16') return x16Wav(prgFor(machine), { ms: 11000 });
-  if (machine === 'web') return renderWeb();
-  if (m.dump) return viceDump(m.emulator, prgFor(machine), { cycles: m.cycles, modelArgs: m.modelArgs });
-  return viceWav(m.emulator, prgFor(machine), { cycles: m.cycles, modelArgs: m.modelArgs });
+  const frames = run.frames;
+  if (machine === 'cx16') return x16Wav(prgFor(machine, program), { ms: frames ? Math.round(frames * 17 + 6000) : 11000 });
+  if (machine === 'web') return renderWeb(program, frames ?? 700);
+  const cycles = frames ? Math.round((frames + 300) * 17200) : m.cycles;
+  if (m.dump) return viceDump(m.emulator, prgFor(machine, program), { cycles, modelArgs: m.modelArgs });
+  return viceWav(m.emulator, prgFor(machine, program), { cycles, modelArgs: m.modelArgs });
 }
 
 // No browser tab here: run the compiled program a frame at a time, read the
 // four tone registers each frame as the page would, and render what they say.
-async function renderWeb() {
+async function renderWeb(name = 'sound-test', limit = 700) {
   const { instantiateProgram, FrameLimitReached } = await import(pathToFileURL(join(CHECKOUT, 'packages', 'cli', 'src', 'wasm-host.mjs')));
   const { voiceState, renderVoice } = await import(pathToFileURL(join(CHECKOUT, 'packages', 'cli', 'src', 'web-audio.mjs')));
   const { layoutFromHardware } = await import(pathToFileURL(join(CHECKOUT, 'packages', 'cli', 'src', 'web-layout.mjs')));
   const layout = layoutFromHardware({ facts: {}, options: { machine: 'hifi' } });
-  const bytes = readFileSync(join('dist', 'sound-test.wasm'));
+  const bytes = readFileSync(join('dist', `${name}.wasm`));
   const timeline = [];
   let memory = null;
   const program = await instantiateProgram(bytes, {
     waitFrame: () => {
       timeline.push(voiceState(new Uint8Array(memory.buffer), layout.audioBase));
-      if (timeline.length >= 700) throw new FrameLimitReached(700);
+      if (timeline.length >= limit) throw new FrameLimitReached(limit);
     },
   });
   memory = program.memory;
@@ -104,7 +108,10 @@ async function renderWeb() {
   const samples = renderVoice(timeline, { sampleRate: rate, frameRate: 60 });
   const scaled = new Float32Array(samples.length);
   for (let i = 0; i < samples.length; i += 1) scaled[i] = samples[i] * 32767;
-  return analyzeSamples(scaled, rate);
+  const analysis = analyzeSamples(scaled, rate);
+  // The per-frame voice, for a check that wants the notes themselves (scripts/slot-sound.mjs).
+  analysis.timeline = timeline;
+  return analysis;
 }
 
 // ---- the check ------------------------------------------------------------------
@@ -194,29 +201,34 @@ function check(machine, analysis) {
 
 // ---- main ------------------------------------------------------------------------
 
-const asked = process.argv.slice(2);
-const targets = (asked.length > 0 ? asked : Object.keys(MACHINES)).filter((m) => MACHINES[m]);
-let failed = 0;
-for (const machine of targets) {
-  const m = MACHINES[machine];
-  if (m.emulator && !haveBinary(m.emulator)) {
-    console.log(`${machine}: skipped (${m.emulator} is not installed)`);
-    continue;
+// Run the check only when this file is the program, so scripts/slot-sound.mjs can import the helpers.
+const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+if (isMain) {
+
+  const asked = process.argv.slice(2);
+  const targets = (asked.length > 0 ? asked : Object.keys(MACHINES)).filter((m) => MACHINES[m]);
+  let failed = 0;
+  for (const machine of targets) {
+    const m = MACHINES[machine];
+    if (m.emulator && !haveBinary(m.emulator)) {
+      console.log(`${machine}: skipped (${m.emulator} is not installed)`);
+      continue;
+    }
+    if ((machine === 'pet' || machine === 'vic20' || machine === 'c64') && process.platform !== 'darwin') {
+      console.log(`${machine}: skipped (recording VICE's audio needs the macOS sound device)`);
+      continue;
+    }
+    console.log(`${machine}:`);
+    try {
+      build(machine);
+      const { lines, bad } = check(machine, await record(machine));
+      console.log(lines.join('\n'));
+      failed += bad;
+    } catch (error) {
+      console.log(`  FAIL ${error.message}`);
+      failed += 1;
+    }
   }
-  if ((machine === 'pet' || machine === 'vic20' || machine === 'c64') && process.platform !== 'darwin') {
-    console.log(`${machine}: skipped (recording VICE's audio needs the macOS sound device)`);
-    continue;
-  }
-  console.log(`${machine}:`);
-  try {
-    build(machine);
-    const { lines, bad } = check(machine, await record(machine));
-    console.log(lines.join('\n'));
-    failed += bad;
-  } catch (error) {
-    console.log(`  FAIL ${error.message}`);
-    failed += 1;
-  }
+  console.log(failed === 0 ? 'sound: every note of every effect is the pitch it names' : `sound: ${failed} problem(s)`);
+  process.exit(failed === 0 ? 0 : 1);
 }
-console.log(failed === 0 ? 'sound: every note of every effect is the pitch it names' : `sound: ${failed} problem(s)`);
-process.exit(failed === 0 ? 0 : 1);

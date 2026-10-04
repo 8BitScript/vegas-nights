@@ -131,7 +131,7 @@ src/shared/
   cells.*.8bs                  per machine: write a raw screen code and ink (PET, VIC-20)
   bank.8bs                     exact six-digit credits
   layout.8bs                   where the block sits on a 22-, 40- or 80-column screen
-  sound.8bs                    tick / stop / win / bonus hooks, empty until audio is wired in
+  sound.8bs                    the game's sound hooks (tick / stop / win / big / bonus, mute) over sfx.8bs
 src/labs/slot3x3/
   game.8bs                     the machine: spin, stop, evaluate, pay, flash (no pixels)
   view.8bs                     the reels where glyphs can be redefined (C64, X16), and the text fallback
@@ -348,7 +348,45 @@ not found.
 
 `audio.tone` and `audio.NOTE_HIGH` are in 8BitScript's trunk, not in the
 released 0.24.0, so `sound-test` does not build with the pinned CLI until the
-release after that; `pnpm run check` and CI have the same limit.
+release after that. CI builds with 8BitScript's trunk until then (the comment
+in `.github/workflows/ci.yml` says how to go back); on a developer machine set
+`EIGHTBITSCRIPT_CHECKOUT` to an 8BitScript checkout.
+
+### Sound in the slot
+
+`slot3x3` plays its sounds through `src/shared/sound.8bs`, which is `sfx` behind
+a mute switch. What you hear: a tick as the reels step (once a frame, however many
+reels moved), a stop as a reel comes to rest, and when the spin settles a win
+jingle for a pay, a longer one for a big pay (twenty bets or more, `BIG_WIN` in
+`game.8bs`), the fanfare for the jackpot, and for a loss the last reel's stop.
+The cancel key mutes and unmutes. A frame plays at most one effect, and the frame
+that settles the spin plays only its result: a stop struck under the jingle would
+leave the SID's gate open, so the jingle's first note would not retrigger.
+
+What it costs (`8bs build --target <t> --program slot3x3`, program bytes /
+variable bytes, before sound, after):
+
+| machine | before | with sound | added |
+| --- | --- | --- | --- |
+| PET 4032 32K | 6008 / 100 | 6689 / 108 | +681 / +8 |
+| VIC-20 8K | 6376 / 99 | 7172 / 108 | +796 / +9 |
+| C64 | 7768 / 103 | 9241 / 114 | +1473 / +11 |
+| X16 | 8290 / 197 | 9334 / 197 | +1044 / 0 |
+| web (const data) | 1032 / 68 | 1098 / 74 | +66 / +6 |
+
+`pnpm run sound:slot` is the check that a spin sounds right. It builds the four
+headless slot programs (a loss, a small win, a big win, the jackpot), whose last
+spin's result the odds oracle knows, records each machine's audio, and compares
+the LAST sound with the effect that result calls for, note by note (and that
+reel ticks and stops came before it). The SID and the VIC-I are read from VICE's
+register dump, the web from its per-frame voice, and the PET and X16 from the
+WAV: there the notes are the pitches that hold for a few milliseconds, in order,
+because a recording's time is not the logical frame (the PET's frame measures
+about 58 Hz, the X16's steps are not evenly spaced in the WAV). Like `pnpm run
+sound` it needs an 8BitScript checkout with `audio.tone` (`EIGHTBS_CHECKOUT`,
+default `../8bitscript`, and `EIGHTBITSCRIPT_CHECKOUT` for the cli) and macOS for
+VICE's audio. The on-screen tests (`pnpm run test:machines`) take the same
+`EIGHTBITSCRIPT_CHECKOUT`.
 
 ## The baseline
 

@@ -31,6 +31,7 @@
     "start:sound-test:cx16": "8bs run cx16 --program sound-test",
     "start:sound-test:web": "8bs run web --program sound-test",
     "sound": "node scripts/sound.mjs",
+    "sound:slot": "node scripts/slot-sound.mjs",
     "build": "8bs build --release",
     "build:pet": "8bs build --target pet",
     "build:vic20": "8bs build --target vic20",

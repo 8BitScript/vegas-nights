@@ -12,7 +12,8 @@ import { ROOT } from './table.mjs';
 // packages (`--checkout`), for what is on 8BitScript's trunk but in no release yet. The
 // web's pixel reels need it: they write the runtime's redefinable glyph table
 // (@8bitscript/web/charset, 8BitScript #303), which the pinned release does not have.
-const CHECKOUT = process.env.EIGHTBS_CHECKOUT;
+// EIGHTBITSCRIPT_CHECKOUT, the variable the cli itself reads, works too.
+const CHECKOUT = process.env.EIGHTBS_CHECKOUT ?? process.env.EIGHTBITSCRIPT_CHECKOUT;
 const CLI = CHECKOUT
   ? join(CHECKOUT, 'packages', 'cli', 'bin', '8bs.mjs')
   : join(ROOT, 'node_modules', '@8bitscript', 'cli', 'bin', '8bs.mjs');
