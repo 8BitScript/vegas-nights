@@ -19,7 +19,7 @@
 //   node scripts/motion.mjs analyze <machine>    numbers: colours, changed area, stripe speed
 //   node scripts/motion.mjs all <machine>        capture + sheet + spacetime + gif + analyze
 //
-// Output lands in docs/motion/<machine>/ (committed: sheets, diagrams, GIFs, analysis) and
+// Output lands in docs/motion/<machine>/ (or docs/motion/$MOTION_VARIANT/<machine>/) (committed: sheets, diagrams, GIFs, analysis) and
 // shots/motion/<machine>/ (raw frames, not committed). Headless only: the CLI's own screenshot
 // path, never an interactive emulator window beyond what that path itself does.
 import { spawn } from 'node:child_process';
@@ -46,7 +46,9 @@ export const MACHINES = {
 };
 
 const framesDir = (m) => join(ROOT, 'shots', 'motion', m);
-const outDir = (m) => join(ROOT, 'docs', 'motion', m);
+// MOTION_VARIANT=gold writes docs/motion/gold/<machine>/ and leaves the baseline strips of the brief
+// (docs/motion/<machine>/) as they are, so a re-run can be compared against them.
+const outDir = (m) => (process.env.MOTION_VARIANT ? join(ROOT, 'docs', 'motion', process.env.MOTION_VARIANT, m) : join(ROOT, 'docs', 'motion', m));
 const ensure = (d) => { mkdirSync(d, { recursive: true }); return d; };
 const load = (file) => decodePng(readFileSync(file));
 

@@ -1,9 +1,12 @@
 # The bonus round's look: `fx`
 
-When the 5x5's free spins start, the game switches the whole picture into a different mode:
-raster bars, a colour cycle, a wobble — whatever the machine can do to the *picture* rather than
-to the reels. The game code is the same on every machine. What a machine does is one small file
-of its own, and a machine that can do nothing keeps the portable file, which costs nothing.
+When the 5x5's free spins start, the game switches the picture into a different mode: a warm
+gold glow round the edge of the screen, a banner that glows, a steady gold reel frame —
+whatever the machine can do to the *picture* rather than to the reels. The look is called
+**Gold** (the reasoning, with 16 consecutive frames of the version it replaced, is in
+[`fx-brief.md`](fx-brief.md); the measurements of this version are in [Gold: what shipped](#gold-what-shipped)
+below). The game code is the same on every machine. What a machine does is one small file of its
+own, and a machine that can do nothing keeps the portable file, which costs nothing.
 
 ## The seam
 
@@ -24,13 +27,14 @@ A machine that does better has a twin that **replaces the file whole** (8BitScri
 | file | machine | state |
 | --- | --- | --- |
 | `src/shared/fx.8bs` | every machine without a twin | the stub: nothing, free |
-| `src/shared/fx.web.8bs` | web | copper bars (done; the reference twin) |
-| `src/shared/fx.c64.8bs` | Commodore 64 | copper bars (done; see "The C64" below) |
-| `src/shared/fx.cx16.8bs` | Commander X16 | palette-cycled copper bars (done) |
-| `src/shared/fx.vic20.8bs` | VIC-20 | border flash and a marquee (done; no bars, see below) |
-| `src/shared/fx.pet.8bs` | PET | marquee, coins, stars, banner scanner (done; see "The PET") |
+| `src/shared/fx.web.8bs` | web | Gold border stripes (done; the reference twin) |
+| `src/shared/fx.c64.web.8bs` | the C64 built through wasm | the same Gold stripes through the portable list (done) |
+| `src/shared/fx.c64.8bs` | Commodore 64 | seven Gold border stripes from the raster list (done; see "The C64") |
+| `src/shared/fx.cx16.8bs` | Commander X16 | a palette-cycled Gold gradient in the border (done) |
+| `src/shared/fx.vic20.8bs` | VIC-20 | a slow red/yellow border breath and a marquee (done; no bars, see below) |
+| `src/shared/fx.pet.8bs` | PET | a smooth marquee chase and a banner scanner (done; see "The PET") |
 
-Those five names are the only twins; `test/fx.test.mjs` (CI) fails on any other. It also fails if a
+Those six names are the only twins; `test/fx.test.mjs` (CI) fails on any other. It also fails if a
 twin adds, drops, renames or retypes a member, so the per-machine files cannot drift apart: the
 shape is exactly the four members above, nothing exported besides them.
 
@@ -75,12 +79,12 @@ the same, so a PET model with no raster stays free.
 
 ## What each machine can do
 
-Documented in the 8BitScript repo (`packages/<machine>/AGENTS.md`, "Raster splits"); nothing below
-has been tried in this game yet except the web.
+Documented in the 8BitScript repo (`packages/<machine>/AGENTS.md`, "Raster splits"). All six twins
+are built and measured; the sections below say how.
 
 | machine | what the raster layer gives | notes for the effect |
 | --- | --- | --- |
-| web | `BORDER`, `BACKGROUND`, `SCROLL_X`, `CHARSET`; 64 entries; the renderer reads the list at paint time | **done**: border bars all the way down, background bars under the panel; see `fx.web.8bs`. No wobble — it would move the cells the player reads |
+| web | `BORDER`, `BACKGROUND`, `SCROLL_X`, `CHARSET`; 64 entries; the renderer reads the list at paint time | **done**: twelve Gold border stripes, nothing else; see `fx.web.8bs`. No wobble — it would move the cells the player reads |
 | C64 | an IRQ-driven list: the four slots, 63 entries; entries land at the end of their line; two pages with an atomic `commit()` | rewrite values right after `waitFrame()`; `Slot.SCROLL_X` works (a wobble is possible in rows with nothing drawn); the reel composer in assembly takes ~0.6 of a frame per redraw, so measure that the IRQ list and the composer coexist at the speeds in `feel.c64.8bs` |
 | X16 | VERA line IRQ: `BORDER` (DC_BORDER), `BACKGROUND` (recolours a palette entry — so anything drawn in that entry changes too), `SCROLL_X`, `CHARSET`; a picture line is a byte, so the list reaches lines 0–255 (text rows 0–31); an entry lands 1–2 lines late and two entries closer than two scanlines can't both be on time | palette entries are the X16's real copper bars: pick an entry nothing else uses; the reel pixels live in the text layer's redefined tiles, so don't repurpose their palette indices |
 | VIC-20 | no raster interrupt: `waitFrame()`'s frame hook busy-waits down the frame and writes `$900F` (border + background) and `$9005` (character set) at each planned line; `FINE_SCROLL` false; 16 entries | the hook costs frame time and the quadrant composer already takes ~0.9 of a frame per redraw on this machine: measure before adding lines. `$900F` holds 8 border colours (0–7) and 16 backgrounds, so bars are chunkier |
@@ -115,216 +119,195 @@ thing that says so: the `-- FREE SPINS --` banner where the machine has a row fo
 frame (`view.pulse`), the `FS nn X3` counter and the FREE SPINS! message. A twin adds to these; it
 does not replace them.
 
+## Gold: what shipped
+
+The first bonus look was a rainbow of copper bars (thirty-eight stripes from four unrelated
+colour bars), a background-colour band under the panel, a horizontal wobble of the banner, a
+reel frame that cycled through four colours, coins and stars blinking in the PET's margins and a
+border that strobed through eight colours on the VIC-20. The owner ran it and called it "an
+explosion of color and weird artifacts". It had been judged from single screenshots, which
+cannot show a flash, a stripe that jumps or a banner that shears, so
+[`fx-brief.md`](fx-brief.md) captured 16 consecutive frames (plus 48 more at every third) per
+machine and measured it. Gold is the answer, built to that brief:
+
+- **One warm ramp**: brown, orange, light red, yellow, a white peak, back to brown. Never a
+  rainbow, and never black in the border (a black stripe next to a bright one is the hard edge
+  that a late interrupt makes visible).
+- **The border only.** The playfield, the reels, the panel and the rows under it are the plain
+  black they always are. The old background band is gone, which also removes the cause of the
+  C64's solid-colour flashes (below).
+- **Slow, in notches.** Each stripe's colour moves one notch along the ramp every 5 video frames
+  (every 4 on the X16, whose gradient has 24 notches). A step is a soft shift, not a jump.
+- **The banner glows; it does not move.** `-- FREE SPINS --` pulses through the ramp's colours
+  every 5 passes (`glowBanner` in `slot5x5/game.8bs`) on the machines that have a title row.
+  The `$D016` wobble that sheared it is gone everywhere.
+- **The reel frame holds gold** for the whole round (`view.pulse`, one colour; it used to cycle
+  yellow, red, white and purple). A win still flashes the reel rows white.
+- **The mouse pointer is hidden** on the X16 for the whole game (`pointer.hide()` in both games;
+  `@8bitscript/pointer`, a no-op where a machine has no pointer).
+
+### The clock
+
+An effect must step in *video* frames, not in passes of the game loop: on the C64 and X16 a pass
+that redraws reels can span two frames. 8BitScript's `raster.frame()` (PR #315) is a counter the
+raster handler keeps, exact on those two machines even when the loop runs slow, and
+`raster.FRAME_COUNTER` says whether a machine has one (true only there). `fx.c64.8bs` and
+`fx.cx16.8bs` bank `raster.frame() - last` each pass and step when the bank reaches the step
+length. Everywhere else a pass *is* a frame (the web and the wasm C64 run exactly one pass per
+`waitFrame()`), or there is no interrupt to count with (the VIC-20 and PET), so `fx.frame(tick)`
+counts passes.
+
+### Measured
+
+`scripts/motion.mjs all <machine>` (`MOTION_VARIANT=gold` writes `docs/motion/gold/<machine>/`),
+58 frames a machine: 16 consecutive and 48 at every third. The "before" strips are
+`docs/motion/<machine>/` (the brief), the "after" strips `docs/motion/gold/<machine>/`: each has
+`consecutive-16.png`, `bonus.gif`, `spacetime-every-frame.png` and `analysis.json`.
+
+| | colours in a frame | colours down the border | border pixels changing per frame | whole-screen flash frames | stripe step |
+| --- | --- | --- | --- | --- | --- |
+| C64 (x64sc) | 13 -> 12 | 13 -> 5 | 65.8% -> 38.3% | **10 of 58 -> 0 of 58** | every ~5-6 frames |
+| C64 in wasm | 13 -> 12 | 13 -> 6 | 43.0% -> 13.4% | 0 -> 0 | every 5 frames |
+| web | 12 -> 11 | 11 -> 6 | 32.7% -> 13.2% | 0 -> 0 | every 5 frames |
+| VIC-20 (xvic) | 8 -> 7 | 2 -> 2 | 13.3% -> 6.7% | torn frames 5 of 58 -> see below | a change every ~20 frames |
+| PET (xpet) | 2 -> 2 | 2 -> 2 | 0.3% -> 0.3% | 0 -> 0 | one comet cell per 4 frames |
+| X16 (x16emu) | 35 -> 20 | 22 -> 8 | 21.4% -> 26.7% | 0 -> 0 | one notch every 4 frames |
+
+How to read it:
+
+- A "flash frame" is a frame whose most common colour is not the round's usual black: the
+  playfield turned a stripe colour. The C64 had 10 of 58; it now has none.
+- The border-pixels figure is high where a step recolours every stripe: a C64 step moves all
+  seven stripes, so a step frame changes most of the border and the other frames almost none.
+  The brief's target for it (25%) is met by the web and wasm builds and not by the C64 (38%) or
+  the X16 (27%, a palette cycle recolours every stripe by one small notch). It is a count of
+  pixels that differ at all, not of how much; the X16's steps are one notch of 24.
+- The VIC-20's "flash" in `analysis.json` (43%) is not meaningful: it counts frames in the second
+  of its two legitimate border colours. The torn frames are in the VIC-20 section.
+
 ## The C64
 
-`src/shared/fx.c64.8bs` — rainbow copper bars from the raw raster list
+`src/shared/fx.c64.8bs` — seven Gold border stripes from the raw raster list
 (`@8bitscript/c64/raster`; the portable `@8bitscript/raster` refuses lines outside the 200-line
-picture, and the border above and below it is where most of the bars are).
+picture, and the border above and below it is where most of the glow is).
 
-- **Border bars.** `$D020` takes a new colour every 6 raster lines from line 29 to 251: 38
-  stripes from a 32-step table of four bars (blue/cyan/white, red/orange/yellow, green/white,
-  purple/pink), scrolling down one stripe every other frame. All four borders show them.
-- **Background bars.** The same table half a turn out of step, scrolling the other way, in text
-  rows 20-24 (raster lines 210-249), the five rows nothing is drawn in; `$D021` is black
-  everywhere above, so no digit, reel or frame cell ever sits on a bar.
-- **Wobble.** The `-- FREE SPINS --` banner row only: `$D016`'s fine scroll, 0-6 pixels, one
-  entry every two lines (the pitch the handler keeps up with), following a sine; reset to 0
-  before the reels' frame starts. It is gentle (the banner's left edge moves between x = 153 and
-  157 in the captures) and it moves no cell the player or the tests read.
-- **The list:** 54 of the 63 entries — two resets to black at line 1 (so a frame the handler
-  could not finish, the first after `enable()`, never carries its last bar into the next), 38
-  border stripes, 7 background stripes, 5 wobble (4 + the reset) and the 2 that restore black at
-  line 254. The stripes sit on the wobble's lines (29 + 6k lands on 59 and 65): two entries on one
-  line cost 25 cycles, two on neighbouring lines across a bad line made the handler fall behind
-  (the first version, with stripes on 58 and 64, tore).
-- **end()** disables the interrupt, clears the list and writes `$D020`/`$D021`/`$D016` back by
-  hand, because the handler leaves the last value it wrote in the register.
-- **Cost** (`8bs build c64 --program slot5x5 --size`, 2026-10-04): 11,804 B of program and 114 B
-  of RAM with the stub, 13,151 / 121 with the twin: +1,347 B, +7 B. Most of it is the raster
-  list's handler and install routine (about 400 B) and the per-frame rewrite loop.
-- **Against the reel composer.** The composer is assembly in the main loop and the handler is an
-  interrupt (it saves A and X and touches no zero page but its own `jmp`), so the glyph bytes are
-  not torn by the bars; the interrupt only costs the composer cycles. All 16 C64 tests of
-  `pnpm run test:machines` (the exact reel windows, the numbers, the bonus and retrigger rounds
-  with the free-spin counter read during the round) pass with the effect running.
-- **Test.** `test/fx.machines.test.mjs`' `c64` row checks the border column (plain at frame 60,
-  barred and moving at 1000 and 1004, plain and exactly as before at 8000) and the free rectangle
-  (plain, 3+ colours during, plain again). Leaving `end()`'s cleanup out fails it.
+- **The list.** Seven entries, `$D020` only, 36 lines apart from line 15 to 231, a ten-notch
+  ramp (`brown brown orange lightred yellow white yellow lightred orange brown`) of which the
+  seven stripes show seven. A step rewrites each entry's colour byte in place
+  (`raster.setValue`); the line and address bytes never change, so the interrupt never reads a
+  half-built entry.
+- **Why seven, and wide.** A reel redraw is two 80-byte copies inside one window with the I/O area
+  banked out and interrupts masked (`glyphs.c64.8bs`, about 2,200 cycles, 35 raster lines), and
+  up to five of them run back to back. A list entry due inside a window is applied when it
+  ends, so a stripe boundary is late by up to 35 lines and two boundaries in one window merge.
+  The first Gold try (twelve 21-line stripes) showed exactly that: neighbours merging into
+  tall blocks and edges bouncing from frame to frame. A 36-line stripe cannot merge with its
+  neighbour, and since the ramp never goes to black a late edge is a soft shift between two
+  close browns and oranges.
+- **What did not work, and is not in.** Letting the interrupt in *during* the copy (closing and
+  reopening the window every 32 bytes, or once per reel between the two copies) removed the
+  late edges and made things worse: the raster handler lost a whole pass in 1 frame of 7, so the
+  border was one solid colour for that frame (8 of 58 sampled). Each of those variants was
+  measured with the colours frozen, so the cause is the gaps and not the effect. The handler's
+  pass logic (`packages/c64/native/6502/raster.s`) is the place to look; this is left as it was
+  (zero lost passes) and the stripes are made to tolerate a late edge instead.
+- **No background entries.** `$D021` is never written, so a frame the handler is late on cannot
+  leave the playfield a stripe colour. That was the old effect's flash (4 frames in 16).
+- **No wobble**, and the banner glows through the game loop's colour RAM writes instead.
+- **Cost** (`8bs build c64 --program slot5x5 --size`, program / RAM): 12,006 / 116 with the stub,
+  12,972 / 126 with the twin: **+966 B, +10 B** (the first Gold try was +1,347 B, +7 B).
+- **end()** disables the interrupt, empties the list and writes `$D020` and `$D021` back to black.
+- **Test.** `test/fx.machines.test.mjs`, `c64`: the border column is plain at frame 60, a glow of
+  3 to 7 colours at frames 1000 and 1012 and moving between them, the rows under the panel stay
+  one plain colour in every sampled frame, and the border is plain and exactly as before at 8000.
 
-## The VIC-20 twin
+## The VIC-20
 
-`src/shared/fx.vic20.8bs`: the whole border flashes through eight colours (changing every second
-frame) and a marquee of three lit bars (white head, yellow, red) runs down the screen's last
-column, over a dim blue tube. `RASTER` is true because `frame()` does work, but there is no raster
-list. `docs/fx/vic20-bonus-a.png` and `vic20-bonus-b.png` are two frames of a bonus round.
+`src/shared/fx.vic20.8bs` — a slow red/yellow border breath and a marquee of lights up the last
+column. The measurements that ruled out stripes (a raster list held the reels back by 78%: the
+bonus round finishing at frame ~18,200 instead of ~10,200) and the first marquee (35% slower) are
+kept in the file's header.
 
-**Why there are no copper bars.** The VIC-I has no raster interrupt, so `@8bitscript/raster` applies
-a list from `waitFrame()`'s frame hook, which busy-waits from the top of the frame down to the last
-planned line (`packages/vic20/AGENTS.md`, "Raster splits"). The quadrant composer needs most of a
-frame for one reel redraw, so a hook that holds the CPU for even the top third of the frame pushes
-every composing frame past its edge. It was built first and measured, because the brief asks for a
-twin to be measured before it is trusted. "End of round" below is the first video frame at which
-the `FS nn X3` counter text has gone, in the forced `slot5x5-bonus` round (bisected to 40 frames):
-
-| twin | end of round | program / RAM | what it is |
-| --- | --- | --- | --- |
-| the portable stub | ~10,200 | 9,686 / 96 | no effect |
-| eight border stripes, six lines apart, plus a 23-cell marquee rewritten every frame | ~18,200 (78% slower) | 11,594 / 114 | the raster hook, 1.9 KB of raster code |
-| the same marquee with no raster, rewriting all 23 cells every frame | ~13,800 (35% slower) | 10,439 / 105 | 23 cells, a 16-bit multiply each for the address |
-| **this twin** | **~10,300 (about 1%, inside the bisect's resolution)** | **10,535 / 106** | a table of the 23 addresses; three bars repainted four cells each every second frame; one read and one write of `$900F` a frame |
-
-So the cost on this machine is time, not bytes: +849 bytes of program and 10 of RAM over the stub,
-on the 8K build (11,775 usable), and the reels run at the speed they do without the effect. A frame
-that composes a reel has roughly a tenth of a frame to spare; budget the effect against that, not
-against the frame.
-
-**What it touches, and what it puts back.**
-
-- *Border:* `$900F` bits 0-2 only. Bits 3-7 are the background colour the reels' blank quadrants are
-  drawn on and the inverse flag; they are read back and kept, so no reel or panel pixel changes.
-  Written once a frame, right after `waitFrame()`, so it is one colour all the way down the screen;
-  when a frame's work ran past its edge the write lands partway down and that one frame shows two
-  colours (the test allows it). `end()` writes back the colour it found in `begin()`.
-- *Marquee:* column 21, the one column `layout.centre` leaves empty on every row (the block is 21
-  wide on a 22-column screen). `begin()` saves each cell's colour and fills it with solid blocks;
-  `end()` puts back spaces and the saved colours. No reel, panel or meter cell is written.
-- *Background colour:* never changed. A BACKGROUND entry (or any write to bits 4-7) repaints every
-  blank half of the reels' quadrant blocks and the whole credit panel, which is drawn on the
-  background.
-
-**The test.** `kind: 'flash'` in `test/fx.machines.test.mjs`: the border is one colour before the
-round (frame 600), the marquee column is empty; during it (frames 2400-2436) each frame's border
-has at most two colours and the main colours differ over four frames (at least three), the marquee
-shows at least three colours and the lights move between frames; after (frame 13,000) the border
-column and the marquee column are exactly what they were. Mutation-checked four ways, each failing
-on its own assertion: `end()` leaving the border flashing; `end()` leaving the marquee blocks;
-`frame()` never writing the border; `frame()` never moving the bars.
-
-**Not done.** The unexpanded (3.5K) VIC-20 cannot hold the 5x5 at all (9,686 bytes before this
-twin), so this twin is only ever built on 8K and up. PAL was not captured; the effect uses nothing
-region-specific, but the end-of-round figures above are NTSC.
+- **The border.** `$900F`'s three border bits take one of two warm colours, red or yellow, and
+  hold each for 8 passes of the game loop (about 20 video frames). The write is made right after
+  `waitFrame()` returns, only when the colour is to change, and only if `$9004` (the raster
+  counter, lines / 2) is under 10: on a pass the composer overran `waitFrame()` returns at once in
+  the middle of the picture and a write there would split the border. Measured: the counter
+  reads under 8 on every on-time pass, so the window is 20 lines; the first version of this check
+  used 4 and never fired.
+- **Torn frames.** The old effect (a new colour every other frame) split the border in 5 of 58
+  captured frames. This one changes 6 times in 58 and shows a second colour in 3 of the 58
+  (one frame per change at most); in one the old colour covers 44% of the border, which is a
+  VICE capture stopped partway down the picture on the frame of a change (the write itself lands in
+  the first 20 lines), not a write in the middle of the frame. The test therefore allows two
+  colours in a sampled frame but at most one split frame in six.
+- **The marquee** is unchanged: three bars of lights (white head, yellow, red) down the last
+  column over a dim blue tube, a table of the 23 addresses, four cells repainted per bar every
+  second pass. No glyph is redefined; no reel, panel or meter cell is touched.
+- **Cost** (`8bs build vic20 --program slot5x5 --size`, program / RAM): 10,026 / 105 with the
+  stub, 10,571 / 109 with the twin: **+545 B, +4 B**.
+- **Reel speed.** The border write is one read-modify-write on a change pass and a read of `$9004`
+  on a pending one; the earlier twin (an 8-colour strobe every other frame plus the same marquee)
+  measured within 1% of the stub. This twin does less and was not re-bisected.
 
 ## The PET
 
-`src/shared/fx.pet.8bs`. The PET has one ink, no border and no colour, and a fixed character ROM,
-so its bonus look is made of screen-RAM writes in cells the game never reads: a marquee ring of dots
-round the edge of the screen with four comets (solid block, shade, dot) chasing round it, dollar-sign
-coins falling in the margins, `*` stars blinking, shade strips down both sides of the machine, and a
-reverse-video block scanning along a `-- FREE SPINS --` banner on row 23 (the PET has no title row:
-`view.TITLE` is false). `RASTER` is `true` on every PET model, because `frame()` does something on
-all of them; it is deliberately not `#fact(video.raster)`.
+`src/shared/fx.pet.8bs` — a smooth marquee chase round the edge and a banner scanner, written into
+screen RAM cells the game never reads. `RASTER` is true on every PET because `frame()` does
+something on all of them (it is not `#fact(video.raster)`: the effect is not a raster one).
 
-![the PET's bonus round](fx/pet-bonus-a.png) ![a few frames later](fx/pet-bonus-b.png)
+- **What it does.** A ring of dots round the screen edge with four comets (a solid block, then
+  a shade, then back to a dot), one comet cell per 4 frames each, a different comet every frame;
+  a strip of shade blocks down both sides of the machine; and, on the free row under the panel
+  (row 23), `-- FREE SPINS --` with a block of reverse video scanning along it, a cell every
+  fourth frame.
+- **What was removed.** Six `$` coins falling down the margins and eight `*` stars blinking on
+  and off. In the motion strips those isolated single characters appearing and vanishing at
+  scattered cells read as screen noise, not confetti. The chase is the one thing that reads as
+  intentional, so it is the one thing left (and the work per frame is smaller).
+- **No character-set split**, as before: the driver busy-waits most of a frame and a split over
+  the reels would turn their blocks into letters.
+- **Cost** (`8bs build pet --program slot5x5 --size`, program / RAM, 4032 with 32K): 9,361 / 100
+  with the stub, 11,123 / 110 with the twin: **+1,762 B, +10 B** (the coins and stars version was
+  +2,527 B). About 370 bytes of that are the zero-filled ring tables (an 80-column ring needs 185
+  places; the 6502 backend indexes a 16-bit table with an 8-bit index, so the ring is two
+  tables of 93).
+- **Test.** `pet` (`kind: 'margins'`): the margins are plain before the round, show at least two
+  colours and move between frames 3000 and 3012, and are exactly as they were afterwards.
 
-![the same on the 8032, 80 columns](fx/pet8032-bonus.png)
+## The Commander X16
 
-### Why no character-set split
+`src/shared/fx.cx16.8bs` — a palette-cycled Gold gradient in the border. The X16's raster
+`BORDER` value is a palette index and VERA's palette is video memory the CPU can rewrite in a few
+dozen bytes, so the stripes are twelve raster entries written **once**, each naming its own palette
+entry (64-75), and the animation is the palette: every 4 video frames the twelve entries' RGB are
+rewritten from a 24-step gold table, one notch further along.
 
-The 3032 and 4032 can split the character set at a line (`Slot.CHARSET`,
-`@8bitscript/pet/rasterline`), and a split over the banner row would flicker its text case. It is not
-used. The driver busy-waits down the frame to its last entry's line (about 5,209 + 50 cycles a line of
-a ~20,000-cycle frame), so an entry at the banner's line 184 spends nearly the whole frame, and the
-quadrant composer that redraws five reels needs most of a frame already. A split over the reels would
-turn their block graphics into letters. So the PET's effect is not a raster one.
+- **The table.** 24 steps of VERA 12-bit colour, a triangle: black, deep brown, orange, amber, gold,
+  cream, a white-yellow peak at step 12, and back. Stripe `k` shows step `2k - phase`, so about six
+  stripes make one swell and a step is a soft shift of the whole glow. The first version cycled four
+  unrelated bars (gold, magenta, cyan, green) and added a blue/white/cyan glow band under the
+  panel: 35 colours in a frame, 20 now (the reel art accounts for most).
+- **Border only**, a black background held at line 0, no wobble, no background stripes.
+- **The clock** is `raster.frame()`, so a game-loop pass that spans several frames still steps on
+  time.
+- **The pointer** is hidden for the whole game (`pointer.hide()`), restored by nothing: the
+  program never gives the machine back.
+- **Cost** (`8bs build cx16 --program slot5x5 --size`, program / RAM): 17,826 / 197 with the stub,
+  19,555 / 197 with the twin: **+1,729 B, +0 B** (it was +2,000 B). Most of it is the raster layer
+  the twin pulls in.
+- **The reel composer and the palette** both go through VERA's `DATA0`. The raster handler saves and
+  restores `ADDR0` and `CTRL` around its writes, `paint()` sets its own address, and the composer
+  sets its own before each copy.
+- **Test.** `cx16`: the border column is plain at frame 200, a glow of 3 to 14 colours that moves
+  between 1100 and 1112, and plain and exactly as before at 4400.
 
-### What it costs
+## Web and the C64 in wasm
 
-The measurement that mattered was not bytes, it was time. The composer leaves the PET little to spare
-in the bonus round, and `waitFrame()` loses a whole frame whenever a frame's work runs over. Both
-builds are deterministic, so the forced bonus round (`slot5x5-bonus`, seeded, starting near frame 508)
-was timed by bisecting for the frame its free-spin counter disappears on (`--frames`, 4032, 32K):
-
-| build | round ends at frame | longer than the stub |
-| --- | --- | --- |
-| portable stub (no effect) | 3,905 | |
-| first version: each cell's address worked out with `row * columns` | 4,424 | 519 frames, 15% |
-| addresses in tables, half of everything moving every other frame | 4,046 | 140 frames, 4% |
-| shipped: one comet, one coin and one banner cell move per frame, ring split in two tables | 3,957 | 52 frames, 1.5% |
-
-A 16-bit multiply by the column count is a software loop on a 6502, and the first version did three
-a cell written. Nothing multiplies once the round is running: `begin()` lays the ring, coin, star and
-banner addresses into tables and `frame()` looks them up and adds. The ring table is two arrays of 93
-sixteen-bit offsets, not one of 185: the backend indexes a 16-bit array with an 8-bit register, so on
-the 80-column 8032 (a 185-place ring) every place from the 128th landed on top of one of the first 57
-and the left edge disappeared; the 40-column 4032 (105 places) never showed it.
-
-`8bs build pet --program slot5x5-bonus --size`, program bytes / RAM for variables:
-
-| build | program | RAM |
-| --- | --- | --- |
-| portable stub | 9,369 | 101 |
-| with `fx.pet.8bs` (4032, 32K) | 11,896 | 112 |
-| with `fx.pet.8bs` (8032) | 11,933 | 112 |
-
-About 370 of the extra bytes are the zero-filled ring tables, sized for the 80-column ring on both
-(an array length cannot be an expression).
-
-### How it is checked
-
-`test/fx.machines.test.mjs` has a PET row, `kind: 'margins'` (the third path beside the bars and the VIC-20's flash). The PET has no border, so it reads a set of pixel columns
-through the margin cells (the ring's two edges, the coin lanes and the star lanes) and asserts the
-four things every machine's row does: plain before the round (frame 400), the effect during it (two
-ink colours, the cells different between frames 3,000 and 3,012), and exactly the pixels it had
-before once the round is over (frame 6,000). Two mutations fail it: leaving the ring in `end()`, and a
-`frame()` that does nothing. The existing 3x3 and 5x5 PET tests, which read the free-spin counter and
-the exact credit during the bonus and retrigger rounds, pass with the effect running (16 of 16).
-
-### Not verified
-
-A real PET: the timings are VICE's, and a real machine's 50 Hz or 60 Hz frame may differ from
-`xpet`'s. The 8032 was looked at in a screenshot after the ring fix (above) but is not in the
-on-screen test, which runs the 4032. The 2001, 3008 and 3016 are not targets of the 5x5 (it does not
-fit their RAM); the 4016 and 3032 were not run.
-
-## The Commander X16's twin
-
-`src/shared/fx.cx16.8bs`: copper bars in both side borders, a glowing band below the credit panel,
-and none of it touches a cell the player reads.
-
-- **Border bars cost no per-frame list writes.** On the X16 a raster `BORDER` value is a *palette
-  index* (0-255), and VERA's palette is video memory the CPU can rewrite in a few dozen bytes. So
-  `begin()` writes the raster list once (twenty stripes, one entry per 12 picture lines, each naming
-  its own palette entry 64-83, which nothing else uses) and `frame(tick)` only rewrites those twenty
-  entries' RGB from a 64-step copper table (four bars of sixteen steps: gold, magenta, cyan, green,
-  each with a white-hot peak). One step further along the table moves the bars down the border.
-  Forty data-port writes a frame, at the top of the frame, inside the blanking.
-- **Background bars** (`Slot.BACKGROUND`, which can only name the 16 stock colours) fill the rows
-  under the panel, picture lines 176-247 (text rows 22-30; the panel ends on row 20). Nine entries,
-  rewritten with `raster.setValue` from a 16-colour blue / red-yellow ramp. Everything above line 176
-  holds black, so no reel, digit or meter ever sits on a bar.
-- **The list is 31 of the 32 entries**, on 29 distinct picture lines (the driver's plan arrays hold 32),
-  no two closer than 4 scanlines, so every split lands on its own line. The last border stripe (line 228) holds to the bottom of the
-  frame, and the same stripe shows above line 0; it fades through the table a step at a time, so the
-  top and bottom edge of the screen glow rather than flash.
-- **No wobble.** `SCROLL_X` would move the title and banner rows, and the list has one entry left.
-- **No tearing against the reel composer.** The composer streams tile bytes through VERA's DATA0, and
-  `frame()` writes the palette through DATA0 too. The raster handler saves and restores ADDR0 and CTRL
-  around every write, `frame()` sets its own address, and the composer sets its own before every copy
-  (`packages/cx16/AGENTS.md`, "Raster splits"); `pnpm run test:machines` (cx16) reads every reel
-  pixel during the round and all of them match the oracle.
-- **`end()` puts everything back.** It saves nothing it did not read: `begin()` reads `DC_BORDER` and
-  the twenty palette entries; `end()` commits a one-entry list (border as it was, background black),
-  waits two frames for the handler to apply it, takes the handler off, and writes the border and the
-  palette entries back. The border column of a capture after the round is identical to the one before
-  it (the test checks).
-
-### Bytes (`8bs build cx16 --program slot5x5 --size`, program / RAM)
-
-| | program | RAM |
-| --- | --- | --- |
-| portable stub (`fx.8bs`) | 17,701 | 197 |
-| `fx.cx16.8bs` | 19,701 | 197 |
-
-+2,000 bytes of program, no RAM. Most of it is the raster layer the twin pulls in (the handler,
-`commit`, `at`, the palette write: `packages/cx16/AGENTS.md` measures +1,251 bytes for a two-entry
-list); the rest is the twin's own code and its two 64-byte copper tables. The split was not measured
-separately. The X16 has the room.
-Measured 2026-10-04, x16emu r50 with ROM `fbe32a60`, against 8BitScript trunk.
-
-### On screen
-
-`test/fx.machines.test.mjs` (`MACHINES=cx16`, column x = 8, inside the 16-pixel border): frame 200
-(first base spin) one plain border colour; frames 1100 and 1106 (free spins under way) several colours
-down the column and more than twenty rows different between the two; frame 4400 (round over) the same
-column as at frame 200, pixel for pixel. Leaving `end()`'s restore out fails it. Not checked: a real
-X16, whose VERA may raise the line interrupt at a different point of the line than x16emu does.
+`src/shared/fx.web.8bs` and `src/shared/fx.c64.web.8bs` — twelve Gold border stripes through the
+portable list (`@8bitscript/raster`, `BORDER` at a picture line): 21 lines apiece on the web (the
+picture is 256 lines), 17 on the wasm C64 (200 lines). Both rewrite the colour bytes and
+`commit()` every 5 frames; a pass is exactly one frame on both builds, so the step is exact
+without the counter (`raster.FRAME_COUNTER` is false there). The wasm C64 cannot name the border
+above and below the 200 picture lines; the page paints that in its plain colour, so it shows
+the side borders only.

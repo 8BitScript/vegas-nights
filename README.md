@@ -55,13 +55,13 @@ or an external browser instead of VICE, and `8bs run c64 --web --program slot5x5
 It is a model of the machine (text mode, no sprites or sound — `8bs targets --json`
 lists the limits), and everything the slots use is in it: the redefined characters
 the reels are composed from, the colour RAM, the border and background registers, the
-portable raster list the bonus round's copper bars use, and the portable input.
+portable raster list the bonus round's Gold border stripes use, and the portable input.
 Two files here exist only for it, because the C64's own are machine code the wasm
 backend never lowers: `src/shared/glyphs.c64.web.8bs` composes a reel window in plain
 loops (the assembly in `glyphs.c64.8bs` is ~6000 cycles of hand-written copy a wasm
 build has no use for) and `src/shared/fx.c64.web.8bs` builds the bonus bars through
-`@8bitscript/raster` instead of the C64's address-form list. The bars run down the side
-borders and the empty rows under the panel; the machine's also run through the border
+`@8bitscript/raster` instead of the C64's address-form list. The stripes run down the side
+borders; the machine's also run through the border
 above and below the 200 picture lines, which a picture-line list cannot name.
 `pnpm run test:c64web` runs the same exact-window tests the real machines get against
 this build (it needs 8BitScript's `trunk` until a release has the C64 wasm port:
@@ -352,19 +352,36 @@ seed alone is 1,000,000.
 
 While the free spins run, the game calls three hooks (`fx.begin()`, `fx.frame(tick)`, `fx.end()`) that a
 machine can fill in with something that happens to the whole picture rather than to the reels. The
-portable file [`src/shared/fx.8bs`](src/shared/fx.8bs) does nothing and costs nothing (the four
-6502 builds are byte for byte the size they were), and a machine that can do better replaces it with
-its own `fx.<machine>.8bs`. Today only the web has one: copper bars in the border and in the rows
-under the panel, scrolling down the screen, with the panel and reels left on black.
+portable file [`src/shared/fx.8bs`](src/shared/fx.8bs) does nothing and costs nothing, and a machine
+that can do better replaces it with its own `fx.<machine>.8bs`. All six have one, and the look is
+**Gold**: one warm ramp (brown, orange, light red, yellow, a white peak) as a slow glow in the border,
+the playfield, reels, panel and rows under it left on plain black, a banner that glows rather than moves,
+and a reel frame that holds its gold for the whole round. An earlier version (a rainbow of copper bars, a
+wobbling banner, a border that strobed) was judged from single screenshots and looked like "an explosion
+of colour and weird artifacts" when it ran; [`docs/fx-brief.md`](docs/fx-brief.md) shows it frame by
+frame, and [`docs/fx.md`](docs/fx.md#gold-what-shipped) the measured before and after.
 
-![the web's bonus round: bars in the border, a few frames apart](docs/fx/web-bonus-a.png)
-![the same, twenty frames later](docs/fx/web-bonus-b.png)
+| Machine | What the bonus round does | Cost over no effect |
+| --- | --- | --- |
+| C64 | seven Gold stripes in the border from the raster list, stepping every 5 video frames | +966 B |
+| C64 in wasm, web | twelve Gold stripes through the portable list | wasm const data only |
+| X16 | a 24-step Gold gradient in the border, palette-cycled; the mouse pointer hidden | +1,729 B |
+| VIC-20 | the border breathes red/yellow about every 20 frames, and a marquee of lights up the last column | +545 B |
+| PET | a smooth marquee chase round the screen edge and a scanning block along the banner | +1,762 B |
 
-[`docs/fx.md`](docs/fx.md) is the brief for writing the others (C64, X16, VIC-20, PET): the surface,
-what the game promises, what each machine's raster layer gives, and how to prove an effect on screen.
+To see it move, not just sit still, capture consecutive frames:
+`MOTION_VARIANT=gold EIGHTBS_CHECKOUT=/path/to/8bitscript node scripts/motion.mjs all c64` writes a
+labelled grid of 16 frames, a GIF, and a space-time diagram (one border column per frame; a steady glow is
+a slanted band, a flash a full-height streak) to `docs/motion/gold/c64/`. The strips of the version it
+replaced are in `docs/motion/<machine>/`.
+
+![the C64's bonus round, 16 consecutive frames](docs/motion/gold/c64/consecutive-16.png)
+
+[`docs/fx.md`](docs/fx.md) is the brief for writing a twin: the surface, what the game promises, what
+each machine's raster layer gives, and how to prove an effect on screen.
 `test/fx.test.mjs` (in CI) holds every twin to the same four members; `test/fx.machines.test.mjs`
-(`pnpm run test:machines`) checks the border is plain before the round, barred and moving during it,
-and plain again after.
+(`pnpm run test:machines`) checks the border is plain before the round, a glow of a few colours that
+moves during it, the rows under the panel never changing colour, and plain again after.
 
 ### How the 5x5 is put together
 
@@ -412,9 +429,10 @@ or more (9,077 B against the 15,359 of the 16K model; the 8K model's 7,167 is 1,
   hops 8 pixels about every third frame (about 3 pixels a frame), the PET and VIC-20 hop 12 pixels
   every few frames, and the VIC-20 is the slowest (about 1 pixel a frame). It reads as a spinning
   reel, not as a blur; redrawing the quadrant reels in assembly, as the C64's are, is the way to more.
-- **The bonus round is not yet a mode of its own.** It changes the frame's colours every few frames,
-  the title for a "FREE SPINS" banner where the screen has one, and shows the counter and ×3; the
-  full-screen, demoscene-style presentation (raster bars, palette cycling, a different reel set) is the next step.
+- **The bonus round is a glow, not yet a mode of its own.** It lights the border in Gold (above), turns the
+  title into a glowing "FREE SPINS" banner where the screen has one, holds the reel frame gold, and shows the
+  counter and ×3; a richer demoscene-style presentation (a different reel set, palette tricks across the
+  playfield) is a later step.
 - **The jackpots are standalone meters**, not linked between machines, and reset when the program does.
   A jackpot win shows the message and the meter reset; there is no celebration yet.
 - **No sound** beyond the empty hooks in `src/shared/sound.8bs`.

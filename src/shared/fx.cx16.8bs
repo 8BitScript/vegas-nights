@@ -1,33 +1,31 @@
-// The bonus round on the Commander X16: copper bars, palette-cycled.
+// The bonus round on the Commander X16: a warm gold glow in the border, palette-cycled.
 //
 // The X16 can do something the other raster machines cannot: a raster entry's BORDER value is
-// a *palette index* (0-255), and VERA's palette is plain video memory the CPU can rewrite in
-// a few dozen bytes. So the border bars are not 20 raster entries rewritten every frame; they
-// are 20 raster entries written ONCE, each naming its own palette entry, and the animation is
-// the palette: every frame the 20 entries' RGB are rewritten from a 64-step copper table, one
-// step further along, so the bars glide down the screen without the raster list being touched.
+// a *palette index* (0-255), and VERA's palette is plain video memory the CPU can rewrite in a
+// few dozen bytes. So the border stripes are not rewritten raster entries; they are twelve
+// raster entries written ONCE, each naming its own palette entry, and the animation is the
+// palette: every STEP video frames the twelve entries' RGB are rewritten from a 24-step gold table, one
+// notch further along, so a smooth glow slides down the frame without the raster list being
+// touched.
 //
-//   * Border bars: stripe k (picture line 12 * k, k = 0..19) is palette entry FIRST + k. The
-//     table is four copper bars (gold, magenta, cyan, green) of sixteen steps each, brightness
-//     rising and falling with a white-hot centre; stripe k shows step (3k + phase) of it, so
-//     about five stripes make one bar. The last stripe (line 228) holds to the bottom of the
-//     frame, as does the top border above line 0: both take that stripe's colour, which fades
-//     through the table, never jumping more than one step a frame.
-//   * Background bars: below the credit panel (the panel ends on text row 20; the bars start
-//     at row 22, picture line 176) nothing is drawn, so the background's palette entry is
-//     recoloured nine times down to line 240 (BACKGROUND takes only the 16 stock colours, so
-//     these are a scrolling blue/red ramp from a table, rewritten with raster.setValue).
-//     Everything above line 176 holds black, so no digit or reel ever sits on a bar.
-//   * No wobble: a SCROLL_X wobble would move the title and banner rows, and the raster list
-//     holds only 32 entries (this uses 31). The reels, panel, meters and frame are cells; none
-//     of them is touched.
+// "Gold" (docs/fx-brief.md) is one ramp -- black, deep brown, orange, amber, gold, cream, a
+// white-yellow peak, and back -- in 24 steps that differ by one or two levels of VERA's 12-bit
+// colour, so a step is a soft shift, never a jump. Stripe k (picture lines 20 * k) shows step
+// (2k - phase) of the table: about six stripes make one swell of the glow.
+//
+//   * Border only. The first version also coloured the background's palette entry nine times down
+//     the rows under the panel, a hard white and cyan glow band, and cycled four unrelated bars
+//     (gold, magenta, cyan, green): 35 colours in a frame. The background is held at black now, so
+//     no digit or reel ever sits on a glow.
+//   * No wobble: it would move the title and banner rows. The reels, panel, meters and frame
+//     are cells; none of them is touched.
 //
 // The reel composer streams tile bytes through VERA's DATA0, and frame() writes the palette
 // through DATA0 too, but the raster handler saves and restores ADDR0 and CTRL around every
 // write, frame() sets its own address, and the composer sets its own before each copy, so the
 // two cannot tear each other (packages/cx16/AGENTS.md, "Raster splits").
 //
-// end() puts back the border colour and the twenty palette entries it read in begin(), and
+// end() puts back the border colour and the twelve palette entries it read in begin(), and
 // lets one more frame carry a list of a single plain entry (border as it was, background black)
 // before the handler is taken off, so the screen is exactly what it was before the round.
 //
@@ -35,47 +33,46 @@
 import { raster, Slot } from "@8bitscript/raster";
 import { setVramAddress } from "@8bitscript/cx16";
 
-// The copper table: 64 steps, VERA palette format. GB is GGGGBBBB, R is 0000RRRR. Four bars
-// of 16 steps (gold, magenta, cyan, green), each rising to a peak and falling, the two
-// brightest steps of a bar pushed toward white. Generated once from the bar tints.
-const BAR_GB: array<utinyint, 64> = [
-    0x00, 0x10, 0x20, 0x40, 0x50, 0x61, 0x71, 0xB3,
-    0xE6, 0x81, 0x71, 0x60, 0x40, 0x30, 0x20, 0x10,
-    0x00, 0x02, 0x03, 0x05, 0x16, 0x18, 0x19, 0x3D,
-    0x6F, 0x1A, 0x19, 0x17, 0x15, 0x04, 0x02, 0x01,
-    0x00, 0x22, 0x34, 0x56, 0x78, 0x9A, 0xAC, 0xEF,
-    0xFF, 0xBD, 0x9B, 0x89, 0x67, 0x45, 0x33, 0x11,
-    0x00, 0x20, 0x40, 0x61, 0x81, 0xA1, 0xC1, 0xF4,
-    0xF7, 0xD2, 0xB1, 0x91, 0x71, 0x51, 0x30, 0x10,
+// The gold table: 24 steps, VERA palette format. GB is GGGGBBBB, R is 0000RRRR. A triangle from
+// black up through brown, orange, amber and gold to a cream peak at step 12 and back down.
+const GOLD_GB: array<utinyint, 24> = [
+    0x00, 0x10, 0x10, 0x20, 0x30, 0x50, 0x60, 0x81,
+    0xA1, 0xC2, 0xD5, 0xE8, 0xFB, 0xE8, 0xD5, 0xC2,
+    0xA1, 0x81, 0x60, 0x50, 0x30, 0x20, 0x10, 0x10,
 ];
-const BAR_R: array<utinyint, 64> = [
-    0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0F,
-    0x0F, 0x0D, 0x0B, 0x09, 0x07, 0x05, 0x03, 0x01,
-    0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0F,
-    0x0F, 0x0D, 0x0B, 0x09, 0x07, 0x05, 0x03, 0x01,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x03,
-    0x06, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x05, 0x08,
-    0x0C, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
+const GOLD_R: array<utinyint, 24> = [
+    0x00, 0x02, 0x03, 0x05, 0x07, 0x0A, 0x0C, 0x0D,
+    0x0E, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F,
+    0x0E, 0x0D, 0x0C, 0x0A, 0x07, 0x05, 0x03, 0x02,
 ];
 
-// The background bars' colours: stock colours 0-15 (0 black, 6 blue, 14 light blue, 3 cyan,
-// 1 white, 9 brown, 2 red, 10 light red, 7 yellow), a blue ramp and a red-to-yellow ramp.
-const GLOW: array<utinyint, 16> = [0, 6, 14, 3, 1, 3, 14, 6, 0, 9, 2, 10, 7, 10, 2, 9];
-
-const STRIPES: utinyint = 20;      // border stripes, one raster entry each
-const PITCH: utinyint = 12;        // picture lines per stripe
+const STRIPES: utinyint = 12;      // border stripes, one raster entry each
+const PITCH: utinyint = 20;        // picture lines per stripe: 0, 20, ... 220
 const FIRST: utinyint = 64;        // the first palette entry the stripes use (nothing else does)
-const PALETTE_BYTES: utinyint = 40; // two bytes an entry
-const BG_FROM: utinyint = 176;     // the first picture line of the background bars (text row 22)
-const BG_STRIPES: utinyint = 9;    // lines 176, 184 ... 240 (line 248 is a plain black entry)
+const PALETTE_BYTES: utinyint = 24; // two bytes an entry
+const STEP: utinyint = 4;          // video frames to a step of the glow
 
 // VERA palette entry FIRST: video memory $1FA00 + 2 * FIRST.
 const PALETTE_AT: usmallint = 0xFA80;
 
-let savedPalette: array<utinyint, 40>;
-let bgAt: array<utinyint, 9>;       // each background stripe's entry offset in the list
+let savedPalette: array<utinyint, 24>;
 let savedBorder: utinyint = 0;
+let phase: utinyint = 0;           // how far along the table stripe 0 is, 0..23
+let banked: utinyint = 0;          // video frames counted towards the next step
+let lastFrame: utinyint = 0;       // raster.frame() at the last look
+
+// Write the twelve stripes' palette entries for the current phase.
+function paint(): void {
+    setVramAddress(1, PALETTE_AT, 1);
+    for (let k: utinyint = 0; k < STRIPES; k++) {
+        let step: utinyint = k * 2 + 24 - phase;
+        if (step >= 24) {
+            step = step - 24;
+        }
+        memory.write(0x9F23, GOLD_GB[step]);
+        memory.write(0x9F23, GOLD_R[step]);
+    }
+}
 
 export namespace fx {
     const RASTER: bool = #fact(video.raster);
@@ -86,45 +83,35 @@ export namespace fx {
         for (let i: utinyint = 0; i < PALETTE_BYTES; i++) {
             savedPalette[i] = memory.read(0x9F23);
         }
+        phase = 0;
+        banked = 0;
+        paint();
 
-        // The list, written once, in line order: a black background at line 0, a border stripe
-        // every PITCH lines naming its own palette entry, background stripes from BG_FROM.
+        // The list, written once, in line order: a black background at line 0 and a border
+        // stripe every PITCH lines naming its own palette entry.
         raster.clear();
-        let bg: utinyint = 0;
-        let stripe: utinyint = 0;
-        for (let step: utinyint = 0; step < 63; step++) {
-            let line: utinyint = step * 4;
-            if (line == 0) {
-                raster.at(line, Slot.BACKGROUND, 0);
-            }
-            if (line % PITCH == 0 && stripe < STRIPES) {
-                raster.at(line, Slot.BORDER, FIRST + stripe);
-                stripe++;
-            }
-            if (line >= BG_FROM && line % 8 == 0) {
-                if (bg < BG_STRIPES) {
-                    bgAt[bg] = raster.count() * raster.STRIDE;
-                }
-                raster.at(line, Slot.BACKGROUND, 0);
-                bg++;
-            }
+        raster.at(0, Slot.BACKGROUND, 0);
+        for (let k: utinyint = 0; k < STRIPES; k++) {
+            raster.at(k * PITCH, Slot.BORDER, FIRST + k);
         }
         raster.commit();
         raster.enable();
+        lastFrame = raster.frame();
     }
 
     function frame(tick: utinyint): void {
-        // The palette first, at the top of the frame, a few dozen bytes inside the blanking.
-        let phase: utinyint = (64 - ((tick >> 1) & 63)) & 63;
-        setVramAddress(1, PALETTE_AT, 1);
-        for (let k: utinyint = 0; k < STRIPES; k++) {
-            let step: utinyint = (phase + k * 3) & 63;
-            memory.write(0x9F23, BAR_GB[step]);
-            memory.write(0x9F23, BAR_R[step]);
-        }
-        let shift: utinyint = tick >> 2;
-        for (let j: utinyint = 0; j < BG_STRIPES; j++) {
-            raster.setValue(bgAt[j], GLOW[(j + shift) & 15]);
+        // The raster handler counts every video frame (raster.frame()), so a game-loop pass
+        // that spans two frames still banks two.
+        let now: utinyint = raster.frame();
+        banked = banked + (now - lastFrame);
+        lastFrame = now;
+        if (banked >= STEP) {
+            banked = banked - STEP;
+            phase = phase + 1;
+            if (phase >= 24) {
+                phase = 0;
+            }
+            paint();
         }
     }
 

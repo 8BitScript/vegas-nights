@@ -14,6 +14,7 @@
 import { screen } from "@8bitscript/screen";
 import { text } from "@8bitscript/text";
 import { input } from "@8bitscript/input";
+import { pointer } from "@8bitscript/pointer";
 import { random } from "@8bitscript/random";
 import { bank } from "@shared/bank.8bs";
 import { reelscroll } from "@shared/reelscroll.8bs";
@@ -313,6 +314,7 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
     layout.centre(BLOCK_WIDTH);
     random.seed(seed);
     input.begin();
+    pointer.hide();
     bank.set(START_CREDITS);
     autoLeft = autoSpins;
     for (let reel: utinyint = 0; reel < REELS; reel++) {

@@ -78,6 +78,7 @@
     "@8bitscript/graphics": "0.24.0",
     "@8bitscript/i18n": "0.24.0",
     "@8bitscript/input": "0.24.0",
+    "@8bitscript/pointer": "0.24.0",
     "@8bitscript/random": "0.24.0",
     "@8bitscript/raster": "0.24.0",
     "@8bitscript/screen": "0.24.0",
