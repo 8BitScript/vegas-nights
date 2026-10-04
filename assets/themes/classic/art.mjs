@@ -5,6 +5,8 @@
 //
 // A cell holds ONE ink colour (8x8 pixels), so detail is carried by shape and by
 // black gaps (erase) rather than by a second colour inside a cell.
+import { frameCells } from '../frame-kit.mjs';
+
 const C = {
   white: '#ffffff', red: '#883932', lred: '#b86962', cyan: '#67b6bd', purple: '#8b3f96', green: '#55a049',
   lgreen: '#94e089', blue: '#40318d', lblue: '#7869c4', yellow: '#bfce72', orange: '#8b5429', grey: '#787878', lgrey: '#9f9f9f',
@@ -73,33 +75,6 @@ export default {
       BLANK: ['......', '......', '..##..', '..##..', '......', '......'],
     },
   },
-  // the cells every reel window is built from
-  frame: (() => {
-    const sym = (rows) => rows;
-    const grid = (f) => Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) => (f(x, y) ? '#' : '.')).join(''));
-    const dither = (x, y) => (x + y) % 2 === 0;
-    const top = (x, y) => (y < 6 ? true : y === 6 ? dither(x, y) : false);
-    const flipX = (f) => (x, y) => f(7 - x, y);
-    const flipY = (f) => (x, y) => f(x, 7 - y);
-    const left = (x, y) => (x < 6 ? true : x === 6 ? dither(x, y) : false);
-    const tl = (x, y) => (x + y < 2 ? false : x < 6 || y < 6 ? true : (x === 6 && y >= 6) || (y === 6 && x >= 6) ? dither(x, y) : false);
-    const div = (x, y) => (x >= 2 && x <= 5) || (x === 1 && y % 2 === 0) || (x === 6 && y % 2 === 1);
-    const cells = {
-      TL: { rows: grid(tl), color: 'yellow', pet: '1110' },
-      T: { rows: grid(top), color: 'yellow', pet: '1100' },
-      TR: { rows: grid(flipX(tl)), color: 'yellow', pet: '1101' },
-      L: { rows: grid(left), color: 'yellow', pet: '1010' },
-      R: { rows: grid(flipX(left)), color: 'yellow', pet: '0101' },
-      BL: { rows: grid(flipY(tl)), color: 'yellow', pet: '1011' },
-      B: { rows: grid(flipY(top)), color: 'yellow', pet: '0011' },
-      BR: { rows: grid(flipX(flipY(tl))), color: 'yellow', pet: '0111' },
-      DIV: { rows: grid(div), color: 'orange', pet: '1010' },
-      DIVT: { rows: grid((x, y) => top(x, y) || (y >= 6 && div(x, y))), color: 'yellow', pet: '1110' },
-      DIVB: { rows: grid((x, y) => flipY(top)(x, y) || (y < 2 && div(x, y))), color: 'yellow', pet: '1011' },
-      ARROW_L: { rows: ['..#.....', '..##....', '..###...', '..####..', '..####..', '..###...', '..##....', '..#.....'], color: 'red', pet: 160 },
-      ARROW_R: { rows: ['.....#..', '....##..', '...###..', '..####..', '..####..', '...###..', '....##..', '.....#..'], color: 'red', pet: 160 },
-      PANEL: { rows: ['#.#.#.#.', '.#.#.#.#', '#.#.#.#.', '.#.#.#.#', '#.#.#.#.', '.#.#.#.#', '#.#.#.#.', '.#.#.#.#'], color: 'blue', pet: 32 },
-    };
-    return sym({ cells });
-  })(),
+  // the cells every reel window is built from (assets/themes/frame-kit.mjs)
+  frame: frameCells({ metal: 'yellow', divider: 'orange', arrow: 'red', panel: 'blue' }),
 };

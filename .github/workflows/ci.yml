@@ -13,3 +13,16 @@ jobs:
       # a release (`8bs build --release`): each program for each of the five
       # machines, so CI catches a lab that stops fitting before a release does.
       cli-version: 0.24.0
+
+  # The art pipeline (tools/tiles): unit tests, and the committed tables must be
+  # what the pipeline writes now. The emulator tests skip here (no VICE/x16emu on the
+  # runner); they run on a developer machine with `pnpm run test:tiles`.
+  tiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+      - run: node tools/tiles/bin/tiles.mjs check
+      - run: node --test tools/tiles/test/

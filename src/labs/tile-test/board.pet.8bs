@@ -1,0 +1,44 @@
+// The PET's board: no glyphs to redefine, but the character ROM holds all
+// sixteen 2x2 block patterns, so a cell is the screen code for four
+// pseudo-pixels (QUAD_CODE) taken from the symbol's pseudo-pixel rows.
+// The PET's screen matrix is plain RAM at $8000.
+import { screen } from "@8bitscript/screen";
+import { SYMBOL_PIXELS, SYMBOL_BYTES, QUAD_CODE, FRAME_CODE } from "@generated/tiles/classic.pet.8bs";
+
+const SCREEN: usmallint = 0x8000;
+
+// bit 7 is the leftmost pseudo-pixel of a row.
+const MASK: array<utinyint, 8> = [128, 64, 32, 16, 8, 4, 2, 1];
+
+export namespace board {
+    function begin(): void {
+        screen.blank();
+    }
+
+    // One cell (cx, cy) of `symbol`: two pseudo-pixel rows, two columns.
+    function symbolCell(cell: usmallint, symbol: utinyint, cx: utinyint, cy: utinyint): void {
+        let at: usmallint = symbol;
+        at = at * SYMBOL_BYTES + cy * 2;
+        let top: utinyint = SYMBOL_PIXELS[at];
+        let bottom: utinyint = SYMBOL_PIXELS[at + 1];
+        let left: utinyint = cx * 2;
+        let pattern: utinyint = 0;
+        if ((top & MASK[left]) != 0) {
+            pattern = pattern + 8;
+        }
+        if ((top & MASK[left + 1]) != 0) {
+            pattern = pattern + 4;
+        }
+        if ((bottom & MASK[left]) != 0) {
+            pattern = pattern + 2;
+        }
+        if ((bottom & MASK[left + 1]) != 0) {
+            pattern = pattern + 1;
+        }
+        memory.write(SCREEN + cell, QUAD_CODE[pattern]);
+    }
+
+    function frameCell(cell: usmallint, which: utinyint): void {
+        memory.write(SCREEN + cell, FRAME_CODE[which]);
+    }
+}

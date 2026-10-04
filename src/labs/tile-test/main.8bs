@@ -1,0 +1,96 @@
+// tile-test — draws the classic theme's art on whichever machine this is built
+// for: every symbol in a row, then a reel window (frame, dividers, three
+// reels of three symbols, payline arrows) at rest. It exists to prove that the
+// tables tools/tiles generates look on a real machine the way
+// docs/tiles/classic.<machine>.png says they do. The cell-exact test is
+// test/tiles.test.mjs; the layout it expects is tools/tiles/src/layout.mjs.
+//
+// How a cell reaches the screen is the machine's business and lives in the
+// `board` twin next to this file (board.8bs is the C64, board.pet.8bs,
+// board.vic20.8bs, board.cx16.8bs the others): glyph-redefinable machines copy
+// the symbol bitmaps into character RAM, the PET prints its ROM's block glyphs.
+import { text } from "@8bitscript/text";
+import { board } from "./board.8bs";
+import {
+    ART_SYMBOLS, SYMBOL_CELLS_W, SYMBOL_CELLS_H,
+    FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
+    FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R,
+} from "@generated/tiles/classic.8bs";
+
+const COLUMNS: usmallint = text.COLUMNS;
+
+// What each of the three reels shows, top to bottom, as symbol indexes in the
+// engine's order (0 SEVEN, 1 BAR3, 2 BAR2, 3 BAR1, 4 CHERRY, 5 BLANK).
+const REEL_SYMBOLS: array<utinyint, 9> = [0, 1, 2, 2, 3, 4, 4, 5, 0];
+
+const REELS: utinyint = 3;
+const WINDOW_ROWS: utinyint = 3; // symbols a reel shows
+
+function cellAt(col: utinyint, row: utinyint): usmallint {
+    let cell: usmallint = row;
+    return cell * COLUMNS + col;
+}
+
+function symbolAt(col: utinyint, row: utinyint, symbol: utinyint): void {
+    for (let cy: utinyint = 0; cy < SYMBOL_CELLS_H; cy++) {
+        for (let cx: utinyint = 0; cx < SYMBOL_CELLS_W; cx++) {
+            board.symbolCell(cellAt(col + cx, row + cy), symbol, cx, cy);
+        }
+    }
+}
+
+function frameAt(col: utinyint, row: utinyint, which: utinyint): void {
+    board.frameCell(cellAt(col, row), which);
+}
+
+// The window's top-left is at (4, 5). Across: a frame cell, then each reel's
+// SYMBOL_CELLS_W cells with a divider between reels, then a frame cell.
+function drawWindow(): void {
+    let left: utinyint = 4;
+    let top: utinyint = 5;
+    let reelCols: utinyint = SYMBOL_CELLS_W;
+    let rows: utinyint = SYMBOL_CELLS_H * WINDOW_ROWS; // cell rows of reel
+    let right: utinyint = left + 1 + REELS * reelCols + (REELS - 1);
+    let bottom: utinyint = top + 1 + rows;
+
+    frameAt(left, top, FRAME_TL);
+    frameAt(right, top, FRAME_TR);
+    frameAt(left, bottom, FRAME_BL);
+    frameAt(right, bottom, FRAME_BR);
+    for (let col: utinyint = left + 1; col < right; col++) {
+        frameAt(col, top, FRAME_T);
+        frameAt(col, bottom, FRAME_B);
+    }
+    for (let row: utinyint = top + 1; row < bottom; row++) {
+        frameAt(left, row, FRAME_L);
+        frameAt(right, row, FRAME_R);
+    }
+    frameAt(left, top + 1 + (rows >> 1), FRAME_ARROW_L);
+    frameAt(right, top + 1 + (rows >> 1), FRAME_ARROW_R);
+
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let x0: utinyint = left + 1 + reel * (reelCols + 1);
+        if (reel > 0) {
+            let divider: utinyint = x0 - 1;
+            frameAt(divider, top, FRAME_DIVT);
+            frameAt(divider, bottom, FRAME_DIVB);
+            for (let row: utinyint = top + 1; row < bottom; row++) {
+                frameAt(divider, row, FRAME_DIV);
+            }
+        }
+        for (let k: utinyint = 0; k < WINDOW_ROWS; k++) {
+            symbolAt(x0, top + 1 + k * SYMBOL_CELLS_H, REEL_SYMBOLS[reel * WINDOW_ROWS + k]);
+        }
+    }
+}
+
+export function main(): void {
+    board.begin();
+    for (let s: utinyint = 0; s < ART_SYMBOLS; s++) {
+        symbolAt(1 + s * SYMBOL_CELLS_W, 1, s);
+    }
+    drawWindow();
+    while (true) {
+        waitFrame();
+    }
+}

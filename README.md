@@ -123,3 +123,7 @@ version pinned in `package.json`.
 ## License
 
 MIT.
+
+## Symbol art
+
+Slot symbols are pictures turned into per-machine tables at build time by `tools/tiles` — real 24x24 pixel art on the C64, VIC-20, X16 and web, ROM block glyphs on the PET. Themes live in `assets/themes/`; see [docs/tiles.md](docs/tiles.md) and the contact sheets in `docs/tiles/`. `pnpm run test:tiles` runs the unit tests and, where VICE and x16emu are installed, checks the on-screen result pixel for pixel.

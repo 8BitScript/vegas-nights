@@ -59,6 +59,7 @@ export class Art {
     });
   }
   poly(color, points) { return this.fill(color, (x, y) => inside(points, x, y)); }
+  erasePoly(points) { return this.erase((x, y) => inside(points, x, y)); }
   line(color, x0, y0, x1, y1, width) {
     return this.fill(color, (x, y) => distanceToSegment(x, y, x0, y0, x1, y1) <= width / 2);
   }

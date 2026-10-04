@@ -1,0 +1,58 @@
+// The VIC-20's board (the 8K build): the video chip reads its character set from
+// RAM when $9005's low nibble says so, and the expanded machine's RAM at
+// $1C00-$1FFF is visible to it, 128 glyphs. The theme's glyphs go there from
+// code FIRST up; the screen is at $1000 and colour RAM at $9400 (the build's
+// own geometry, packages/vic20/src/geometry.vic20.expanded.8bs). Codes 128-255
+// would still come from ROM at that base, so everything this uses is below 128;
+// code 32 (the blank screen.blank() fills with) is cleared so the paper stays paper.
+import { screen } from "@8bitscript/screen";
+import {
+    SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS, SYMBOL_CELLS_W, SYMBOL_BYTES, ART_SYMBOLS,
+    FRAME_BITMAP, FRAME_COLOR, FRAME_CELLS,
+} from "@generated/tiles/classic.vic20.8bs";
+
+const SCREEN: usmallint = 0x1000;
+const COLOR: usmallint = 0x9400;
+const GLYPHS: usmallint = 0x1C00;
+const FIRST: utinyint = 60; // the theme's glyph 0: 68 glyphs fill codes 60-127
+
+export namespace board {
+    function frameBase(): utinyint {
+        return FIRST + ART_SYMBOLS * SYMBOL_CELLS;
+    }
+
+    function begin(): void {
+        screen.blank();
+        let blank: usmallint = GLYPHS + 256; // glyph 32 (the space), 8 bytes a glyph
+        for (let r: utinyint = 0; r < 8; r++) {
+            memory.write(blank + r, 0);
+        }
+        let symbolBytes: usmallint = ART_SYMBOLS;
+        symbolBytes = symbolBytes * SYMBOL_BYTES;
+        let first: usmallint = FIRST;
+        first = GLYPHS + first * 8;
+        for (let i: usmallint = 0; i < symbolBytes; i++) {
+            memory.write(first + i, SYMBOL_BITMAP[i]);
+        }
+        let frameAt: usmallint = GLYPHS;
+        let base: usmallint = board.frameBase();
+        frameAt = frameAt + base * 8;
+        let frameBytes: usmallint = FRAME_CELLS;
+        frameBytes = frameBytes * 8;
+        for (let i: usmallint = 0; i < frameBytes; i++) {
+            memory.write(frameAt + i, FRAME_BITMAP[i]);
+        }
+        memory.write(0x9005, 0xCF); // screen at $1000, characters at $1C00
+    }
+
+    function symbolCell(cell: usmallint, symbol: utinyint, cx: utinyint, cy: utinyint): void {
+        let glyph: utinyint = symbol * SYMBOL_CELLS + cy * SYMBOL_CELLS_W + cx;
+        memory.write(SCREEN + cell, FIRST + glyph);
+        memory.write(COLOR + cell, SYMBOL_COLOR[glyph]);
+    }
+
+    function frameCell(cell: usmallint, which: utinyint): void {
+        memory.write(SCREEN + cell, board.frameBase() + which);
+        memory.write(COLOR + cell, FRAME_COLOR[which]);
+    }
+}

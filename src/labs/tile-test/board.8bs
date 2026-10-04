@@ -1,0 +1,62 @@
+// The C64's board: the symbol bitmaps are copied into the character set the
+// VIC draws text from (RAM under the I/O area — @8bitscript/c64/charset), and
+// a cell is a screen code plus a colour. Screen codes 128-255 are the
+// reverse-video half of the upper-case set; a program that prints no text is
+// free to redefine them, and glyph 0 of the theme lives at FIRST.
+import { charset } from "@8bitscript/c64/charset";
+import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import {
+    SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS, SYMBOL_CELLS_W, SYMBOL_BYTES, ART_SYMBOLS,
+    FRAME_BITMAP, FRAME_COLOR, FRAME_CELLS,
+} from "@generated/tiles/classic.8bs";
+
+const SCREEN: usmallint = 0xE000; // the screen matrix (packages/c64/src/geometry.8bs)
+const CHARSET: usmallint = 0xD000; // the upper-case set's RAM copy (packages/c64/src/geometry.8bs)
+const FIRST: utinyint = 128; // the screen code of the theme's glyph 0
+
+export namespace board {
+    // Frame glyphs follow the symbols' glyphs: glyph ART_SYMBOLS * SYMBOL_CELLS + f.
+    function frameBase(): utinyint {
+        return FIRST + ART_SYMBOLS * SYMBOL_CELLS;
+    }
+
+    // The glyph bytes go straight into the character RAM, one I/O-out window for the
+    // whole copy. charset.setRow(code, ...) would do the same a byte at a time, but
+    // its address is `code * 8` with `code` a utinyint, which wraps for codes of 32
+    // and up in 0.24.0 — so this does the multiply at 16 bits.
+    function begin(): void {
+        screen.blank();
+        setupVideo();
+        let symbolBytes: usmallint = ART_SYMBOLS;
+        symbolBytes = symbolBytes * SYMBOL_BYTES;
+        let first: usmallint = FIRST;
+        first = CHARSET + first * 8;
+        let frameAt: usmallint = board.frameBase();
+        frameAt = CHARSET + frameAt * 8;
+        let frameBytes: usmallint = FRAME_CELLS;
+        frameBytes = frameBytes * 8;
+        bankIoOut();
+        for (let i: usmallint = 0; i < symbolBytes; i++) {
+            memory.write(first + i, SYMBOL_BITMAP[i]);
+        }
+        for (let i: usmallint = 0; i < frameBytes; i++) {
+            memory.write(frameAt + i, FRAME_BITMAP[i]);
+        }
+        bankIoIn();
+        charset.useUppercase(); // screen.blank() printed through text, which drew from the other set
+    }
+
+    // One cell (cx, cy) of `symbol`, at screen cell `cell`.
+    function symbolCell(cell: usmallint, symbol: utinyint, cx: utinyint, cy: utinyint): void {
+        let glyph: utinyint = symbol * SYMBOL_CELLS + cy * SYMBOL_CELLS_W + cx;
+        memory.write(SCREEN + cell, FIRST + glyph);
+        text.putColor(cell, SYMBOL_COLOR[glyph]);
+    }
+
+    function frameCell(cell: usmallint, which: utinyint): void {
+        memory.write(SCREEN + cell, board.frameBase() + which);
+        text.putColor(cell, FRAME_COLOR[which]);
+    }
+}

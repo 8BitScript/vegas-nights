@@ -29,10 +29,12 @@ export function convertTheme(theme, machine) {
   return { cellsW, cellsH, symbols, frame, background: nearest(spec.palette, theme.background) };
 }
 
-/** The files `build` writes: the base file serves the C64 and the web (they share a palette). */
+/** The files `build` writes: the base file is the C64's (and what any other machine gets). */
 export const OUTPUTS = [
-  { file: (t) => `${t}.8bs`, machine: 'c64', serves: 'web' },
+  { file: (t) => `${t}.8bs`, machine: 'c64' },
   { file: (t) => `${t}.vic20.8bs`, machine: 'vic20' },
+  // the web shares the C64's colours but its glyph table reads a row with bit 0 on the left
+  { file: (t) => `${t}.web.8bs`, machine: 'web', lsbLeft: true },
   { file: (t) => `${t}.cx16.8bs`, machine: 'cx16' },
   { file: (t) => `${t}.pet.8bs`, machine: 'pet' },
 ];
@@ -44,7 +46,7 @@ export function buildTheme(theme) {
     const data = convertTheme(theme, out.machine);
     const text = MACHINES[out.machine].mode === 'quadrants'
       ? emitQuadrants(theme, out.machine, data, QUAD_CODE)
-      : emitPixels(theme, out.machine, data, out.serves);
+      : emitPixels(theme, out.machine, data, out.serves, { lsbLeft: out.lsbLeft });
     files[out.file(theme.name)] = text;
     report[out.machine] = { data, bytes: Buffer.byteLength(text), clash: data.symbols.reduce((n, s) => n + (s.clash ?? 0), 0), ink: data.symbols.reduce((n, s) => n + s.ink, 0) };
   }
