@@ -4,7 +4,7 @@ import { quad } from "./quad.8bs";
 
 export namespace view {
     const WIDTH: utinyint = 21;
-    const PANEL: utinyint = 17;
+    const PANEL: utinyint = 18;
     const TITLE: bool = false;
 
     function begin(): void {

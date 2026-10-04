@@ -60,6 +60,22 @@ export function calibrate(rulerPng) {
   return { x0: one.minX, y0: one.minY, pitchX, pitchY };
 }
 
+/**
+ * True when every pixel of block row `row`, columns [from, to), is the screen's background (its commonest
+ * colour): nothing is drawn there. Used to hold the blank row between the frame and the panel.
+ */
+export function rowBlank(png, geo, row, from, to) {
+  const counts = new Map();
+  for (let y = 0; y < png.height; y += 1) for (let x = 0; x < png.width; x += 1) counts.set(png.at(x, y), (counts.get(png.at(x, y)) ?? 0) + 1);
+  const background = [...counts.entries()].sort((p, q) => q[1] - p[1])[0][0];
+  const y0 = Math.round(geo.y0 + (row - 1) * geo.pitchY);
+  const y1 = Math.round(geo.y0 + row * geo.pitchY);
+  const x0 = Math.round(geo.x0 + from * geo.pitchX);
+  const x1 = Math.round(geo.x0 + to * geo.pitchX);
+  for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) if (png.at(x, y) !== background) return false;
+  return true;
+}
+
 /** A fingerprint of the pixels of block cell (col, row). */
 export function cellKey(png, geo, col, row) {
   const x = Math.round(geo.x0 + col * geo.pitchX);

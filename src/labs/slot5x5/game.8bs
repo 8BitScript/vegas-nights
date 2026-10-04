@@ -139,7 +139,7 @@ function message(which: utinyint): void {
     if (which == 1) {
         text.print(at, "SPINNING");
     } else if (which == 2) {
-        text.print(at, "WIN");
+        text.print(at, "WINNER!");
     } else if (which == 3) {
         text.print(at, "JACKPOT!");
     } else if (which == 4) {
@@ -153,7 +153,7 @@ function message(which: utinyint): void {
     } else if (which == 8) {
         text.print(at, "FREE SPIN");
     } else {
-        text.print(at, "PRESS CONFIRM");
+        text.print(at, "PRESS KEY");
     }
 }
 

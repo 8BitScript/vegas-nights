@@ -22,10 +22,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadTable } from './support/table.mjs';
+import { loadTable, labConsts } from './support/table.mjs';
 import { play } from './support/reference5.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
-import { calibrate, reference, readNumber, loadPng } from './support/screen.mjs';
+import { calibrate, reference, readNumber, loadPng, rowBlank } from './support/screen.mjs';
+import { frame } from './support/geometry.mjs';
 import { inkReader } from './support/adapters.mjs';
 import { KIND, pixelAdapter, quadAdapter } from './support/adapters5.mjs';
 import { bestChain } from './support/chain.mjs';
@@ -47,7 +48,7 @@ const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 
 const SAMPLES = { c64: 10, vic20: 8, pet: 8, cx16: 6, web: 10, c64web: 10 };
 
 // Where the game puts things (src/labs/slot5x5/game.8bs, view.8bs, view.pet.8bs).
-const PANEL = (machine) => (KIND[machine] === 'pixel' ? 14 : 17);
+const PANEL = (machine) => labConsts('slot5x5', machine).PANEL;
 
 const log = (...args) => console.log('   ', ...args);
 
@@ -93,6 +94,13 @@ for (const machine of MACHINES) {
       expectedAt = Array.from({ length: c.REELS }, (_, reel) => Array.from({ length: adapter.positions }, (__, p) => adapter.expected(reel, p)));
       assert.ok(ref.digits.size === 10);
       log(`cell ${geo.pitchX}x${geo.pitchY} px, reel unit = ${adapter.unit}, ${adapter.positions} positions a reel`);
+    });
+
+    test('the row under the frame is blank, and the panel starts below it', { skip: machine === 'vic20' ? 'the 22-column VIC-20 has no spare row (test/panel.test.mjs lists it)' : false }, async () => {
+      const png = await shoot('slot5x5-lose', 'panelrow', SPIN[machine]);
+      const f = frame('slot5x5', machine);
+      assert.ok(rowBlank(png, geo, f.bottom + 1, 0, 21), `row ${f.bottom + 1}, under the frame, has something drawn in it`);
+      assert.ok(!rowBlank(png, geo, panel, 0, 21), `the credit row (${panel}) is empty`);
     });
 
     for (const name of ['lose', 'win', 'jackpot']) {
