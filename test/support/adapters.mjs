@@ -97,6 +97,24 @@ function pixelAdapter(machine) {
 }
 
 // ---- quadrant machines --------------------------------------------------------
+/** The 0-15 number of the cell `across` (0-2) of a block row built from two pseudo-pixel rows. */
+export function nibbleOf(upper, lower, across) {
+  const shift = 6 - across * 2;
+  return (((upper >> shift) & 3) << 2) | ((lower >> shift) & 3);
+}
+
+/**
+ * What one cell of a quadrant-block reel shows, as the number 0-15 the composer works out
+ * (top-left highest): the middle of each of the cell's four 4x4 quadrants, read from `ink`.
+ * (`ox`, `oy` are the cell's top-left pixel in the screenshot.)
+ */
+export function quadCell(ink, geo, ox, oy) {
+  const sx = geo.pitchX / 8;
+  const sy = geo.pitchY / 8;
+  const at = (px, py) => ink(ox + Math.floor((px + 0.5) * sx), oy + Math.floor((py + 0.5) * sy));
+  return (at(1, 1) << 3) | (at(5, 1) << 2) | (at(1, 5) << 1) | at(5, 5);
+}
+
 function quadAdapter() {
   const tiles = loadFile('tiles/classic.pet.8bs');
   const pixels = tiles.arrays.SYMBOL_PIXELS;
@@ -114,24 +132,15 @@ function quadAdapter() {
       for (let down = 0; down < 9; down += 1) {
         const upper = rowAt(position + down * 2);
         const lower = rowAt(position + down * 2 + 1);
-        for (let across = 0; across < 3; across += 1) {
-          const shift = 6 - across * 2;
-          nibbles.push((((upper >> shift) & 3) << 2) | ((lower >> shift) & 3));
-        }
+        for (let across = 0; across < 3; across += 1) nibbles.push(nibbleOf(upper, lower, across));
       }
       return nibbles.join(',');
     },
     observe(png, geo, ink, reel) {
       const out = [];
-      const sx = geo.pitchX / 8;
-      const sy = geo.pitchY / 8;
       for (let down = 0; down < 9; down += 1) {
         for (let across = 0; across < 3; across += 1) {
-          const ox = geo.x0 + (REEL_COL(reel) + across) * geo.pitchX;
-          const oy = geo.y0 + (REEL_TOP + down - 1) * geo.pitchY;
-          const at = (px, py) => ink(ox + Math.floor((px + 0.5) * sx), oy + Math.floor((py + 0.5) * sy));
-          // the middle of each of the four 4x4 quadrants
-          out.push((at(1, 1) << 3) | (at(5, 1) << 2) | (at(1, 5) << 1) | at(5, 5));
+          out.push(quadCell(ink, geo, geo.x0 + (REEL_COL(reel) + across) * geo.pitchX, geo.y0 + (REEL_TOP + down - 1) * geo.pitchY));
         }
       }
       return out.join(',');

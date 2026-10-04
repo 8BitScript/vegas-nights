@@ -26,7 +26,8 @@ import { loadFile, loadTable } from './support/table.mjs';
 import { play } from './support/reference5.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng } from './support/screen.mjs';
-import { inkReader } from './support/adapters.mjs';
+import { inkReader, nibbleOf, quadCell } from './support/adapters.mjs';
+import { bestChain } from './support/chain.mjs';
 
 const table = loadTable('grid5x5');
 const c = table.consts;
@@ -106,49 +107,20 @@ function quadAdapter(machine) {
       for (let down = 0; down < 15; down += 1) {
         const upper = rowAt(reel, position + down * 2);
         const lower = rowAt(reel, position + down * 2 + 1);
-        for (let across = 0; across < 3; across += 1) {
-          const shift = 6 - across * 2;
-          nibbles.push((((upper >> shift) & 3) << 2) | ((lower >> shift) & 3));
-        }
+        for (let across = 0; across < 3; across += 1) nibbles.push(nibbleOf(upper, lower, across));
       }
       return nibbles.join(',');
     },
     observe(png, geo, ink, reel) {
       const out = [];
-      const sx = geo.pitchX / 8;
-      const sy = geo.pitchY / 8;
       for (let down = 0; down < 15; down += 1) {
         for (let across = 0; across < 3; across += 1) {
-          const ox = geo.x0 + (1 + 4 * reel + across) * geo.pitchX;
-          const oy = geo.y0 + (TOP(machine) + down - 1) * geo.pitchY;
-          const at = (px, py) => ink(ox + Math.floor((px + 0.5) * sx), oy + Math.floor((py + 0.5) * sy));
-          out.push((at(1, 1) << 3) | (at(5, 1) << 2) | (at(1, 5) << 1) | at(5, 5));
+          out.push(quadCell(ink, geo, geo.x0 + (1 + 4 * reel + across) * geo.pitchX, geo.y0 + (TOP(machine) + down - 1) * geo.pitchY));
         }
       }
       return out.join(',');
     },
   };
-}
-
-/** The longest chain of captures whose candidate positions only ever move down the strip. */
-function bestChain(shots, positions, perFrame) {
-  const nodes = [];
-  for (const shot of shots) {
-    for (const p of shot.cands) {
-      let best = { frame: shot.frame, p, len: 1, prev: null };
-      for (const n of nodes) {
-        if (n.frame >= shot.frame) continue;
-        const limit = perFrame * (shot.frame - n.frame);
-        if (((n.p - p + positions) % positions) <= limit && n.len + 1 > best.len) best = { frame: shot.frame, p, len: n.len + 1, prev: n };
-      }
-      nodes.push(best);
-    }
-  }
-  let top = null;
-  for (const n of nodes) if (top === null || n.len > top.len || (n.len === top.len && n.frame > top.frame)) top = n;
-  const chain = [];
-  for (let n = top; n; n = n.prev) chain.unshift({ frame: n.frame, p: n.p });
-  return chain;
 }
 
 for (const machine of MACHINES) {
