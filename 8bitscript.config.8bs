@@ -10,6 +10,7 @@ export default {
   programs: {
     main: { entry: 'src/lobby/main.8bs' },
     'hello-reels': { entry: 'src/labs/hello-reels/main.8bs' },
+    'sound-test': { entry: 'src/labs/sound-test/main.8bs' },
     // The tiles pipeline's proof: every symbol and a reel window at rest. The web joins
     // when its redefinable glyph table (8bitscript #303) is in a release.
     'tile-test': { entry: 'src/labs/tile-test/main.8bs', targets: ['pet', 'vic20', 'c64', 'cx16'] },
