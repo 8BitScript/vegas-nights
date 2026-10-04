@@ -27,7 +27,7 @@ A machine that does better has a twin that **replaces the file whole** (8BitScri
 | `src/shared/fx.web.8bs` | web | copper bars (done; the reference twin) |
 | `src/shared/fx.c64.8bs` | Commodore 64 | copper bars (done; see "The C64" below) |
 | `src/shared/fx.cx16.8bs` | Commander X16 | to write |
-| `src/shared/fx.vic20.8bs` | VIC-20 | to write |
+| `src/shared/fx.vic20.8bs` | VIC-20 | border flash and a marquee (done; no bars, see below) |
 | `src/shared/fx.pet.8bs` | PET | to write |
 
 Those five names are the only twins; `test/fx.test.mjs` (CI) fails on any other. It also fails if a
@@ -150,4 +150,57 @@ picture, and the border above and below it is where most of the bars are).
 - **Test.** `test/fx.machines.test.mjs`' `c64` row checks the border column (plain at frame 60,
   barred and moving at 1000 and 1004, plain and exactly as before at 8000) and the free rectangle
   (plain, 3+ colours during, plain again). Leaving `end()`'s cleanup out fails it.
+
+## The VIC-20 twin
+
+`src/shared/fx.vic20.8bs`: the whole border flashes through eight colours (changing every second
+frame) and a marquee of three lit bars (white head, yellow, red) runs down the screen's last
+column, over a dim blue tube. `RASTER` is true because `frame()` does work, but there is no raster
+list. `docs/fx/vic20-bonus-a.png` and `vic20-bonus-b.png` are two frames of a bonus round.
+
+**Why there are no copper bars.** The VIC-I has no raster interrupt, so `@8bitscript/raster` applies
+a list from `waitFrame()`'s frame hook, which busy-waits from the top of the frame down to the last
+planned line (`packages/vic20/AGENTS.md`, "Raster splits"). The quadrant composer needs most of a
+frame for one reel redraw, so a hook that holds the CPU for even the top third of the frame pushes
+every composing frame past its edge. It was built first and measured, because the brief asks for a
+twin to be measured before it is trusted. "End of round" below is the first video frame at which
+the `FS nn X3` counter text has gone, in the forced `slot5x5-bonus` round (bisected to 40 frames):
+
+| twin | end of round | program / RAM | what it is |
+| --- | --- | --- | --- |
+| the portable stub | ~10,200 | 9,686 / 96 | no effect |
+| eight border stripes, six lines apart, plus a 23-cell marquee rewritten every frame | ~18,200 (78% slower) | 11,594 / 114 | the raster hook, 1.9 KB of raster code |
+| the same marquee with no raster, rewriting all 23 cells every frame | ~13,800 (35% slower) | 10,439 / 105 | 23 cells, a 16-bit multiply each for the address |
+| **this twin** | **~10,300 (about 1%, inside the bisect's resolution)** | **10,535 / 106** | a table of the 23 addresses; three bars repainted four cells each every second frame; one read and one write of `$900F` a frame |
+
+So the cost on this machine is time, not bytes: +849 bytes of program and 10 of RAM over the stub,
+on the 8K build (11,775 usable), and the reels run at the speed they do without the effect. A frame
+that composes a reel has roughly a tenth of a frame to spare; budget the effect against that, not
+against the frame.
+
+**What it touches, and what it puts back.**
+
+- *Border:* `$900F` bits 0-2 only. Bits 3-7 are the background colour the reels' blank quadrants are
+  drawn on and the inverse flag; they are read back and kept, so no reel or panel pixel changes.
+  Written once a frame, right after `waitFrame()`, so it is one colour all the way down the screen;
+  when a frame's work ran past its edge the write lands partway down and that one frame shows two
+  colours (the test allows it). `end()` writes back the colour it found in `begin()`.
+- *Marquee:* column 21, the one column `layout.centre` leaves empty on every row (the block is 21
+  wide on a 22-column screen). `begin()` saves each cell's colour and fills it with solid blocks;
+  `end()` puts back spaces and the saved colours. No reel, panel or meter cell is written.
+- *Background colour:* never changed. A BACKGROUND entry (or any write to bits 4-7) repaints every
+  blank half of the reels' quadrant blocks and the whole credit panel, which is drawn on the
+  background.
+
+**The test.** `kind: 'flash'` in `test/fx.machines.test.mjs`: the border is one colour before the
+round (frame 600), the marquee column is empty; during it (frames 2400-2436) each frame's border
+has at most two colours and the main colours differ over four frames (at least three), the marquee
+shows at least three colours and the lights move between frames; after (frame 13,000) the border
+column and the marquee column are exactly what they were. Mutation-checked four ways, each failing
+on its own assertion: `end()` leaving the border flashing; `end()` leaving the marquee blocks;
+`frame()` never writing the border; `frame()` never moving the bars.
+
+**Not done.** The unexpanded (3.5K) VIC-20 cannot hold the 5x5 at all (9,686 bytes before this
+twin), so this twin is only ever built on 8K and up. PAL was not captured; the effect uses nothing
+region-specific, but the end-of-round figures above are NTSC.
 
