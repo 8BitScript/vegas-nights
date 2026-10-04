@@ -21,7 +21,7 @@
 // machine plays, not whether it sounds nice (the web has not been heard in a browser).
 import { loadTable } from '../test/support/table.mjs';
 import { play } from '../test/support/reference.mjs';
-import { MACHINES, EFFECTS, NOTE, FRAMES, FIRST, build, record, haveBinary, sidTones, vicTones, cents, noteHz } from './sound.mjs';
+import { MACHINES, EFFECTS, NOTE, FRAMES, FIRST, build, record, skipReason, sidTones, vicTones, cents, noteHz } from './sound.mjs';
 
 const PROBES = [
   { name: 'lose', program: 'slot3x3-lose', seed: 2026, spins: 3, frames: 2500 },
@@ -161,12 +161,9 @@ const targets = (asked.length > 0 ? asked : Object.keys(MACHINES)).filter((m) =>
 let failed = 0;
 for (const machine of targets) {
   const m = MACHINES[machine];
-  if (m.emulator && !haveBinary(m.emulator)) {
-    console.log(`${machine}: skipped (${m.emulator} is not installed)`);
-    continue;
-  }
-  if ((machine === 'pet' || machine === 'vic20' || machine === 'c64') && process.platform !== 'darwin') {
-    console.log(`${machine}: skipped (recording VICE's audio needs the macOS sound device)`);
+  const why = skipReason(machine);
+  if (why) {
+    console.log(`${machine}: skipped (${why})`);
     continue;
   }
   console.log(`${machine}:`);

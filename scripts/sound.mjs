@@ -199,6 +199,17 @@ function check(machine, analysis) {
   return { lines, bad };
 }
 
+// Why a machine cannot be recorded here, or null: its emulator is not installed, or (for the VICE
+// machines) VICE's audio can only be recorded through the macOS sound device.
+export function skipReason(machine) {
+  const m = MACHINES[machine];
+  if (m.emulator && !haveBinary(m.emulator)) return `${m.emulator} is not installed`;
+  if ((machine === 'pet' || machine === 'vic20' || machine === 'c64') && process.platform !== 'darwin') {
+    return "recording VICE's audio needs the macOS sound device";
+  }
+  return null;
+}
+
 // ---- main ------------------------------------------------------------------------
 
 // Run the check only when this file is the program, so scripts/slot-sound.mjs can import the helpers.
@@ -210,12 +221,9 @@ if (isMain) {
   let failed = 0;
   for (const machine of targets) {
     const m = MACHINES[machine];
-    if (m.emulator && !haveBinary(m.emulator)) {
-      console.log(`${machine}: skipped (${m.emulator} is not installed)`);
-      continue;
-    }
-    if ((machine === 'pet' || machine === 'vic20' || machine === 'c64') && process.platform !== 'darwin') {
-      console.log(`${machine}: skipped (recording VICE's audio needs the macOS sound device)`);
+    const why = skipReason(machine);
+    if (why) {
+      console.log(`${machine}: skipped (${why})`);
       continue;
     }
     console.log(`${machine}:`);
