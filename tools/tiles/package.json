@@ -1,0 +1,10 @@
+{
+  "name": "@vegas-nights/tiles",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PNG symbol art to per-machine 8BitScript tables: pixel bitmaps with a colour per cell, or PET quadrant pseudo-pixels.",
+  "bin": { "tiles": "./bin/tiles.mjs" },
+  "scripts": { "test": "node --test test/" },
+  "engines": { "node": ">=26" }
+}
