@@ -146,7 +146,7 @@ export async function renderPreviews(theme, outDir) {
     data.symbols.forEach((s, i) => {
       const x = gap + (i % perRow) * (tile + gap), y = 10 * S + Math.floor(i / perRow) * (data.cellsH * 8 * S + 12 * S);
       drawSymbol(img, x, y, machine, data, i);
-      img.text(x, y + data.cellsH * 8 * S + 2 * S, s.id, [200, 200, 120], 1 * S > 4 ? 2 : 2);
+      img.text(x, y + data.cellsH * 8 * S + 2 * S, s.id, [200, 200, 120], 2);
     });
     const order = [0, 1, 2].map((r) => Array.from({ length: n }, (_, k) => (k + r * 2) % n));
     const symbolPx = MACHINES[machine].mode === 'quadrants' ? data.cellsH * 2 : data.cellsH * 8;
