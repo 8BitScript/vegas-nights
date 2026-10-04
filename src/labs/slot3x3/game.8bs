@@ -27,9 +27,10 @@ import {
     JACKPOT_SEED, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO
 } from "@generated/classic3x3.8bs";
 
-// A fixed seed, so a screenshot taken with --screenshot reproduces the same
-// spins on every machine (the test computes the same draws in JavaScript).
-const SEED: usmallint = 2026;
+// The seed a person at the keyboard plays from; a headless run names its own, so
+// a screenshot reproduces the same spins on every machine (the test computes the
+// same draws in JavaScript).
+export const DEFAULT_SEED: usmallint = 2026;
 const START_CREDITS: usmallint = 2000;
 
 // Layout, in cells from the block's left edge (the machine is 13 cells wide).
@@ -47,7 +48,6 @@ let multiplier: utinyint = 1;
 let targets: array<utinyint, 3>;
 let jackpotHit: bool = false;
 let lineWin: array<utinyint, 3>;
-let totalWin: usmallint = 0;
 let autoLeft: utinyint = 0;
 let idleFrames: utinyint = 0;
 let flashLeft: utinyint = 0;
@@ -63,19 +63,23 @@ function clearRow(row: utinyint): void {
     text.print(layout.cell(1, row), "                    ");
 }
 
+// Six digits, as two adjacent fields of three (see shared/bank.8bs for why).
 function drawCredit(): void {
     text.print(layout.cell(1, CREDIT_ROW), "CREDIT");
-    text.printNumber(layout.cell(NUMBER_COLUMN, CREDIT_ROW), bank.credits(), 5);
+    text.printNumber(layout.cell(NUMBER_COLUMN, CREDIT_ROW), bank.high(), 3);
+    text.printNumber(layout.cell(NUMBER_COLUMN + 3, CREDIT_ROW), bank.low(), 3);
 }
 
 function drawBet(): void {
     text.print(layout.cell(1, BET_ROW), "BET");
-    text.printNumber(layout.cell(NUMBER_COLUMN, BET_ROW), BET_CREDITS * multiplier, 5);
+    text.printNumber(layout.cell(NUMBER_COLUMN, BET_ROW), 0, 3);
+    text.printNumber(layout.cell(NUMBER_COLUMN + 3, BET_ROW), BET_CREDITS * multiplier, 3);
 }
 
 function drawWin(): void {
     text.print(layout.cell(1, WIN_ROW), "WIN");
-    text.printNumber(layout.cell(NUMBER_COLUMN, WIN_ROW), totalWin, 5);
+    text.printNumber(layout.cell(NUMBER_COLUMN, WIN_ROW), bank.winThousands(), 3);
+    text.printNumber(layout.cell(NUMBER_COLUMN + 3, WIN_ROW), bank.winUnits(), 3);
 }
 
 function message(which: utinyint): void {
@@ -110,18 +114,9 @@ function setBet(index: utinyint): void {
     drawBet();
 }
 
-// One saturating `amount` x `times`.
-function scaled(amount: usmallint, times: utinyint): usmallint {
-    let total: usmallint = 0;
-    for (let i: utinyint = 0; i < times; i++) {
-        total = bank.sum(total, amount);
-    }
-    return total;
-}
-
 function startSpin(): void {
     bank.take(BET_CREDITS * multiplier);
-    totalWin = 0;
+    bank.clearWin();
     // The draw plan, in the order tools/slotmath documents: one byte per
     // reel (& STOP_MASK), then two for the jackpot (little-endian).
     for (let reel: utinyint = 0; reel < REELS; reel++) {
@@ -181,27 +176,28 @@ function settle(): void {
             base = bank.sum(base, pay);
         }
     }
-    totalWin = scaled(base, multiplier);
-    if (jackpotHit) {
-        // Hoisted: the 6502 backends cannot lay out bank.sum(x, scaled(...))
-        // when scaled itself calls bank.sum.
-        let prize: usmallint = scaled(JACKPOT_SEED[0], multiplier);
-        totalWin = bank.sum(totalWin, prize);
+    // The win is the lines' credits times the bet, plus the jackpot's, in credits
+    // that are exact at every bet (the bank holds six digits).
+    for (let i: utinyint = 0; i < multiplier; i++) {
+        bank.addWin(base);
+        if (jackpotHit) {
+            bank.addWin(JACKPOT_SEED[0]);
+        }
     }
-    bank.add(totalWin);
+    bank.collect();
     drawCredit();
     drawWin();
     flashLeft = 0;
     if (jackpotHit) {
         message(3);
         sound.bonus();
-    } else if (totalWin != 0) {
+    } else if (bank.winning()) {
         message(2);
         sound.win();
     } else {
         message(4);
     }
-    if (totalWin != 0) {
+    if (bank.winning()) {
         flashLeft = 8;
         flashWait = 0;
         state = 2;
@@ -291,13 +287,13 @@ function frameIdle(): void {
     }
 }
 
-// Play forever. `autoSpins` is the number of spins the machine takes by
-// itself right after it starts (0 for a person at the keyboard): headless
+// Play forever from `seed`. `autoSpins` is the number of spins the machine takes
+// by itself right after it starts (0 for a person at the keyboard): headless
 // screenshots cannot press a key.
-export function play(autoSpins: utinyint): void {
+export function play(autoSpins: utinyint, seed: usmallint): void {
     screen.blank();
     layout.centre(BLOCK_WIDTH);
-    random.seed(SEED);
+    random.seed(seed);
     input.begin();
     bank.set(START_CREDITS);
     autoLeft = autoSpins;

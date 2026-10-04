@@ -1,0 +1,28 @@
+// Measurement support: redraw reel 0 REPS times, then write DONE on the screen.
+// scripts/measure-redraw.mjs rewrites REPS, runs this under each machine's emulator
+// and finds the frame at which DONE appears; the difference between REPS = 0 and
+// REPS = N, over N, is the cost of one reel redraw in frames. It is not a game.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { view } from "./view.8bs";
+
+const REPS: usmallint = 0;
+
+export function main(): void {
+    screen.blank();
+    layout.centre(13);
+    for (let reel: utinyint = 0; reel < 3; reel++) {
+        reelscroll.place(reel, 0);
+    }
+    view.begin();
+    for (let i: usmallint = 0; i < REPS; i++) {
+        reelscroll.place(0, 5);
+        view.draw(0);
+    }
+    text.print(layout.cell(1, 22), "DONE");
+    while (true) {
+        waitFrame();
+    }
+}

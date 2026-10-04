@@ -54,6 +54,10 @@ export namespace view {
             text.putChar(at, GLYPH_LEFT[symbol]);
             text.putChar(at + 1, GLYPH_MID[symbol]);
             text.putChar(at + 2, GLYPH_RIGHT[symbol]);
+            // putChar leaves the cell's colour as it was; on the web that is black.
+            text.putColor(at, TextColor.WHITE);
+            text.putColor(at + 1, TextColor.WHITE);
+            text.putColor(at + 2, TextColor.WHITE);
         }
     }
 

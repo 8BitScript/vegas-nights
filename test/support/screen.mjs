@@ -105,4 +105,4 @@ export function readNumber(png, geo, ref, col, row, width) {
 }
 
 // Where the game puts things (src/labs/slot3x3/game.8bs).
-export const LAYOUT = { creditRow: 15, betRow: 16, winRow: 17, numberCol: 8, numberWidth: 5 };
+export const LAYOUT = { creditRow: 15, betRow: 16, winRow: 17, numberCol: 8, numberWidth: 6 };

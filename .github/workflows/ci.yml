@@ -27,3 +27,18 @@ jobs:
           package-manager-cache: false # the tools have no dependencies; do not look for pnpm
       - run: node tools/tiles/bin/tiles.mjs check
       - run: node --test tools/tiles/test/
+
+  # The slot machine's odds: the committed table, recomputed from first principles. Every
+  # one of the 64^3 reel outcomes goes through this repo's own payline evaluator (the
+  # rules the 6502 code implements) and must reproduce the return the engine printed in
+  # the table's header. No emulator is needed; the on-screen tests (`pnpm run
+  # test:machines`) need VICE and x16emu and run on a developer machine.
+  slots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          package-manager-cache: false # no dependencies; do not look for pnpm
+      - run: node --test test/odds.test.mjs

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadTable, ROOT } from './support/table.mjs';
+import { loadTable, loadFile, ROOT } from './support/table.mjs';
 import { enumerate, play, windowAt, lcg, SEED } from './support/reference.mjs';
 
 const table = loadTable();
@@ -31,11 +31,24 @@ test('the three paylines are the middle row and both diagonals', () => {
   assert.deepEqual(a.LINES, [1, 1, 1, 0, 1, 2, 2, 1, 0]);
 });
 
-test('every symbol the strips use has a glyph in the game', () => {
-  const game = readFileSync(join(ROOT, 'src', 'labs', 'slot3x3', 'game.8bs'), 'utf8');
+test('every symbol the strips use has art, on every machine', () => {
+  for (const file of ['tiles/classic.8bs', 'tiles/classic.vic20.8bs', 'tiles/classic.cx16.8bs', 'tiles/classic.web.8bs']) {
+    const tiles = loadFile(file);
+    assert.equal(tiles.consts.ART_SYMBOLS, c.SYMBOL_COUNT, `${file}: one picture per symbol of the odds table`);
+    assert.equal(tiles.arrays.SYMBOL_BITMAP.length, c.SYMBOL_COUNT * tiles.consts.SYMBOL_BYTES, `${file}: SYMBOL_BITMAP covers every symbol`);
+    assert.equal(tiles.arrays.SYMBOL_COLOR.length, c.SYMBOL_COUNT * tiles.consts.SYMBOL_CELLS, `${file}: SYMBOL_COLOR covers every symbol`);
+    assert.equal(tiles.consts.SYMBOL_CELLS_W, 3, `${file}: the composer assumes 3x3-cell symbols`);
+    assert.equal(tiles.consts.SYMBOL_CELLS_H, 3);
+  }
+  const pet = loadFile('tiles/classic.pet.8bs');
+  assert.equal(pet.consts.ART_SYMBOLS, c.SYMBOL_COUNT);
+  assert.equal(pet.arrays.SYMBOL_PIXELS.length, c.SYMBOL_COUNT * 6);
+  assert.equal(pet.arrays.QUAD_CODE.length, 16);
+  // the text fallback's characters, in view.8bs
+  const view = readFileSync(join(ROOT, 'src', 'labs', 'slot3x3', 'view.8bs'), 'utf8');
   for (const name of ['GLYPH_LEFT', 'GLYPH_MID', 'GLYPH_RIGHT']) {
-    const m = new RegExp(`const ${name}: array<utinyint, (\\d+)>`).exec(game);
-    assert.ok(m, `${name} exists in game.8bs`);
+    const m = new RegExp(`const ${name}: array<utinyint, (\\d+)>`).exec(view);
+    assert.ok(m, `${name} exists in view.8bs`);
     assert.equal(Number(m[1]), c.SYMBOL_COUNT, `${name} has one entry per symbol`);
   }
 });

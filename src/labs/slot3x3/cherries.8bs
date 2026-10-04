@@ -1,0 +1,7 @@
+// slot3x3 for the screenshot tests: three spins that pay: two cherries and a bar. It takes 3 spins by itself,
+// from seed 304, because a headless capture cannot press a key. See game.8bs.
+import { play } from "./game.8bs";
+
+export function main(): void {
+    play(3, 304);
+}

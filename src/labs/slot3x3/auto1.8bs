@@ -1,7 +1,0 @@
-// slot3x3 with 1 spin(s) taken automatically, from the fixed seed, so a
-// headless screenshot shows a real, reproducible result. See game.8bs.
-import { play } from "./game.8bs";
-
-export function main(): void {
-    play(1);
-}

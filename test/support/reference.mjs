@@ -2,7 +2,7 @@
 // mirrors src/labs/slot3x3/game.8bs line for line: the same LCG as
 // @8bitscript/random, the same draw order (one byte & STOP_MASK per reel, then
 // two jackpot bytes little-endian), the same window, run and payout rules, the
-// same 16-bit saturation.
+// same exact credits.
 
 export const SEED = 2026;
 export const START_CREDITS = 2000;
@@ -43,12 +43,9 @@ export function linePay(table, positions, line) {
   return table.arrays.PAYS[first * PAY_WIDTH + run];
 }
 
-const sat = (a, b) => Math.min(a + b, 65535);
-const scaled = (amount, times) => {
-  let total = 0;
-  for (let i = 0; i < times; i += 1) total = sat(total, amount);
-  return total;
-};
+// A line sum is a 16-bit number on the machine (the biggest, 40,077, fits); credits and
+// wins are exact, up to the balance's ceiling of 999,999 (src/shared/bank.8bs).
+const CEILING = 999_999;
 
 /** What `spins` automatic spins from SEED do, at bet level `betIndex`. */
 export function play(table, spins, { betIndex = 0, seed = SEED } = {}) {
@@ -72,11 +69,11 @@ export function play(table, spins, { betIndex = 0, seed = SEED } = {}) {
     for (let line = 0; line < c.LINE_COUNT; line += 1) {
       const pay = linePay(table, stops, line);
       lines.push(pay);
-      if (pay !== 0) base = sat(base, pay);
+      if (pay !== 0) base += pay;
     }
-    let win = scaled(base, multiplier);
-    if (jackpot) win = sat(win, scaled(a.JACKPOT_SEED[0], multiplier));
-    credits = sat(credits, win);
+    let win = base * multiplier;
+    if (jackpot) win += a.JACKPOT_SEED[0] * multiplier;
+    credits = Math.min(CEILING, credits + win);
     results.push({ stops, window: windowAt(table, stops), jackpot, lines, win, credits });
   }
   return results;

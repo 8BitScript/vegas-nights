@@ -1,4 +1,6 @@
-// The X16 redraws a reel in ~0.25 of a frame: every reel, every frame.
+// The X16 redraws a reel in ~0.25 of a frame: every reel, every frame, 8 pixels
+// each — 480 pixels a second, smooth.
 export namespace feel {
     const WAIT: utinyint = 0;
+    const FAR: utinyint = 8;
 }

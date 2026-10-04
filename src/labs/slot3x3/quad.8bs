@@ -27,6 +27,7 @@ import {
 // reach the next row costs nothing), and which of its three symbol rows are
 // shown inverted (the win flash).
 let drawnRow: array<utinyint, 5>;
+let drawnStop: array<utinyint, 5>;
 let inverted: array<utinyint, 5>;
 
 // 1 << n, as a table: the 6502 backends take no run-time shift amount.
@@ -82,6 +83,7 @@ export namespace quad {
         // The window's top row within its symbol: six rows of 4 pixels each.
         let line: utinyint = reelscroll.row(reel) >> 2;
         drawnRow[reel] = line;
+        drawnStop[reel] = stop;
         let strip: usmallint = reel;
         strip = strip * STOPS;
         // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
@@ -143,6 +145,7 @@ export namespace quad {
         for (let reel: utinyint = 0; reel < REELS; reel++) {
             inverted[reel] = 0;
             drawnRow[reel] = 255;
+            drawnStop[reel] = 255;
         }
         quad.drawFrame();
     }
@@ -157,9 +160,10 @@ export namespace quad {
         }
     }
 
-    // A reel moved `pixels` down; redraw once it has moved a whole pseudo-pixel row.
+    // A reel moved `pixels` down; redraw once it has moved a whole pseudo-pixel row
+    // or past a symbol (a 24-pixel hop keeps the row and changes the symbol).
     function moved(reel: utinyint, pixels: utinyint): void {
-        if (drawnRow[reel] != (reelscroll.row(reel) >> 2)) {
+        if (drawnRow[reel] != (reelscroll.row(reel) >> 2) || drawnStop[reel] != reelscroll.stop(reel)) {
             quad.drawReel(reel);
         }
     }

@@ -1,7 +1,7 @@
 // slot3x3 — the 3x3 slot machine with three paylines. Confirm spins; up and
 // down change the bet. See game.8bs.
-import { play } from "./game.8bs";
+import { play, DEFAULT_SEED } from "./game.8bs";
 
 export function main(): void {
-    play(0);
+    play(0, DEFAULT_SEED);
 }

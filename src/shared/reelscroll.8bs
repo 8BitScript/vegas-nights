@@ -76,12 +76,12 @@ export namespace reelscroll {
     // Call once a frame. Returns the pixels the reel moved down (0 if it did
     // not move this frame); the caller redraws the reel when it is not 0.
     //
-    // The schedule, by pixels still to go, is a blur far out and finer and finer
-    // in: 24 pixels a redraw while more than eight symbols remain, 12 until four
-    // remain, 8, then 4 within one symbol and 2 for the last eight pixels — each
-    // boundary a multiple of the step before it, so the last step lands exactly
-    // on the stop. Between redraws a reel waits feel.WAIT frames (the machine's
-    // measured redraw budget), one more in the last two steps so it settles.
+    // The schedule, by pixels still to go, is a blur far out and finer and finer in:
+    // feel.FAR pixels a redraw (at most 12 once fewer than eight symbols remain), 8
+    // within four symbols, 4 within one, and 2 for the last eight pixels — each
+    // boundary a multiple of the step before it, so the last step lands exactly on the
+    // stop. Between redraws a reel waits feel.WAIT frames (the machine's measured
+    // redraw budget), one more in the last steps so it settles.
     function step(reel: utinyint, count: utinyint): utinyint {
         if (remaining[reel] == 0) {
             return 0;
@@ -91,12 +91,12 @@ export namespace reelscroll {
             return 0;
         }
         let left: usmallint = remaining[reel];
-        let pixels: utinyint = 24;
+        let pixels: utinyint = feel.FAR;
         let wait: utinyint = feel.WAIT;
-        if (left <= 192) {
+        if (pixels > 12 && left <= 192) {
             pixels = 12;
         }
-        if (left <= 96) {
+        if (pixels > 8 && left <= 96) {
             pixels = 8;
         }
         if (left <= 24) {

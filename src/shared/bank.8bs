@@ -1,21 +1,51 @@
-// The player's credits. One 16-bit balance, because the 6502 backends in
-// @8bitscript 0.24.0 do not lower 32-bit values ("this path only lowers
-// 8-bit values", measured), and every addition saturates at 65535 rather
-// than wrapping: a lucky run stops growing instead of silently becoming a
-// small number. A game whose biggest pay times its biggest bet can exceed
-// that is told so by `add` returning the amount it actually banked.
-let balance: usmallint = 0;
+// The player's credits, exactly, up to 999,999.
+//
+// The 6502 backends in @8bitscript 0.24.0 do not lower 32-bit values (measured:
+// "this path only lowers 8-bit values"), and a 16-bit balance is not enough: the
+// engine's biggest pay is 400x the bet, so at bet x5 a single win is 200,400
+// credits, and a balance that saturates at 65,535 quietly pays less than the odds
+// table promises (computed: a realized return of 90.6% at bet x5 against the
+// table's 93.98%). So the balance and the win are each two limbs of three decimal
+// digits — thousands and units — which needs only 16-bit arithmetic, is exact, and
+// prints as two adjacent three-digit fields.
+//
+// Only the balance saturates, at 999,999; a win is far below that.
+let balanceHigh: usmallint = 0;  // thousands of credits, 0..999
+let balanceLow: usmallint = 0;   // credits, 0..999
+let winHigh: usmallint = 0;
+let winLow: usmallint = 0;
 
 export namespace bank {
+    // Set the balance to `value` credits.
     function set(value: usmallint): void {
-        balance = value;
+        let rest: usmallint = value;
+        let thousands: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            thousands = thousands + 1;
+        }
+        balanceHigh = thousands;
+        balanceLow = rest;
     }
 
-    function credits(): usmallint {
-        return balance;
+    function high(): usmallint {
+        return balanceHigh;
     }
 
-    // a + b, held at 65535 instead of wrapping.
+    function low(): usmallint {
+        return balanceLow;
+    }
+
+    function winThousands(): usmallint {
+        return winHigh;
+    }
+
+    function winUnits(): usmallint {
+        return winLow;
+    }
+
+    // a + b, held at 65,535 instead of wrapping (for sums that are known to be
+    // small: the lines of one spin).
     function sum(a: usmallint, b: usmallint): usmallint {
         let total: usmallint = a + b;
         if (total < a) {
@@ -24,15 +54,79 @@ export namespace bank {
         return total;
     }
 
-    function add(amount: usmallint): void {
-        balance = bank.sum(balance, amount);
-    }
-
+    // Is there at least `amount` credits?
     function canPay(amount: usmallint): bool {
-        return balance >= amount;
+        let rest: usmallint = amount;
+        let thousands: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            thousands = thousands + 1;
+        }
+        if (balanceHigh > thousands) {
+            return true;
+        }
+        if (balanceHigh < thousands) {
+            return false;
+        }
+        return balanceLow >= rest;
     }
 
+    // Take `amount` credits; the caller has checked canPay.
     function take(amount: usmallint): void {
-        balance = balance - amount;
+        let rest: usmallint = amount;
+        let thousands: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            thousands = thousands + 1;
+        }
+        if (balanceLow >= rest) {
+            balanceLow = balanceLow - rest;
+        } else {
+            balanceLow = balanceLow + 1000 - rest;
+            balanceHigh = balanceHigh - 1;
+        }
+        balanceHigh = balanceHigh - thousands;
+    }
+
+    // ---- the win of one spin, collected into the balance ------------------
+
+    function clearWin(): void {
+        winHigh = 0;
+        winLow = 0;
+    }
+
+    // Add `amount` credits to the win.
+    function addWin(amount: usmallint): void {
+        let rest: usmallint = amount;
+        let thousands: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            thousands = thousands + 1;
+        }
+        winLow = winLow + rest;
+        if (winLow >= 1000) {
+            winLow = winLow - 1000;
+            thousands = thousands + 1;
+        }
+        winHigh = winHigh + thousands;
+    }
+
+    function winning(): bool {
+        return winHigh != 0 || winLow != 0;
+    }
+
+    // Move the win into the balance (which holds at 999,999).
+    function collect(): void {
+        balanceLow = balanceLow + winLow;
+        let carry: usmallint = 0;
+        if (balanceLow >= 1000) {
+            balanceLow = balanceLow - 1000;
+            carry = 1;
+        }
+        balanceHigh = balanceHigh + winHigh + carry;
+        if (balanceHigh > 999) {
+            balanceHigh = 999;
+            balanceLow = 999;
+        }
     }
 }
