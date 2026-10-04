@@ -40,8 +40,9 @@ const PROBES = [
 const QUIET_PROBES = [
   { name: 'lobby', program: 'main', frames: 700 },
   { name: 'slot5x5 loses and sits', program: 'slot5x5-lose', frames: 2500 },
-  // The C64 finishes the bonus round's free spins around frame 6,400 (it composes its reels more slowly than the web does).
-  { name: 'slot5x5 bonus ends and sits', program: 'slot5x5-bonus', frames: 7600 },
+  // The C64 finishes the bonus round's free spins around frame 6,400 and the VIC-20 around 11,000
+  // (they compose their reels more slowly than the web does).
+  { name: 'slot5x5 bonus ends and sits', program: 'slot5x5-bonus', frames: 7600, framesOn: { vic20: 11500 } },
 ];
 // game.8bs: a pay of this many credits at the base bet or more is "big".
 const BIG_WIN = 2000;
@@ -235,7 +236,8 @@ const failed = await eachMachine(async (machine) => {
     console.log(` ${probe.name}:`);
     problems += await attempt(async () => {
       build(machine, probe.program);
-      const quiet = checkSilence(machine, await record(machine, probe.program, { frames: probe.frames }), probe.frames);
+      const frames = probe.framesOn?.[machine] ?? probe.frames;
+      const quiet = checkSilence(machine, await record(machine, probe.program, { frames }), frames);
       return { lines: [quiet.line], bad: quiet.bad };
     });
   }
