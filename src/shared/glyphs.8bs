@@ -11,6 +11,11 @@
 //   FIRST       the first glyph code a reel may use (the lab maps its cells to
 //               FIRST + n and rewrites those glyphs' bytes as a reel scrolls).
 //   CODES       how many codes from FIRST are free to use.
+//   EXTRA       how many more codes sit just BELOW FIRST that a lab which never prints
+//               them is also free to use (the C64's PETSCII graphics, screen codes
+//               91-127, which the portable text never draws): a lab's glyph block runs
+//               from FIRST - EXTRA, so a bigger reel window than FIRST..FIRST+CODES holds
+//               still fits. 0 where there is no such range.
 //   PORT        false: glyph bytes are memory-mapped, `address(code)` is where.
 //               true: bytes go to a write port that steps along by itself
 //               (the X16's VERA data register), after `seek(code)`.
@@ -22,11 +27,19 @@
 //                  TILE_RAM once, and composeRow(first, second, dest, run, rest)
 //                  copies three glyphs' worth from there, `run` bytes from the
 //                  address `first` then `rest` from `second`, per glyph.
+//   symbols(count, bytes)  once, before the first reel draw: how many symbols the staged
+//                  tileset holds and how many bytes each takes (the composer finds symbol n
+//                  at TILE_RAM + n * bytes). A machine whose composer needs no table does nothing.
+//   put(at, code)  the screen code `code` into text cell `at`, raw. text.putChar reads its
+//                  argument as ASCII and translates it, which turns the C64's low codes (91-127,
+//                  where the graphics sit) into letters, so a glyph block that starts there maps
+//                  its cells with this.
 //   begin()        once, before the first glyph write.
 export namespace glyphs {
     const AVAILABLE: bool = false;
     const FIRST: utinyint = 0;
     const CODES: utinyint = 0;
+    const EXTRA: utinyint = 0;
     const PORT: bool = false;
     const PORT_ADDRESS: usmallint = 0;
     const TILE_RAM: usmallint = 0;
@@ -48,10 +61,18 @@ export namespace glyphs {
     function stage(index: usmallint, value: utinyint): void {
     }
 
+    function put(at: usmallint, code: utinyint): void {
+    }
+
+    function symbols(count: utinyint, bytes: usmallint): void {
+    }
+
     function stageStrip(index: usmallint, value: utinyint): void {
     }
 
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+    // A whole reel window in one call (memory-mapped machines with an assembly composer):
+    // `rows` cell rows of `across` glyphs, from symbols `down` cell rows tall.
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
     }
 
     // The pre-composed strip buffer (the 5x5): byte `index` set to `value`, and

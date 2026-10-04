@@ -6,8 +6,8 @@
 //
 // Codes 128-255 are the upper-case set's reverse-video copies, which a program
 // that never prints reverse text is free to use; the reels take them.
-import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
-import { Video } from "@8bitscript/c64/video";
+import { setupVideo, bankIoOut, bankIoIn, memoryPointer } from "@8bitscript/c64";
+import { Video, screenRam } from "@8bitscript/c64/video";
 
 // Where the tileset is staged for the assembly composer: $C000-$CFFF is plain RAM
 // on the C64, outside the video bank's screen, sprite shapes and character copy
@@ -20,6 +20,15 @@ let tileBytes: array<utinyint, 1024>;
 // …and the reels' strips, a symbol number a stop, right after the tiles.
 @address(0xC400)
 let stripBytes: array<utinyint, 320>;
+
+// …and where each symbol's tile starts in the tileset: the low and the high byte of its
+// address, one entry a symbol (up to sixteen), filled by symbols(). The composer reads a
+// symbol's place from here, so a symbol can be any size (24x24 or 32x32 art).
+@address(0xC600)
+let symbolLow: array<utinyint, 16>;
+
+@address(0xC610)
+let symbolHigh: array<utinyint, 16>;
 
 // The 5x5's strips, pre-composed: for every reel and glyph column, the whole strip
 // of the column as bytes (512 pixel rows) and the first 80 repeated after it, so
@@ -39,6 +48,10 @@ export namespace glyphs {
     const COLOR_STRIP: bool = true;
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
+    // Screen codes 91-127 are PETSCII graphics in the mixed-case set, which no text the labs
+    // print draws (the portable text is letters, digits and a few marks, all below 91), so
+    // they are free too: the 3x3's 32x32 art needs 158 glyphs and FIRST..FIRST+CODES is 127.
+    const EXTRA: utinyint = 37;
     const PORT: bool = false;
     const PORT_ADDRESS: usmallint = 0;
     const TILE_RAM: usmallint = 0xC000;
@@ -48,6 +61,10 @@ export namespace glyphs {
     // first glyph write; setupVideo() does both and is cheap when done.
     function begin(): void {
         setupVideo();
+        // The glyphs are written into the mixed-case set (below), so that is the set to show.
+        // @8bitscript/text selects it on its first write; the reel cells are written raw (put),
+        // which does not, so it is selected here.
+        memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
     }
 
     // @8bitscript/text keeps the mixed-case set selected ($D018 = MEMORY_POINTER_LOWERCASE:
@@ -67,60 +84,67 @@ export namespace glyphs {
         tileBytes[index] = value;
     }
 
+    // The screen code `code`, as it is, into text cell `at` (the screen matrix is the C64's own).
+    function put(at: usmallint, code: utinyint): void {
+        screenRam[at] = code;
+    }
+
     function stageStrip(index: usmallint, value: utinyint): void {
         stripBytes[index] = value;
     }
 
-    // A whole reel window in one call: nine cell rows of three glyphs, composed
-    // from the staged tileset ($C000) according to the staged strip (`strip` is the
-    // address of this reel's stops, one symbol number a stop) at the pixel offset
-    // given by `stop` (the symbol on the window's top row) and `row` (the pixel row
-    // within it, 0-23). `dest` is the first of the reel's 27 consecutive glyphs'
-    // bytes; `mask` is the number of stops minus one (a power of two).
+    // Where symbol n's tile starts in the tileset, for the composer: $C000 + n * bytes.
+    function symbols(count: utinyint, bytes: usmallint): void {
+        let at: usmallint = 0xC000;
+        for (let i: utinyint = 0; i < count; i++) {
+            let low: utinyint = at & 255;
+            let high: utinyint = at >> 8;
+            symbolLow[i] = low;
+            symbolHigh[i] = high;
+            at = at + bytes;
+        }
+    }
+
+    // A whole reel window in one call: `rows` cell rows of `across` glyphs, composed from the
+    // staged tileset ($C000, symbol n at symbolLow/High[n]) according to the staged strip
+    // (`strip` is the address of this reel's stops, one symbol number a stop) at the pixel
+    // offset given by `stop` (the symbol on the window's top row) and `row` (the pixel row
+    // within it, 0 to down * 8 - 1). `dest` is the first of the reel's `rows * across`
+    // consecutive glyphs' bytes; `mask` is the number of stops minus one (a power of two).
+    // A symbol is `down` cell rows of `across` cells (3x3 for 24x24 art, 4x4 for 32x32), eight
+    // bytes a cell, laid out cell row by cell row.
     //
-    // Each cell row takes eight pixel rows of the strip from where it is: `run`
-    // bytes (8 - within) from the symbol cell it starts in, then `rest` (within)
-    // from the one below — the cell under it in the same symbol, or the first of
-    // the next symbol — for each of the three glyphs, whose sources are 8 bytes
-    // apart. The second copy runs with Y from `run` to 7, so `second` is set to the
-    // start of that cell less `run`: Y = run then reads its first byte. (It once
-    // subtracted `rest`, which is right only at 0 and 4 pixels into a cell row;
-    // test/composer-offsets.test.mjs draws every offset.) The whole thing is ~6000 cycles; the same loop in compiled script was
-    // ~17000 and, before the copy was assembly, ~70000.
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+    // Each cell row takes eight pixel rows of the strip from where it is: `run` bytes
+    // (8 - within) from the symbol cell it starts in, then `rest` (within) from the one
+    // below — the cell under it in the same symbol, or the first of the next symbol — for
+    // each of the `across` glyphs, whose sources are 8 bytes apart. The second copy runs
+    // with Y from `run` to 7, so `second` is set to the start of that cell less `run`: Y = run
+    // then reads its first byte. (It once subtracted `rest`, which is right only at 0 and 4
+    // pixels into a cell row; test/composer-offsets.test.mjs draws every offset.) The 3x3's
+    // 24x24 version of this was ~6000 cycles; the same loop in compiled script was ~17000
+    // and, before the copy was assembly, ~70000.
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
         let first: usmallint = 0;
         let second: usmallint = 0;
         let here: usmallint = 0;
         let run: utinyint = 0;
         let rest: utinyint = 0;
         let band: utinyint = 0;
-        let left: utinyint = 0;
+        let left: utinyint = rows;
+        // bytes from one cell row of a symbol to the next, a symbol's height in pixels, and
+        // the index of its last cell row
+        let stride: utinyint = across << 3;
+        let pixH: utinyint = down << 3;
+        let last: utinyint = down - 1;
         asm6502 {
-            lda #9
-            sta left
         1:
             ldy stop
             lda (strip),y
-            asl a
-            asl a
-            asl a
-            sta band
+            tax
+            lda $C600,x
             sta here
-            lda #0
+            lda $C610,x
             sta here+1
-            asl here
-            rol here+1
-            asl here
-            rol here+1
-            asl here
-            rol here+1
-            clc
-            lda here
-            adc band
-            sta here
-            bcc 2f
-            inc here+1
-        2:
             lda row
             and #7
             sta rest
@@ -129,30 +153,33 @@ export namespace glyphs {
             lsr a
             lsr a
             sta band
-            asl a
-            asl a
-            asl a
-            sta first
-            lda band
-            asl a
-            asl a
-            asl a
-            asl a
-            clc
-            adc first
-            clc
-            adc rest
-            clc
-            adc here
+            lda here
             sta first
             lda here+1
-            adc #0
-            clc
-            adc #$C0
             sta first+1
+            ldx band
+            beq 3f
+        2:
+            clc
+            lda first
+            adc stride
+            sta first
+            bcc 21f
+            inc first+1
+        21:
+            dex
+            bne 2b
+        3:
+            clc
+            lda first
+            adc rest
+            sta first
+            bcc 22f
+            inc first+1
+        22:
             lda band
-            cmp #2
-            bcs 3f
+            cmp last
+            bcs 4f
             sec
             lda first
             sbc rest
@@ -162,41 +189,23 @@ export namespace glyphs {
             sta second+1
             clc
             lda second
-            adc #24
+            adc stride
             sta second
-            bcc 5f
+            bcc 23f
             inc second+1
+        23:
             jmp 5f
-        3:
+        4:
             lda stop
             clc
             adc #1
             and mask
             tay
             lda (strip),y
-            asl a
-            asl a
-            asl a
-            sta band
+            tax
+            lda $C600,x
             sta second
-            lda #0
-            sta second+1
-            asl second
-            rol second+1
-            asl second
-            rol second+1
-            asl second
-            rol second+1
-            clc
-            lda second
-            adc band
-            sta second
-            bcc 4f
-            inc second+1
-        4:
-            clc
-            lda second+1
-            adc #$C0
+            lda $C610,x
             sta second+1
         5:
             lda #8
@@ -210,7 +219,7 @@ export namespace glyphs {
             lda second+1
             sbc #0
             sta second+1
-            ldx #3
+            ldx across
         6:
             ldy #0
         7:
@@ -255,10 +264,10 @@ export namespace glyphs {
             lda row
             adc #8
             sta row
-            cmp #24
+            cmp pixH
             bcc 13f
             sec
-            sbc #24
+            sbc pixH
             sta row
             lda stop
             clc

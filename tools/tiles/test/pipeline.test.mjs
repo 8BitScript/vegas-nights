@@ -150,15 +150,17 @@ test('every machine gets a file, each symbol has ink, and the sizes follow the t
     r.data.symbols.forEach((s) => assert.ok((s.ink ?? 1) > 0, `${machine} ${s.id} has ink`));
   }
   assert.match(files['classic.pet.8bs'], /export const QUAD_CODE: array<utinyint, 16>/);
-  assert.match(files['classic.8bs'], /export const SYMBOL_BITMAP: array<utinyint, 432>/);
+  // the C64's classic symbols are 4x4 cells (32x32 pixels, 128 bytes each), the other pixel machines' 3x3 or 2x2
+  assert.match(files['classic.8bs'], /export const SYMBOL_BITMAP: array<utinyint, 768>/);
+  assert.match(files['classic.cx16.8bs'], /export const SYMBOL_BITMAP: array<utinyint, 432>/);
   assert.match(files['classic.8bs'], /BIT0_IS_LEFT: bool = false/);
   assert.match(files['classic.web.8bs'], /BIT0_IS_LEFT: bool = true/);
 });
 
 test('the web twin is the C64 file with every bitmap byte mirrored, given the same cells; the committed web art is 2x2 cells', () => {
   // Given the C64's cell size, nothing differs but the bit order…
-  // (minus the symbols the web draws on its own grid, which differ by design: see the next test)
-  const same = { ...theme, cells: { default: [3, 3] }, symbols: theme.symbols.map((s) => ({ ...s, overrides: { ...s.overrides, web: undefined } })) };
+  // (minus the symbols the web and the C64 draw on their own grids, which differ by design: see the next tests)
+  const same = { ...theme, cells: { default: [3, 3] }, symbols: theme.symbols.map((s) => ({ ...s, overrides: { ...s.overrides, web: undefined, c64: undefined } })) };
   const c64 = convertTheme(same, 'c64'), web = convertTheme(same, 'web');
   c64.symbols.forEach((s, i) => {
     assert.deepEqual([...web.symbols[i].bitmap], [...s.bitmap], 'same bitmaps before the emitter mirrors them');
@@ -172,7 +174,8 @@ test('the web twin is the C64 file with every bitmap byte mirrored, given the sa
   const { files } = buildTheme(theme);
   assert.match(files['classic.web.8bs'], /SYMBOL_CELLS_W: utinyint = 2;/);
   assert.match(files['classic.web.8bs'], /SYMBOL_CELLS_H: utinyint = 2;/);
-  assert.match(files['classic.8bs'], /SYMBOL_CELLS_W: utinyint = 3;/);
+  assert.match(files['classic.8bs'], /SYMBOL_CELLS_W: utinyint = 4;/); // the C64's own 32x32 art (next test)
+  assert.match(files['classic.cx16.8bs'], /SYMBOL_CELLS_W: utinyint = 3;/);
   // The frame does not depend on the symbols' size.
   assert.deepEqual(bytes(files['classic.web.8bs'], 'FRAME_BITMAP'), bytes(files['classic.8bs'], 'FRAME_BITMAP').map(reverseBits));
   assert.deepEqual(bytes(files['classic.web.8bs'], 'FRAME_COLOR'), bytes(files['classic.8bs'], 'FRAME_COLOR'));
@@ -328,4 +331,21 @@ test('the three BAR symbols are told apart by how many bars they have on every q
   };
   assert.deepEqual([bars('BAR1'), bars('BAR2'), bars('BAR3')], [1, 2, 3]);
   assert.ok(rowsWithInk('BAR1') > 0);
+});
+
+test('the C64 draws its classic symbols on a 4x4-cell (32x32) grid of their own, and the table says so', () => {
+  assert.deepEqual(theme.cells.c64, [4, 4]);
+  const c64 = convertTheme(theme, 'c64');
+  assert.equal(c64.cellsW, 4);
+  assert.equal(c64.cellsH, 4);
+  c64.symbols.forEach((s) => {
+    assert.equal(s.bitmap.length, 4 * 4 * 8, `${s.id}: sixteen cells of eight bytes`);
+    assert.equal(s.colors.length, 16, `${s.id}: a colour a cell`);
+  });
+  // every symbol is drawn at the C64's own grid (a <ID>.c64.png master), not squeezed from the 24x24 art
+  theme.symbols.forEach((s) => assert.ok(s.overrides.c64, `${s.id} has a 32x32 master`));
+  const text = buildTheme(theme).files['classic.8bs'];
+  assert.match(text, /SYMBOL_CELLS_W: utinyint = 4;/);
+  assert.match(text, /SYMBOL_CELLS_H: utinyint = 4;/);
+  assert.match(text, /SYMBOL_BYTES: usmallint = 128;/);
 });

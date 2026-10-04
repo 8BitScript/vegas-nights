@@ -46,7 +46,22 @@ export function labConsts(lab, machine) {
     return out;
   };
   const consts = read(file);
+  // view.8bs serves the C64 and the X16, whose machines differ in size; their layout numbers are
+  // block.8bs's (block.c64.8bs for the C64 and its wasm build), which view.8bs aliases
+  if (file === 'view.8bs' && lab === 'slot3x3') {
+    const block = blockFor(machine);
+    Object.assign(consts, { BLOCK_WIDTH: block.WIDTH, CREDIT_ROW: block.CREDIT, BET_ROW: block.BET, WIN_ROW: block.WIN, MESSAGE_ROW: block.MESSAGE });
+  }
   const quad = readFileSync(join(dir, 'quad.8bs'), 'utf8').match(/const TOP: utinyint = (\d+);/);
   if (quad) consts.QUAD_TOP = Number(quad[1]);
+  return consts;
+}
+
+/** The 3x3's on-screen geometry for `machine` (src/labs/slot3x3/block.8bs, or block.c64.8bs for the C64 and its wasm build), as numbers. */
+export function blockFor(machine) {
+  const file = machine === 'c64' || machine === 'c64web' ? 'block.c64.8bs' : 'block.8bs';
+  const text = readFileSync(join(ROOT, 'src', 'labs', 'slot3x3', file), 'utf8');
+  const consts = {};
+  for (const m of text.matchAll(/^\s*const (\w+): \w+ = (\d+);/gm)) consts[m[1]] = Number(m[2]);
   return consts;
 }

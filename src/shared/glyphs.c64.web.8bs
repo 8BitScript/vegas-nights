@@ -14,19 +14,18 @@
 // open()/close() are no-ops there, so they are kept as calls and cost
 // nothing worth a second variant of the view.
 //
-// A note for whoever reads the assembly next to this: when a reel is between two cell rows
-// (`row` not a multiple of 8) the lower part of the window here comes from the START of the
-// next cell row. Read as written, the assembly points its second source at `next row start -
-// within` rather than `next row start - (8 - within)`, which agrees with this only when the
-// offset is 0 or 4. That is a reading of the code, not something run on the machine -- the
-// native tests sample reels at rest and during a spin without finding it -- so treat it as a
-// lead to check under x64sc, not a finding.
-import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
-import { Video } from "@8bitscript/c64/video";
+// (The assembly's second source pointer once read `next row start - within` where
+// `next row start - (8 - within)` is right, and agreed with these loops only at 0 and 4
+// pixels into a cell row; it is fixed, and test/composer-offsets.test.mjs draws every offset.)
+import { setupVideo, bankIoOut, bankIoIn, memoryPointer } from "@8bitscript/c64";
+import { Video, screenRam } from "@8bitscript/c64/video";
 
 // The tileset's address, as a module constant the composer's loops read (a
 // namespace member cannot be named bare inside its own functions).
 const TILE_START: usmallint = 0xC000;
+
+// Bytes a symbol takes in the tileset, told by symbols() (24x24 art: 72, 32x32 art: 128).
+let tileSymbolBytes: usmallint = 72;
 
 // The same fixed buffers glyphs.c64.8bs uses (the tileset, the strips, the
 // pre-composed 5x5 strips and their colours). None of them may overlap the
@@ -49,6 +48,8 @@ export namespace glyphs {
     const COLOR_STRIP: bool = true;
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
+    // The same free range as the native twin: screen codes 91-127, unused by the text.
+    const EXTRA: utinyint = 37;
     const PORT: bool = false;
     const PORT_ADDRESS: usmallint = 0;
     const TILE_RAM: usmallint = 0xC000;
@@ -56,6 +57,10 @@ export namespace glyphs {
 
     function begin(): void {
         setupVideo();
+        // The glyphs are written into the mixed-case set (below), so that is the set to show.
+        // @8bitscript/text selects it on its first write; the reel cells are written raw (put),
+        // which does not, so it is selected here.
+        memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
     }
 
     // The mixed-case set ($D018 = MEMORY_POINTER_LOWERCASE) is the second half
@@ -73,23 +78,29 @@ export namespace glyphs {
         tileBytes[index] = value;
     }
 
+    function put(at: usmallint, code: utinyint): void {
+        screenRam[at] = code;
+    }
+
     function stageStrip(index: usmallint, value: utinyint): void {
         stripBytes[index] = value;
     }
 
-    // A whole reel window in one call: nine cell rows of three glyphs, composed
-    // from the staged tileset according to the staged strip (`strip` is the
-    // address of this reel's stops, one symbol number a stop) at the pixel
-    // offset given by `stop` (the symbol on the window's top row) and `row` (the
-    // pixel row within it, 0-23). `dest` is the first of the reel's 27
+    function symbols(count: utinyint, bytes: usmallint): void {
+        tileSymbolBytes = bytes;
+    }
+
+    // A whole reel window in one call: `rows` cell rows of `across` glyphs, composed from the
+    // staged tileset according to the staged strip (`strip` is the address of this reel's
+    // stops, one symbol number a stop) at the pixel offset given by `stop` (the symbol on the
+    // window's top row) and `row` (the pixel row within it). `dest` is the first of the reel's
     // consecutive glyphs' bytes; `mask` is the number of stops minus one.
     //
-    // A symbol is 72 bytes of tile: three cell rows of three glyphs, eight
-    // bytes a glyph. Each cell row of the window takes eight pixel rows of the
-    // strip from where it is: `run` bytes (8 - within) from the symbol cell it
-    // starts in, then `within` from the start of the cell below it — the next
-    // cell row of the same symbol, or the first of the next symbol.
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+    // A symbol is `down` cell rows of `across` cells, eight bytes a cell. Each cell row of the
+    // window takes eight pixel rows of the strip from where it is: `run` bytes (8 - within)
+    // from the symbol cell it starts in, then `within` from the start of the cell below it —
+    // the next cell row of the same symbol, or the first of the next symbol.
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
         let symbol: usmallint = 0;
         let here: usmallint = 0;
         let below: usmallint = 0;
@@ -99,23 +110,32 @@ export namespace glyphs {
         let out: usmallint = dest;
         let rowOffset: utinyint = row;
         let stopNow: utinyint = stop;
-        for (let left: utinyint = 0; left < 9; left++) {
+        let height: utinyint = down << 3;
+        let stride: utinyint = across << 3;
+        for (let left: utinyint = 0; left < rows; left++) {
             symbol = memory.read(strip + stopNow);
             within = rowOffset & 7;
             band = rowOffset >> 3;
             run = 8 - within;
-            here = symbol * 72;
-            here = here + TILE_START;
+            here = TILE_START;
+            for (let i: utinyint = 0; i < symbol; i++) {
+                here = here + tileSymbolBytes;
+            }
             // The cell row this window row starts in, and the one under it.
-            let current: usmallint = here + band * 24;
-            if (band < 2) {
-                below = current + 24;
+            let current: usmallint = here;
+            for (let i: utinyint = 0; i < band; i++) {
+                current = current + stride;
+            }
+            if (band < down - 1) {
+                below = current + stride;
             } else {
                 symbol = memory.read(strip + ((stopNow + 1) & mask));
-                below = symbol * 72;
-                below = below + TILE_START;
+                below = TILE_START;
+                for (let i: utinyint = 0; i < symbol; i++) {
+                    below = below + tileSymbolBytes;
+                }
             }
-            for (let glyph: utinyint = 0; glyph < 3; glyph++) {
+            for (let glyph: utinyint = 0; glyph < across; glyph++) {
                 let shift: usmallint = glyph;
                 shift = shift * 8;
                 for (let y: utinyint = 0; y < run; y++) {
@@ -127,8 +147,8 @@ export namespace glyphs {
                 out = out + 8;
             }
             rowOffset = rowOffset + 8;
-            if (rowOffset >= 24) {
-                rowOffset = rowOffset - 24;
+            if (rowOffset >= height) {
+                rowOffset = rowOffset - height;
                 stopNow = (stopNow + 1) & mask;
             }
         }

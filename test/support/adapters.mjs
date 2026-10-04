@@ -69,7 +69,7 @@ function pixelAdapter(machine) {
     symbolPixels: PX,
     // The cells the flash test compares: the reels with their frame, in block cells.
     window: web ? { col: 1, row: top - 1, cols: 2 + c.REELS * cw + c.REELS - 1, rows: ch * c.ROWS + 2 }
-      : { col: 1, row: 3, cols: 11, rows: 10 },
+      : { col: 1, row: 3, cols: c.REELS * cw + c.REELS - 1, rows: ch * c.ROWS + 1 },
     expected(reel, position) {
       const out = [];
       for (let v = 0; v < ROWS_PX; v += 1) {

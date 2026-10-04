@@ -1,0 +1,22 @@
+// The C64's machine is bigger than the base answer's: its symbols are four cells square
+// (32x32 pixels, tools/tiles: classic.8bs), so a reel is four cells across and its window
+// twelve rows tall. Frame, three reels of four, two dividers, frame: 16 across; 48 glyphs a
+// reel, 144 for the three, the frame's 14 after them (158 in all, of the 164 codes the C64
+// has: glyphs.c64.8bs); and the credit, bet and win rows sit three
+// rows lower. See block.8bs for what each number is; test/glyph-budget.test.mjs checks them.
+export namespace block {
+    const WIDTH: utinyint = 16;
+    const PITCH: utinyint = 5;
+    const RIGHT: utinyint = 15;
+    const DOWN: utinyint = 12;
+    const PER_REEL: utinyint = 48;
+    const FRAME_AT: utinyint = 144;
+    const PIXELS: utinyint = 32;
+    const ARROW: utinyint = 10;
+    const END: utinyint = 16;
+    const CREDIT: utinyint = 18;
+    const BET: utinyint = 19;
+    const WIN: utinyint = 20;
+    const MESSAGE: utinyint = 22;
+    const HINT: utinyint = 24;
+}

@@ -1,26 +1,36 @@
 // The reels as the player sees them. The game (game.8bs) knows reels, stops and
 // pixels; this file knows how a machine puts them on the screen:
 //
-//   * where glyphs can be redefined (glyphs.AVAILABLE) a reel is a block of three
-//     cells by nine, every cell showing its own character code, fixed for the
-//     whole run. A frame of scrolling rewrites only those characters' BYTES: the
-//     window of the strip at the reel's pixel offset is copied, a glyph's eight
-//     rows at a time, out of the symbols' bitmaps (the tileset, in the machine's
-//     own colour numbers) into the glyphs. The screen map never moves; the art
-//     does. The window is wrapped in a machine of 14 more glyphs: bevelled frame,
-//     reel dividers, payline arrows.
+//   * where glyphs can be redefined (glyphs.AVAILABLE) a reel is a block of cells
+//     SYMBOL_CELLS_W across and ROWS * SYMBOL_CELLS_H down (three symbols tall), every
+//     cell showing its own character code, fixed for the whole run. A frame of scrolling
+//     rewrites only those characters' BYTES: the window of the strip at the reel's pixel
+//     offset is copied, a glyph's eight rows at a time, out of the symbols' bitmaps (the
+//     tileset, in the machine's own colour numbers) into the glyphs. The screen map
+//     never moves; the art does. The window is wrapped in a machine of 14 more glyphs:
+//     bevelled frame, reel dividers, payline arrows.
 //   * everywhere else a reel is three cells, one character a symbol, redrawn
 //     when the symbol under it changes — the fallback, plain and honest.
+//
+// The size of a symbol — 3x3 cells (24x24 pixels) on the X16, 4x4 (32x32) on the C64 — comes
+// from the tile data, not from this file: the glyph arithmetic is
+//
+//     glyphs per reel = ROWS * SYMBOL_CELLS_H * SYMBOL_CELLS_W      27 for 3x3, 48 for 4x4
+//     glyphs in all   = REELS * (that) + FRAME_CELLS                95 for 3x3, 158 for 4x4
+//
+// and the machine must have that many codes (glyphs.CODES + glyphs.EXTRA); test/glyph-budget.test.mjs
+// checks it against the tile data, so a bigger symbol that does not fit fails a test, not a screen.
 //
 // The data — the strips, the bitmaps, the colours, how big a symbol is — is
 // imported by name; the logic below has no game in it.
 import { text, TextColor } from "@8bitscript/text";
 import { glyphs } from "@shared/glyphs.8bs";
 import { layout } from "@shared/layout.8bs";
+import { block } from "./block.8bs";
 import { reelscroll } from "@shared/reelscroll.8bs";
 import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
 import {
-    ART_SYMBOLS, SYMBOL_BYTES, SYMBOL_BITMAP, SYMBOL_COLOR,
+    ART_SYMBOLS, SYMBOL_BYTES, SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS_W, SYMBOL_CELLS_H, SYMBOL_CELLS,
     FRAME_CELLS, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
     FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R,
     FRAME_BITMAP, FRAME_COLOR
@@ -31,25 +41,33 @@ const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
 const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
 const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
 
+// The geometry is block.8bs's (literals, checked against the tile data by test/glyph-budget.test.mjs).
+
 // The colours of a reel's cells depend only on which stop is on top and which
 // source cell row dominates; remember them and skip the pass when neither moved.
-let inkKey: array<utinyint, 5>;
+let inkKey: array<usmallint, 5>;
+
+// Where each symbol's colours start in SYMBOL_COLOR (symbol * SYMBOL_CELLS), added up once: the
+// reel-colour pass would otherwise multiply for every cell row it draws.
+let colorBase: array<utinyint, 16>;
 
 export namespace view {
-    // The block, in cells: a frame cell, then three-cell reels with a divider
-    // between, then a frame cell. 13 wide; the reels' nine rows start at row 4.
-    const WIDTH: utinyint = 13;
+    // The block, in cells: a frame cell, then the reels, SYMBOL_CELLS_W across, with a divider
+    // between each pair, then a frame cell. 13 wide for 3-cell symbols, 16 for 4-cell ones
+    // (block.8bs says so to the layout); the reels' rows start at row 4.
     const TOP: utinyint = 4;
 
     // ---- where everything else goes, in cells from the block's left edge (game.8bs asks) ----
-    const BLOCK_WIDTH: utinyint = 13;
-    const CREDIT_ROW: utinyint = 15;
+    // The machine's size is block.8bs's (block.c64.8bs for the C64, whose symbols are 4 cells square),
+    // so the rows below it move with it.
+    const BLOCK_WIDTH: utinyint = block.WIDTH;
+    const CREDIT_ROW: utinyint = block.CREDIT;
     const CREDIT_NUM: utinyint = 8;
-    const BET_ROW: utinyint = 16;
+    const BET_ROW: utinyint = block.BET;
     const BET_NUM: utinyint = 8;
-    const WIN_ROW: utinyint = 17;
+    const WIN_ROW: utinyint = block.WIN;
     const WIN_NUM: utinyint = 8;
-    const MESSAGE_ROW: utinyint = 19;
+    const MESSAGE_ROW: utinyint = block.MESSAGE;
     const MESSAGE_COL: utinyint = 1;
     const MESSAGE_WIDTH: utinyint = 20;
 
@@ -57,14 +75,17 @@ export namespace view {
     function statics(): void {
         text.print(layout.cell(1, 1), "VEGAS NIGHTS");
         text.print(layout.cell(1, 2), "SLOT 3X3");
-        text.print(layout.cell(1, 15), "CREDIT");
-        text.print(layout.cell(1, 16), "BET");
-        text.print(layout.cell(1, 17), "WIN");
-        text.print(layout.cell(1, 21), "UP DOWN: BET");
+        text.print(layout.cell(1, block.CREDIT), "CREDIT");
+        text.print(layout.cell(1, block.BET), "BET");
+        text.print(layout.cell(1, block.WIN), "WIN");
+        text.print(layout.cell(1, block.HINT), "UP DOWN: BET");
     }
 
-    // The glyph codes after the 81 the reels use belong to the frame.
-    const FRAME_CODE: utinyint = 81;
+    // The first glyph code of the block: FIRST on a machine with exactly the codes it needs,
+    // a few below it where the machine has spare codes under FIRST (glyphs.EXTRA).
+    function base(): utinyint {
+        return glyphs.FIRST - glyphs.EXTRA;
+    }
 
     // ---- the fallback: one character a symbol -----------------------------
 
@@ -96,11 +117,21 @@ export namespace view {
         }
     }
 
+    // Where symbol `symbol`'s tile starts in SYMBOL_BITMAP (the port path reads the const array
+    // directly). Added up, not multiplied: at most eight symbols, and this is the X16's path.
+    function tileAt(symbol: utinyint): usmallint {
+        let at: usmallint = 0;
+        for (let i: utinyint = 0; i < symbol; i++) {
+            at = at + SYMBOL_BYTES;
+        }
+        return at;
+    }
+
     // The frame cell codes that go in the block's cells, and their glyph bytes.
     function defineFrame(): void {
         glyphs.open();
         for (let cell: utinyint = 0; cell < FRAME_CELLS; cell++) {
-            let code: utinyint = glyphs.FIRST + view.FRAME_CODE + cell;
+            let code: utinyint = view.base() + block.FRAME_AT + cell;
             let to: usmallint = glyphs.address(code);
             if (glyphs.PORT) {
                 glyphs.seek(code);
@@ -118,54 +149,56 @@ export namespace view {
 
     function putFrame(col: utinyint, row: utinyint, cell: utinyint): void {
         let at: usmallint = layout.cell(col, row);
-        text.putChar(at, glyphs.FIRST + view.FRAME_CODE + cell);
+        glyphs.put(at, view.base() + block.FRAME_AT + cell);
         text.putColor(at, FRAME_COLOR[cell]);
     }
 
     function drawFrame(): void {
-        for (let col: utinyint = 0; col < 13; col++) {
+        for (let col: utinyint = 0; col <= block.RIGHT; col++) {
             let top: utinyint = FRAME_T;
             let low: utinyint = FRAME_B;
             if (col == 0) {
                 top = FRAME_TL;
                 low = FRAME_BL;
-            } else if (col == 12) {
+            } else if (col == block.RIGHT) {
                 top = FRAME_TR;
                 low = FRAME_BR;
-            } else if (col == 4 || col == 8) {
-                top = FRAME_DIVT;
-                low = FRAME_DIVB;
             }
-            view.putFrame(col, 3, top);
-            view.putFrame(col, 13, low);
+            view.putFrame(col, view.TOP - 1, top);
+            view.putFrame(col, block.END, low);
         }
-        for (let row: utinyint = 4; row < 13; row++) {
+        for (let divider: utinyint = 1; divider < REELS; divider++) {
+            view.putFrame(divider * block.PITCH, view.TOP - 1, FRAME_DIVT);
+            view.putFrame(divider * block.PITCH, block.END, FRAME_DIVB);
+        }
+        for (let row: utinyint = view.TOP; row < block.END; row++) {
             let left: utinyint = FRAME_L;
             let right: utinyint = FRAME_R;
-            if (row == 8) {
+            if (row == block.ARROW) {
                 left = FRAME_ARROW_L;
                 right = FRAME_ARROW_R;
             }
             view.putFrame(0, row, left);
-            view.putFrame(12, row, right);
-            view.putFrame(4, row, FRAME_DIV);
-            view.putFrame(8, row, FRAME_DIV);
+            view.putFrame(block.RIGHT, row, right);
+            for (let divider: utinyint = 1; divider < REELS; divider++) {
+                view.putFrame(divider * block.PITCH, row, FRAME_DIV);
+            }
         }
     }
 
     // Tell the screen which character each cell of every reel shows, once.
     function mapCells(): void {
         for (let reel: utinyint = 0; reel < REELS; reel++) {
-            for (let down: utinyint = 0; down < 9; down++) {
-                for (let across: utinyint = 0; across < 3; across++) {
-                    let code: utinyint = glyphs.FIRST + reel * 27 + down * 3 + across;
-                    text.putChar(layout.cell(1 + reel * 4 + across, view.TOP + down), code);
+            for (let down: utinyint = 0; down < block.DOWN; down++) {
+                for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                    let code: utinyint = view.base() + reel * block.PER_REEL + down * SYMBOL_CELLS_W + across;
+                    glyphs.put(layout.cell(1 + reel * block.PITCH + across, view.TOP + down), code);
                 }
             }
         }
     }
 
-    // Compose reel `reel` at its current pixel offset into its 27 glyphs: the
+    // Compose reel `reel` at its current pixel offset into its glyphs: the
     // bytes first, in one run of writes with the C64's I/O area banked out…
     function drawBytes(reel: utinyint): void {
         let stop: utinyint = reelscroll.stop(reel);
@@ -174,26 +207,24 @@ export namespace view {
         strip = strip * STOPS;
         glyphs.open();
         if (glyphs.PORT) {
-            for (let down: utinyint = 0; down < 9; down++) {
+            for (let down: utinyint = 0; down < block.DOWN; down++) {
                 // The symbol under the top of this cell row and the one after it, as
                 // byte offsets into the tileset, and where in the symbol the window's
                 // next eight rows start.
                 let nextStop: utinyint = (stop + 1) & STOP_MASK;
-                let here: usmallint = STRIPS[strip + stop];
-                let after: usmallint = STRIPS[strip + nextStop];
-                here = (here << 6) + (here << 3);
-                after = (after << 6) + (after << 3);
+                let here: usmallint = view.tileAt(STRIPS[strip + stop]);
+                let after: usmallint = view.tileAt(STRIPS[strip + nextStop]);
                 let cellRow: utinyint = row >> 3;
                 let within: utinyint = row & 7;
-                for (let across: utinyint = 0; across < 3; across++) {
-                    let code: utinyint = glyphs.FIRST + reel * 27 + down * 3 + across;
+                for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                    let code: utinyint = view.base() + reel * block.PER_REEL + down * SYMBOL_CELLS_W + across;
                     glyphs.seek(code);
                     // The first run is the rest of the symbol cell the window starts in…
-                    view.copyRun(0, here + (cellRow * 3 + across) * 8 + within, 8 - within);
+                    view.copyRun(0, here + (cellRow * SYMBOL_CELLS_W + across) * 8 + within, 8 - within);
                     // …and the second, the top of the next cell down (or the next symbol).
                     if (within != 0) {
-                        if (cellRow < 2) {
-                            view.copyRun(0, here + ((cellRow + 1) * 3 + across) * 8, within);
+                        if (cellRow < SYMBOL_CELLS_H - 1) {
+                            view.copyRun(0, here + ((cellRow + 1) * SYMBOL_CELLS_W + across) * 8, within);
                         } else {
                             view.copyRun(0, after + across * 8, within);
                         }
@@ -201,14 +232,14 @@ export namespace view {
                 }
                 // on to the next cell row
                 row = row + 8;
-                if (row >= 24) {
-                    row = row - 24;
+                if (row >= block.PIXELS) {
+                    row = row - block.PIXELS;
                     stop = nextStop;
                 }
             }
         } else {
             // Memory-mapped glyphs: the whole reel in one assembly call.
-            glyphs.drawReel(glyphs.STRIP_RAM + strip, stop, row, glyphs.address(glyphs.FIRST + reel * 27), STOP_MASK);
+            glyphs.drawReel(glyphs.STRIP_RAM + strip, stop, row, glyphs.address(view.base() + reel * block.PER_REEL), STOP_MASK, SYMBOL_CELLS_W, SYMBOL_CELLS_H, block.DOWN);
         }
         glyphs.close();
     }
@@ -225,7 +256,9 @@ export namespace view {
         if ((row & 7) > 4) {
             band = band + 1;
         }
-        let key: utinyint = stop * 4 + band;
+        let key: usmallint = stop;
+        key = key * (SYMBOL_CELLS_H + 1);
+        key = key + band;
         if (inkKey[reel] == key) {
             return;
         }
@@ -233,27 +266,27 @@ export namespace view {
         let strip: usmallint = reel;
         strip = strip * STOPS;
         // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
-        let at: usmallint = layout.cell(1 + reel * 4, view.TOP);
-        for (let down: utinyint = 0; down < 9; down++) {
+        let at: usmallint = layout.cell(1 + reel * block.PITCH, view.TOP);
+        for (let down: utinyint = 0; down < block.DOWN; down++) {
             let symbol: utinyint = STRIPS[strip + stop];
             let inkRow: utinyint = row >> 3;
             if ((row & 7) > 4) {
                 // mostly the cell below: the next cell row, or the next symbol's first
-                if (inkRow < 2) {
+                if (inkRow < SYMBOL_CELLS_H - 1) {
                     inkRow = inkRow + 1;
                 } else {
                     inkRow = 0;
                     symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
                 }
             }
-            let index: utinyint = symbol * 9 + inkRow * 3;
-            text.putColor(at, SYMBOL_COLOR[index]);
-            text.putColor(at + 1, SYMBOL_COLOR[index + 1]);
-            text.putColor(at + 2, SYMBOL_COLOR[index + 2]);
+            let index: utinyint = colorBase[symbol] + inkRow * SYMBOL_CELLS_W;
+            for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                text.putColor(at + across, SYMBOL_COLOR[index + across]);
+            }
             at = at + text.COLUMNS;
             row = row + 8;
-            if (row >= 24) {
-                row = row - 24;
+            if (row >= block.PIXELS) {
+                row = row - block.PIXELS;
                 stop = (stop + 1) & STOP_MASK;
             }
         }
@@ -268,8 +301,13 @@ export namespace view {
 
     // Once, after the screen is blank: glyphs, the frame, the cell map.
     function begin(): void {
+        let colors: utinyint = 0;
+        for (let symbol: utinyint = 0; symbol < ART_SYMBOLS; symbol++) {
+            colorBase[symbol] = colors;
+            colors = colors + SYMBOL_CELLS;
+        }
         for (let reel: utinyint = 0; reel < REELS; reel++) {
-            inkKey[reel] = 255;
+            inkKey[reel] = 65535;
         }
         if (glyphs.AVAILABLE) {
             glyphs.begin();
@@ -280,6 +318,7 @@ export namespace view {
                 for (let i: usmallint = 0; i < total; i++) {
                     glyphs.stage(i, SYMBOL_BITMAP[i]);
                 }
+                glyphs.symbols(ART_SYMBOLS, SYMBOL_BYTES);
                 let stops: usmallint = REELS;
                 stops = stops * STOPS;
                 for (let i: usmallint = 0; i < stops; i++) {
@@ -326,13 +365,13 @@ export namespace view {
             let row: utinyint = LINES[line * REELS + reel];
             if (glyphs.AVAILABLE) {
                 if (on) {
-                    for (let down: utinyint = 0; down < 3; down++) {
-                        for (let across: utinyint = 0; across < 3; across++) {
-                            text.putColor(layout.cell(1 + reel * 4 + across, view.TOP + row * 3 + down), TextColor.WHITE);
+                    for (let down: utinyint = 0; down < SYMBOL_CELLS_H; down++) {
+                        for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                            text.putColor(layout.cell(1 + reel * block.PITCH + across, view.TOP + row * SYMBOL_CELLS_H + down), TextColor.WHITE);
                         }
                     }
                 } else {
-                    inkKey[reel] = 255;
+                    inkKey[reel] = 65535;
                     view.drawGlyphs(reel);
                 }
             } else if (on) {
