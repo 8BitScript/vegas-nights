@@ -1,0 +1,13 @@
+// Where a machine keeps its text screen and colour memory, when a program may copy cells within it.
+// This base file is the answer "not here" (the web's grid is the host's, written one cell at a time through
+// text.putChar); scr.pet.8bs and scr.vic20.8bs answer for the machines with a screen in memory. A reel that can
+// COPY scrolls by moving its cells a whole row (src/shared/move.8bs) instead of recomposing them.
+//
+//   COPY    cells can be block-copied within screen memory.
+//   SCREEN  the address of text cell 0.
+//   COLOR   the address of cell 0's colour (0 where there is none).
+export namespace scr {
+    const COPY: bool = false;
+    const SCREEN: usmallint = 0;
+    const COLOR: usmallint = 0;
+}

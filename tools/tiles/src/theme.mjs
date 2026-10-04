@@ -28,7 +28,7 @@ export async function loadTheme(name) {
     const file = join(dir, 'symbols', `${s.id}.png`);
     if (!existsSync(file)) throw new Error(`theme ${name}: missing art for symbol ${s.id} (${file})`);
     const overrides = {};
-    for (const machine of ['pet', 'vic20', 'cx16', 'web', 'c64']) {
+    for (const machine of ['pet', 'vic20', 'cx16', 'web', 'c64', 'quad3', 'quad4', 'quad6']) {
       const o = join(dir, 'symbols', `${s.id}.${machine}.png`);
       if (existsSync(o)) overrides[machine] = decodePng(readFileSync(o));
     }

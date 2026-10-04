@@ -1,0 +1,7 @@
+// The web has no screen memory to copy within (scr.COPY is false: the host's grid is written a cell at a time), so a
+// reel never hops there and this is never called. It exists so the wasm backend, which never lowers 6502 `asm`
+// blocks, has no move.down to refuse.
+export namespace move {
+    function down(top: usmallint, rows: utinyint, width: utinyint, stride: utinyint, by: utinyint): void {
+    }
+}

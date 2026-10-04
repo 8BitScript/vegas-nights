@@ -6,6 +6,7 @@
 import { screen } from "@8bitscript/screen";
 import { text, TextColor } from "@8bitscript/text";
 import { layout } from "@shared/layout.8bs";
+import { view } from "./view.8bs";
 
 const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
 const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
@@ -13,7 +14,7 @@ const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
 
 export function main(): void {
     screen.blank();
-    layout.centre(13);
+    layout.centre(view.BLOCK_WIDTH);
     for (let symbol: utinyint = 0; symbol < 6; symbol++) {
         let at: usmallint = layout.cell(1, 2 + symbol);
         text.putChar(at, GLYPH_LEFT[symbol]);
