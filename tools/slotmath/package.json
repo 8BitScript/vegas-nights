@@ -1,0 +1,14 @@
+{
+  "name": "@vegas-nights/slotmath",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline slot-machine math for Vegas Nights: exact odds, tuning, and 8BitScript table emission.",
+  "type": "module",
+  "engines": { "node": ">=26" },
+  "bin": { "slotmath": "./bin/slotmath.mjs" },
+  "scripts": {
+    "test": "node --test test/",
+    "report": "node bin/slotmath.mjs report",
+    "generate": "node bin/slotmath.mjs generate"
+  }
+}
