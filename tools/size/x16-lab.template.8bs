@@ -1,0 +1,177 @@
+// {{LAB}} — a design prototype, not a game (docs/reel-size.md): the reels as VERA hardware
+// sprites. A reel is a stack of {{REELS_PLUS}} 64x64 sprites on a 48-pixel pitch (the art is 48x48, set in the
+// middle of its sprite), each showing a symbol of the real strip; scrolling a reel is writing each
+// sprite's Y a few pixels further down, and when the stack has moved a symbol the sprites take the
+// strip's next symbols by changing their address. No composer: the CPU does not touch a pixel.
+// The rows above and below the window are opaque black cells of the TEXT layer, which draws over
+// the sprites (z-depth 2) and so hides the sprite that is leaving or entering.
+//   8bs run cx16 --program {{LAB}} --define REST=1      (held at rest)
+//   8bs run cx16 --program {{LAB}} --define SPEED=8     (spinning)
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { setVramAddress, locateTextMap, mapBank, mapLow } from "@8bitscript/cx16";
+import { REELS, ROWS, STOPS, STOP_MASK, STRIPS } from "@generated/{{GAME}}.8bs";
+import { PALETTE, SYMBOLS, TOTAL_BYTES } from "./data.8bs";
+
+const REST: utinyint = #define("REST", 0);
+const SPEED: utinyint = #define("SPEED", 8);
+
+const PITCH: utinyint = 48;            // a symbol's height, and a reel's width
+const GAP: utinyint = 16;              // pixels between reels
+const SCALED: utinyint = {{SCALED}};      // 1: VERA draws the 320x240 picture at 2x (DC_HSCALE/VSCALE), so a pixel below is two on the display
+const X0: usmallint = {{X0}};          // the first reel's left edge, pixels
+const TOP: usmallint = {{TOP}};        // the window's top, pixels
+const MASK_ATTR: utinyint = 0xB1;      // opaque black background (palette 11 is set to black), white ink
+const FRAME_ATTR: utinyint = 0x71;     // yellow
+const DIVIDER_ATTR: utinyint = 0x81;   // orange
+
+const DATA_LOW: usmallint = 0x4000;    // bank 0: the symbols' pixels
+const ATTR_LOW: usmallint = 0xFC00;    // bank 1: sprite attributes
+const PALETTE_LOW: usmallint = 0xFB00; // bank 1: palette entry 128 (palette offset 8)
+const BLACK_ENTRY: usmallint = 0xFA16; // bank 1: palette entry 11
+
+let stopOf: array<utinyint, 5>;
+let offOf: array<utinyint, 5>;
+let rise: usmallint = 0;
+
+function paint(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint): void {
+    locateTextMap();
+    for (let r: utinyint = 0; r < height; r++) {
+        let at: usmallint = row + r;
+        at = at * 256 + mapLow + col * 2;
+        setVramAddress(mapBank, at, 1);
+        for (let c: utinyint = 0; c < width; c++) {
+            memory.write(0x9F23, 32);
+            memory.write(0x9F23, attr);
+        }
+    }
+}
+
+function cell(col: utinyint, row: utinyint): usmallint {
+    let at: usmallint = row;
+    return at * text.COLUMNS + col;
+}
+
+function enableSprites(): void {
+    let ctrl: utinyint = memory.read(0x9F25);
+    memory.write(0x9F25, ctrl & 0xFD);
+    memory.write(0x9F29, memory.read(0x9F29) | 0x40);
+    memory.write(0x9F25, 0x02);
+    if (memory.read(0x9F2B) != 0) {
+        rise = 1;
+    }
+    memory.write(0x9F25, ctrl);
+}
+
+function upload(): void {
+    setVramAddress(0, DATA_LOW, 1);
+    for (let i: usmallint = 0; i < TOTAL_BYTES; i++) {
+        memory.write(0x9F23, SYMBOLS[i]);
+    }
+    setVramAddress(1, PALETTE_LOW, 1);
+    for (let i: utinyint = 0; i < 32; i++) {
+        memory.write(0x9F23, PALETTE[i]);
+    }
+    setVramAddress(1, BLACK_ENTRY, 1);
+    memory.write(0x9F23, 0);
+    memory.write(0x9F23, 0);
+}
+
+// The machine around the window: opaque rows above and below, a frame, dividers.
+function build(): void {
+    let left: utinyint = X0 / 8;
+    // widen before multiplying: 5 reels are 304 pixels, which an 8-bit product wraps
+    let pixels: usmallint = REELS;
+    pixels = pixels * PITCH + (REELS - 1) * GAP;
+    let width: utinyint = pixels / 8;
+    let top: utinyint = TOP / 8;
+    let rows: utinyint = ROWS * PITCH / 8;
+    let above: utinyint = 8;
+    if (top < 8) {
+        above = top;
+    }
+    paint(left - 2, top - above, width + 4, above, MASK_ATTR);
+    paint(left - 2, top + rows, width + 4, 8, MASK_ATTR);
+    paint(left - 2, top - 2, width + 4, 2, FRAME_ATTR);
+    paint(left - 2, top + rows, width + 4, 2, FRAME_ATTR);
+    paint(left - 2, top, 2, rows, FRAME_ATTR);
+    paint(left + width, top, 2, rows, FRAME_ATTR);
+}
+
+function divider(reel: utinyint): void {
+    let col: utinyint = X0 / 8 + reel * 8 - 2;
+    paint(col, TOP / 8, 2, ROWS * PITCH / 8, DIVIDER_ATTR);
+}
+
+// Sprite `n` (VERA sprite n + 1) shows strip symbol `symbol` with its top-left art pixel at (x, y).
+function show(n: utinyint, symbol: utinyint, x: usmallint, y: usmallint): void {
+    let unit: usmallint = symbol;
+    unit = unit * 64 + 0x200;
+    let at: usmallint = n;
+    at = ATTR_LOW + (at + 1) * 8;
+    let top: usmallint = y + rise;
+    setVramAddress(1, at, 1);
+    memory.write(0x9F23, unit % 256);
+    memory.write(0x9F23, unit / 256);
+    memory.write(0x9F23, x % 256);
+    memory.write(0x9F23, x / 256);
+    memory.write(0x9F23, top % 256);
+    memory.write(0x9F23, top / 256);
+    memory.write(0x9F23, 0x08);   // z-depth 2: behind the text layer, in front of layer 0
+    memory.write(0x9F23, 0xF8);   // 64x64, palette offset 8
+}
+
+function drawReel(reel: utinyint): void {
+    let strip: usmallint = reel;
+    strip = strip * STOPS;
+    let x: usmallint = reel;
+    x = X0 + x * (PITCH + GAP) - 8;
+    for (let j: utinyint = 0; j <= ROWS; j++) {
+        let symbol: utinyint = STRIPS[strip + ((stopOf[reel] + j + STOP_MASK) & STOP_MASK)];
+        let y: usmallint = j;
+        y = TOP + y * PITCH + offOf[reel] - PITCH - 8;
+        show(reel * (ROWS + 1) + j, symbol, x, y);
+    }
+}
+
+function step(reel: utinyint): void {
+    let speed: utinyint = SPEED - reel;
+    let off: utinyint = offOf[reel] + speed;
+    if (off >= PITCH) {
+        off = off - PITCH;
+        stopOf[reel] = (stopOf[reel] + STOP_MASK) & STOP_MASK;
+    }
+    offOf[reel] = off;
+}
+
+export function main(): void {
+    screen.blank();
+    if (SCALED == 1) {
+        memory.write(0x9F25, 0x00);
+        memory.write(0x9F2A, 64);
+        memory.write(0x9F2B, 64);
+    }
+    upload();
+    build();
+    for (let reel: utinyint = 1; reel < REELS; reel++) {
+        divider(reel);
+    }
+    text.setColor(15);
+    text.print(cell({{TITLE_COL}}, {{TITLE_ROW}}), "VEGAS NIGHTS - {{TITLE}}");
+    text.print(cell({{TITLE_COL}}, {{PANEL_ROW}}), "CREDIT 001900   BET 100   WIN 0");
+    enableSprites();
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        stopOf[reel] = (3 + reel * 11) & STOP_MASK;
+        offOf[reel] = 0;
+        drawReel(reel);
+    }
+    while (true) {
+        waitFrame();
+        if (REST == 0) {
+            for (let reel: utinyint = 0; reel < REELS; reel++) {
+                step(reel);
+                drawReel(reel);
+            }
+        }
+    }
+}

@@ -1,0 +1,15 @@
+// The VIC-20: screen codes at Video.SCREEN (it moves with the RAM fitted) and a colour nybble a cell at Video.COLOR.
+import { Video } from "@8bitscript/vic20/geometry";
+
+export namespace scr {
+    const SCREEN: usmallint = Video.SCREEN;
+    const COLOR: usmallint = Video.COLOR;
+
+    function code(at: usmallint): utinyint {
+        return memory.read(Video.SCREEN + at);
+    }
+
+    function ink(at: usmallint): utinyint {
+        return memory.read(Video.COLOR + at);
+    }
+}
