@@ -82,7 +82,14 @@ const SPEC = {
     cx16: { frame: 1104, stripeH: 20, ramp: gradient([0x120a3a, 0x6a3a9a, 0xffb830, 0xfff0b0, 0xffb830, 0x6a3a9a, 0x120a3a], 24), playfield: { x0: 16, x1: 624, y0: 16, y1: 464 } },
 };
 
-const m = process.argv[2];
+// Only the two machines this sketches; the name builds file paths, so it is checked against a list
+// rather than used as typed.
+const SKETCHED = new Set(['c64', 'cx16']);
+const m = SKETCHED.has(process.argv[2]) ? process.argv[2] : undefined;
+if (m === undefined) {
+  console.error('usage: node scripts/motion-plan.mjs c64|cx16');
+  process.exit(2);
+}
 if (!SPEC[m]) { console.error('usage: node scripts/motion-plan.mjs c64|cx16'); process.exit(2); }
 const { frame, stripeH, ramp, playfield: pf } = SPEC[m];
 const png = load(m, frame);

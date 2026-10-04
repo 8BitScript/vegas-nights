@@ -45,6 +45,15 @@ export const MACHINES = {
   cx16: { start: 1100, before: 200, column: 8 },
 };
 
+// An external tool by absolute path, from the directories a package manager installs to, never through
+// a PATH lookup that a writable directory could shadow.
+const TOOL_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'];
+const tool = (name) => {
+  const found = TOOL_DIRS.map((dir) => join(dir, name)).find((file) => existsSync(file));
+  if (!found) throw new Error(`${name} not found in ${TOOL_DIRS.join(', ')}`);
+  return found;
+};
+
 const framesDir = (m) => join(ROOT, 'shots', 'motion', m);
 // MOTION_VARIANT=gold writes docs/motion/gold/<machine>/ and leaves the baseline strips of the brief
 // (docs/motion/<machine>/) as they are, so a re-run can be compared against them.
@@ -195,7 +204,7 @@ function run(cmd, args) {
 async function gif(machine, frames, file, { fps = 12, scale = 2 } = {}) {
   const list = join(tmpdir(), `motion-${machine}-${process.pid}.txt`);
   writeFileSync(list, frames.map((n) => `file '${frameFile(machine, n)}'\nduration ${1 / fps}`).join('\n') + `\nfile '${frameFile(machine, frames.at(-1))}'\n`);
-  await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', list, '-vf',
+  await run(tool('ffmpeg'), ['-y', '-f', 'concat', '-safe', '0', '-i', list, '-vf',
     `scale=iw*${scale}:ih*${scale}:flags=neighbor,split[a][b];[a]palettegen=stats_mode=full[p];[b][p]paletteuse=dither=none`, '-loop', '0', file]);
   rmSync(list, { force: true });
   console.log(`${file}`);
@@ -302,7 +311,7 @@ async function cx16Record(opts) {
   const dir = ensure(framesDir('cx16'));
   const gifPath = join(dir, 'record.gif');
   rmSync(gifPath, { force: true });
-  const child = spawn('x16emu', ['-ram', '512', '-prg', prg, '-run', '-gif', gifPath, '-sound', 'none'], { stdio: 'ignore' });
+  const child = spawn(tool('x16emu'), ['-ram', '512', '-prg', prg, '-run', '-gif', gifPath, '-sound', 'none'], { stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 1000 * (opts.seconds ?? 26)));
   child.kill('SIGTERM');
   await new Promise((r) => child.on('close', r));
@@ -311,7 +320,7 @@ async function cx16Record(opts) {
   for (const f of readdirSync(dir)) if (/^f\d+\.png$/.test(f)) rmSync(join(dir, f));
   const from = opts.from ?? MACHINES.cx16.start;
   const total = opts.total ?? 160;
-  const grab = (a, b) => run('ffmpeg', ['-y', '-i', gifPath, '-vf', `select=between(n\\,${a}\\,${b})`, '-fps_mode', 'passthrough', '-start_number', String(a), join(dir, 'f%d.png')]);
+  const grab = (a, b) => run(tool('ffmpeg'), ['-y', '-i', gifPath, '-vf', `select=between(n\\,${a}\\,${b})`, '-fps_mode', 'passthrough', '-start_number', String(a), join(dir, 'f%d.png')]);
   await grab(MACHINES.cx16.before, MACHINES.cx16.before);
   await grab(from, from + total - 1);
   const got = readdirSync(dir).filter((f) => /^f\d+\.png$/.test(f));
