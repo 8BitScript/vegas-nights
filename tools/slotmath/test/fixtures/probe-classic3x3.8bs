@@ -1,0 +1,27 @@
+// A smoke program for the emitted tables: look a spin up the way a game will. Three
+// fixed "random" bytes pick the stops; the symbols come out of STRIPS, the pay out of
+// PAYS. It exists to prove the emitted module builds and indexes on real targets, and to
+// measure what the lookup costs (the tables are data in the program image, not RAM).
+import { text } from "@8bitscript/text";
+import { REELS, STOPS, STOP_MASK, STRIPS, PAYS, PAY_WIDTH } from "../../../../src/generated/classic3x3.8bs";
+
+let faces: array<utinyint, 3>;
+const BYTES: array<utinyint, 3> = [17, 40, 201];
+
+function lookup(): usmallint {
+    for (let r: utinyint = 0; r < REELS; r++) {
+        faces[r] = STRIPS[r * STOPS + (BYTES[r] & STOP_MASK)];
+    }
+    if (faces[0] == faces[1] && faces[1] == faces[2]) {
+        return PAYS[faces[0] * PAY_WIDTH + 3];
+    }
+    return 0;
+}
+
+export function main(): void {
+    let pay: usmallint = lookup();
+    text.print(0, "PAY");
+    while (true) {
+        waitFrame();
+    }
+}
