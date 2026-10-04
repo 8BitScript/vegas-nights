@@ -1,0 +1,30 @@
+# Dependencies — published @8bitscript/* versions. A local checkout is
+# pointed at via .8bitscript/toolchain.json, not by rewriting package.json.
+node_modules/
+.pnpm-store/
+
+# Compiler output
+dist/
+
+# Compiled program images, if built outside dist/
+*.prg
+*.xex
+*.nes
+
+# OS cruft
+.DS_Store
+
+# Personal hardware — lives in ~/.config/8bitscript/, not the game
+8bitscript.controllers.json
+
+# Clone-local systems and a local-checkout pointer
+.8bitscript/
+
+# Scratch screenshots from `pnpm run shot:*`
+/shots/
+
+# Per-developer sonarlint state
+.sonarlint/
+
+# Git worktrees for parallel labs
+/.claude/worktrees/

@@ -1,0 +1,32 @@
+export default {
+  // One project, many lab programs. Each program is its own build from its
+  // own `.8bs` entry and writes dist/<program>-<target>.prg (dist/web/<program>/
+  // on the web once there is more than one). Add a lab by adding a line here
+  // and a directory under src/labs/ — see README.md, "Adding a lab".
+  //
+  // `main` is the lobby, and it has to exist: with several programs and none
+  // named `main`, `8bs run`/`8bs build` stop and ask for --program, and the
+  // editor's Run button does not pass one. Labs are run by name.
+  programs: {
+    main: { entry: 'src/lobby/main.8bs' },
+    'hello-reels': { entry: 'src/labs/hello-reels/main.8bs' },
+  },
+  // The machine the labs are designed on: every fact they test is true on
+  // it, and `8bs build --release` reports what each other build is short of
+  // (README.md, "The baseline").
+  baseline: 'c64',
+  imports: {
+    '@shared': 'src/shared',
+    '@generated': 'src/generated',
+  },
+  // The five machines this release of 8BitScript builds for. The PET is the
+  // 32K 4032 and the VIC-20 the 8K expansion: the smaller stock machines are
+  // below what a lab needs (PET 2001 has 4K; the unexpanded VIC-20 about 3.5K).
+  targets: {
+    pet: { hardware: { model: '4032', ram: '32' } },
+    vic20: { hardware: { ram: '8k' } },
+    c64: {},
+    cx16: {},
+    web: {},
+  },
+};

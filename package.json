@@ -1,0 +1,55 @@
+{
+  "name": "vegas-nights",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vegas Nights: a lab for modern-style slot machines with real odds, in 8BitScript, from one source tree, on the PET, VIC-20, C64, Commander X16, and the web.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=26",
+    "pnpm": ">=12"
+  },
+  "scripts": {
+    "start": "8bs run c64",
+    "start:pet": "8bs run pet",
+    "start:vic20": "8bs run vic20",
+    "start:c64": "8bs run c64",
+    "start:cx16": "8bs run cx16",
+    "start:web": "8bs run web",
+    "start:hello-reels": "8bs run c64 --program hello-reels",
+    "start:hello-reels:pet": "8bs run pet --program hello-reels",
+    "start:hello-reels:vic20": "8bs run vic20 --program hello-reels",
+    "start:hello-reels:c64": "8bs run c64 --program hello-reels",
+    "start:hello-reels:cx16": "8bs run cx16 --program hello-reels",
+    "start:hello-reels:web": "8bs run web --program hello-reels",
+    "shot:hello-reels": "node scripts/shot.mjs hello-reels",
+    "build": "8bs build --release",
+    "build:pet": "8bs build --target pet",
+    "build:vic20": "8bs build --target vic20",
+    "build:c64": "8bs build --target c64",
+    "build:cx16": "8bs build --target cx16",
+    "build:web": "8bs build --target web",
+    "check": "8bs check src/lobby/main.8bs src/labs/hello-reels/main.8bs src/shared/reels.8bs"
+  },
+  "devDependencies": {
+    "@8bitscript/cli": "0.24.0"
+  },
+  "dependencies": {
+    "@8bitscript/audio": "0.24.0",
+    "@8bitscript/graphics": "0.24.0",
+    "@8bitscript/i18n": "0.24.0",
+    "@8bitscript/input": "0.24.0",
+    "@8bitscript/random": "0.24.0",
+    "@8bitscript/raster": "0.24.0",
+    "@8bitscript/screen": "0.24.0",
+    "@8bitscript/sprites": "0.24.0",
+    "@8bitscript/system": "0.24.0",
+    "@8bitscript/text": "0.24.0",
+    "@8bitscript/pet": "0.24.0",
+    "@8bitscript/vic20": "0.24.0",
+    "@8bitscript/c64": "0.24.0",
+    "@8bitscript/cx16": "0.24.0",
+    "@8bitscript/web": "0.24.0"
+  }
+}

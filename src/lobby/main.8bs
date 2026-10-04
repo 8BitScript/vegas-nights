@@ -1,0 +1,29 @@
+// The lobby: what `8bs run <machine>` starts when no lab is named. It is
+// the project's `main` program, so the editor's Run button (which does not
+// name a program) has something to run now that the project has several.
+//
+// A lobby cannot launch a lab: 8BitScript has no program chaining yet, so
+// each lab is its own build. The screen says how to run one; README.md has
+// the full list.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { input } from "@8bitscript/input";
+
+const ROW: usmallint = text.COLUMNS;
+
+export function main(): void {
+    screen.blank();
+    input.begin();
+
+    text.print(2 * ROW + 1, "VEGAS NIGHTS");
+    text.print(4 * ROW + 1, "THE SLOT LAB");
+    text.print(7 * ROW + 1, "RUN A LAB WITH");
+    text.print(8 * ROW + 1, "THE EDITOR TASKS");
+    text.print(9 * ROW + 1, "OR PNPM SCRIPTS");
+    text.print(11 * ROW + 1, "SEE README");
+
+    while (true) {
+        waitFrame();
+        input.poll();
+    }
+}

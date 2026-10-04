@@ -1,0 +1,48 @@
+// The reel strip every lab starts from: four symbols, drawn as one text cell
+// each. A lab that wants art replaces this with its own twin; the point of a
+// shared file is that the labs agree on what a symbol IS (a small number) and
+// differ only in how it looks on a given machine.
+//
+// Text only on purpose. `text.print` works on all five machines this release
+// builds for, so the first lab proves the toolchain before any graphics do.
+import { text } from "@8bitscript/text";
+import { random } from "@8bitscript/random";
+
+export namespace reels {
+    // How many different symbols a reel can show. A lab's random draw is
+    // `random.range(reels.SYMBOLS)`.
+    const SYMBOLS: utinyint = 4;
+
+    // One reel stop, 0..SYMBOLS-1, drawn from the top two bits of the
+    // generator's next byte. Four symbols is a power of two, so this is
+    // exactly uniform: no modulo, no bias.
+    //
+    // Why not `random.range(reels.SYMBOLS)`: on the 6502 backends in
+    // @8bitscript 0.24.0, `random.range` does not build ("'binop' is
+    // 'usmallint'": the inlined `next()` comes back 16-bit wide, and the
+    // modulo that follows is 8-bit only). Holding the byte in a `utinyint`
+    // local first is the workaround, and the shift needs it too. Any lab that
+    // wants a bound that is not a power of two needs a rejection-sampled draw
+    // built the same way — tools/slotmath's tables are indexed by power-of-two
+    // stop counts for exactly this reason.
+    function pick(): utinyint {
+        let byte: utinyint = random.next();
+        return byte >> 6;
+    }
+
+    // Draw `symbol` (0..SYMBOLS-1) into the cell at `cell`. Anything past the
+    // last symbol draws a question mark rather than corrupting the screen.
+    function draw(cell: usmallint, symbol: utinyint): void {
+        if (symbol == 0) {
+            text.print(cell, "7");
+        } else if (symbol == 1) {
+            text.print(cell, "B");
+        } else if (symbol == 2) {
+            text.print(cell, "C");
+        } else if (symbol == 3) {
+            text.print(cell, "L");
+        } else {
+            text.print(cell, "?");
+        }
+    }
+}

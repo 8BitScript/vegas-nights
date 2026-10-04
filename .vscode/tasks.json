@@ -1,0 +1,46 @@
+{
+  // Run any lab on any machine from the Command Palette:
+  //   Tasks: Run Task -> "Run lab" (pick the lab, then the machine).
+  // The editor's own Run button runs the lobby (`main`), because it does not
+  // name a program; these tasks do. A new lab goes in the "lab" list below.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run lab",
+      "type": "shell",
+      "command": "pnpm exec 8bs run ${input:target} --program ${input:lab}",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Screenshot lab (all machines, headless)",
+      "type": "shell",
+      "command": "node scripts/shot.mjs ${input:lab}",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Build everything (release matrix)",
+      "type": "shell",
+      "command": "pnpm run build",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "lab",
+      "type": "pickString",
+      "description": "Which lab?",
+      "options": ["hello-reels", "main"],
+      "default": "hello-reels"
+    },
+    {
+      "id": "target",
+      "type": "pickString",
+      "description": "Which machine?",
+      "options": ["c64", "pet", "vic20", "cx16", "web"],
+      "default": "c64"
+    }
+  ]
+}
