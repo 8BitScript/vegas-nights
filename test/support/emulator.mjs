@@ -7,7 +7,15 @@ import { ROOT } from './table.mjs';
 
 // MACHINES=c64,web narrows a run to those machines.
 // The project's own 8bs, run by this node: no command name is looked up on $PATH.
-const CLI = join(ROOT, 'node_modules', '@8bitscript', 'cli', 'bin', '8bs.mjs');
+//
+// EIGHTBS_CHECKOUT=/path/to/8bitscript runs that checkout's CLI and builds against its
+// packages (`--checkout`), for what is on 8BitScript's trunk but in no release yet. The
+// web's pixel reels need it: they write the runtime's redefinable glyph table
+// (@8bitscript/web/charset, 8BitScript #303), which the pinned release does not have.
+const CHECKOUT = process.env.EIGHTBS_CHECKOUT;
+const CLI = CHECKOUT
+  ? join(CHECKOUT, 'packages', 'cli', 'bin', '8bs.mjs')
+  : join(ROOT, 'node_modules', '@8bitscript', 'cli', 'bin', '8bs.mjs');
 
 export const MACHINES = (process.env.MACHINES ?? 'pet,vic20,c64,cx16,web').split(',');
 
@@ -19,10 +27,18 @@ const BINARY = { pet: 'xpet', vic20: 'xvic', c64: 'x64sc', cx16: 'x16emu', web: 
 // itself when it runs; this only decides whether to skip a machine by name.
 const EMULATOR_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/usr/games'];
 
-export function available(machine) {
+/** Why `machine` cannot be tested here, or null if it can. */
+export function unavailable(machine) {
   const bin = BINARY[machine];
-  if (!bin) return true;
-  return EMULATOR_DIRS.some((dir) => existsSync(join(dir, bin)));
+  if (machine === 'web' && !CHECKOUT && !existsSync(join(ROOT, 'node_modules', '@8bitscript', 'web', 'src', 'charset.8bs'))) {
+    return 'web: the pinned 8BitScript has no redefinable glyph table; set EIGHTBS_CHECKOUT to an 8BitScript checkout that does';
+  }
+  if (bin && !EMULATOR_DIRS.some((dir) => existsSync(join(dir, bin)))) return `${machine}: emulator not installed`;
+  return null;
+}
+
+export function available(machine) {
+  return unavailable(machine) === null;
 }
 
 export function capture(machine, program, name, frames) {
@@ -30,6 +46,7 @@ export function capture(machine, program, name, frames) {
   mkdirSync(dir, { recursive: true });
   const out = join(dir, `${name}-${machine}.png`);
   const args = [CLI, 'run', machine, '--program', program, '--screenshot', out];
+  if (CHECKOUT) args.push('--checkout', CHECKOUT);
   if (frames !== undefined) args.push('--frames', String(frames));
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });

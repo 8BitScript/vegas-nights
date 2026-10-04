@@ -75,6 +75,20 @@ export default {
       BLANK: ['......', '......', '..##..', '..##..', '......', '......'],
     },
   },
+  // Drawn again on the web's own 16x16 grid (its symbols are 2x2 cells, 16x16 pixels):
+  // the master's 3x5 letters resample to smudges at that size, so the word is set here
+  // at one letter pixel to one real pixel. The other symbols resample well.
+  variants: {
+    web: {
+      design: 16,
+      symbols: {
+        BAR1(a) {
+          a.rrect(C.cyan, 1, 3, 15, 13, 1.2);
+          word(a, 'BAR', 3, 5, null, true);
+        },
+      },
+    },
+  },
   // the cells every reel window is built from (assets/themes/frame-kit.mjs)
   frame: frameCells({ metal: 'yellow', divider: 'orange', arrow: 'red', panel: 'blue' }),
 };

@@ -154,18 +154,44 @@ test('every machine gets a file, each symbol has ink, and the sizes follow the t
   assert.match(files['classic.web.8bs'], /BIT0_IS_LEFT: bool = true/);
 });
 
-test('the web twin is the C64 file with every bitmap byte mirrored, and nothing else different', () => {
-  const c64 = convertTheme(theme, 'c64'), web = convertTheme(theme, 'web');
+test('the web twin is the C64 file with every bitmap byte mirrored, given the same cells; the committed web art is 2x2 cells', () => {
+  // Given the C64's cell size, nothing differs but the bit order…
+  // (minus the symbols the web draws on its own grid, which differ by design: see the next test)
+  const same = { ...theme, cells: { default: [3, 3] }, symbols: theme.symbols.map((s) => ({ ...s, overrides: { ...s.overrides, web: undefined } })) };
+  const c64 = convertTheme(same, 'c64'), web = convertTheme(same, 'web');
   c64.symbols.forEach((s, i) => {
     assert.deepEqual([...web.symbols[i].bitmap], [...s.bitmap], 'same bitmaps before the emitter mirrors them');
     assert.deepEqual([...web.symbols[i].colors], [...s.colors]);
   });
-  const { files } = buildTheme(theme);
   const bytes = (text, name) => /array<utinyint, \d+> = \[([^\]]+)\]/.exec(text.slice(text.indexOf(`export const ${name}`)))[1].split(',').map(Number);
-  const a = bytes(files['classic.8bs'], 'SYMBOL_BITMAP'), b = bytes(files['classic.web.8bs'], 'SYMBOL_BITMAP');
-  assert.deepEqual(b, a.map(reverseBits));
+  const full = buildTheme(same).files;
+  assert.deepEqual(bytes(full['classic.web.8bs'], 'SYMBOL_BITMAP'), bytes(full['classic.8bs'], 'SYMBOL_BITMAP').map(reverseBits));
+  assert.deepEqual(bytes(full['classic.web.8bs'], 'SYMBOL_COLOR'), bytes(full['classic.8bs'], 'SYMBOL_COLOR'));
+  // …and the theme itself asks the web for 16x16 symbols, so the composer fits the 80-glyph table.
+  const { files } = buildTheme(theme);
+  assert.match(files['classic.web.8bs'], /SYMBOL_CELLS_W: utinyint = 2;/);
+  assert.match(files['classic.web.8bs'], /SYMBOL_CELLS_H: utinyint = 2;/);
+  assert.match(files['classic.8bs'], /SYMBOL_CELLS_W: utinyint = 3;/);
+  // The frame does not depend on the symbols' size.
   assert.deepEqual(bytes(files['classic.web.8bs'], 'FRAME_BITMAP'), bytes(files['classic.8bs'], 'FRAME_BITMAP').map(reverseBits));
-  assert.deepEqual(bytes(files['classic.web.8bs'], 'SYMBOL_COLOR'), bytes(files['classic.8bs'], 'SYMBOL_COLOR'));
+  assert.deepEqual(bytes(files['classic.web.8bs'], 'FRAME_COLOR'), bytes(files['classic.8bs'], 'FRAME_COLOR'));
+});
+
+test('the web draws BAR1 on its own 16x16 grid, so the word on the bar stays legible', () => {
+  const bar1 = theme.symbols.find((s) => s.id === 'BAR1');
+  assert.ok(bar1.overrides.web, 'classic ships a web variant of BAR1 (art.mjs `variants`)');
+  assert.equal(bar1.overrides.web.width, 48);
+  // The same symbol resampled from the 24x24 master instead: the letters smudge, and the bitmap differs.
+  const plain = { ...theme, symbols: theme.symbols.map((s) => (s.id === 'BAR1' ? { ...s, overrides: {} } : s)) };
+  const withVariant = convertTheme(theme, 'web').symbols.find((s) => s.id === 'BAR1');
+  const resampled = convertTheme(plain, 'web').symbols.find((s) => s.id === 'BAR1');
+  assert.notDeepEqual([...withVariant.bitmap], [...resampled.bitmap]);
+  // BAR is three 3x5 letters set at one pixel to the pixel: the lit bar has black holes for the letters (B A R
+  // across the bar's middle rows), so the inside of the bar is not a solid slab.
+  const holes = [...withVariant.bitmap].reduce((n, byte) => n + (8 - byte.toString(2).split('1').length + 1), 0);
+  assert.ok(holes > 0);
+  const inks = (b) => [...b.bitmap].reduce((n, byte) => n + byte.toString(2).replace(/0/g, '').length, 0);
+  assert.ok(inks(withVariant) < inks(resampled) + 40, 'the word is cut out of a bar of similar weight');
 });
 
 test('the VIC-20 only inks with colours 0-7, every colour is in its machine\'s palette, and the PET has no colour table', () => {

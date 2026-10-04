@@ -1,9 +1,9 @@
 // How each kind of machine draws a reel, and how to read it back.
 //
 // A reel's position is a number of "units" down its strip: pixels on the machines
-// that compose glyphs (C64, X16), pseudo-pixel rows of four pixels on the ones that
-// build the reel from the ROM's quadrant blocks (PET, VIC-20), whole symbols on the
-// text fallback (the web). For each kind the adapter can
+// that compose glyphs (C64, X16 and the web), pseudo-pixel rows of four pixels on the
+// ones that build the reel from the ROM's quadrant blocks (PET, VIC-20), and, on a
+// machine with neither, whole symbols (the text fallback). For each kind the adapter can
 //   expected(reel, position)  what a reel at that position looks like, computed
 //                             here from the tile data, and
 //   observe(png, geo, reel)   what the screenshot shows of that reel,
@@ -16,7 +16,7 @@ const table = loadTable();
 const c = table.consts;
 const strip = table.arrays.STRIPS;
 
-export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'text' };
+export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'pixel' };
 
 /** A background-aware reader of logical pixels of a screenshot. */
 export function inkReader(png) {
@@ -32,24 +32,45 @@ export function inkReader(png) {
 const REEL_COL = (reel) => 1 + reel * 4; // block column of a reel's first cell
 const REEL_TOP = 4;                       // block row of a reel's first cell
 
+/** The 8 bits of a byte in the other order. */
+const mirror = (byte) => { let out = 0; for (let i = 0; i < 8; i += 1) out |= ((byte >> i) & 1) << (7 - i); return out; };
+
 // ---- pixel machines -----------------------------------------------------------
+// The C64 and X16 compose 3x3-cell (24x24) symbols, bit 7 the leftmost pixel; the web
+// composes 2x2-cell (16x16) symbols, bit 0 the leftmost, and sits 1 column in from the
+// block's edge with its reels starting on row 6 (view.web.8bs).
 function pixelAdapter(machine) {
-  const tiles = loadFile(machine === 'cx16' ? 'tiles/classic.cx16.8bs' : 'tiles/classic.8bs');
+  const web = machine === 'web';
+  const tiles = loadFile(machine === 'cx16' ? 'tiles/classic.cx16.8bs' : web ? 'tiles/classic.web.8bs' : 'tiles/classic.8bs');
   const bitmap = tiles.arrays.SYMBOL_BITMAP;
-  const PX = 24; // pixels in a symbol
+  const cw = tiles.consts.SYMBOL_CELLS_W;
+  const ch = tiles.consts.SYMBOL_CELLS_H;
+  const bytes = tiles.consts.SYMBOL_BYTES;
+  const PX = ch * 8;            // pixels in a symbol
+  const WIDTH = cw * 8;         // pixels across one
+  const ROWS_PX = c.ROWS * PX;  // pixel rows in the reel window
+  const col = (reel) => (web ? 2 : 1) + reel * (cw + 1);
+  const top = web ? 6 : REEL_TOP;
   const rowBits = (symbol, y) => {
-    // the 24 pixels of pixel row y of a symbol, as one number, leftmost pixel highest
+    // the pixels of pixel row y of a symbol, as one number, leftmost pixel highest
     let v = 0;
-    for (let col = 0; col < 3; col += 1) v = (v << 8) | bitmap[symbol * 72 + ((y >> 3) * 3 + col) * 8 + (y & 7)];
-    return v;
+    for (let k = 0; k < cw; k += 1) {
+      const byte = bitmap[symbol * bytes + ((y >> 3) * cw + k) * 8 + (y & 7)];
+      v = (v << 8) | (web ? mirror(byte) : byte);
+    }
+    return v >>> 0;
   };
   return {
     unit: 'pixel',
     positions: c.STOPS * PX,
     unitsPerSymbol: PX,
+    symbolPixels: PX,
+    // The cells the flash test compares: the reels with their frame, in block cells.
+    window: web ? { col: 1, row: top - 1, cols: 2 + c.REELS * cw + c.REELS - 1, rows: ch * c.ROWS + 2 }
+      : { col: 1, row: 3, cols: 11, rows: 10 },
     expected(reel, position) {
       const out = [];
-      for (let v = 0; v < 72; v += 1) {
+      for (let v = 0; v < ROWS_PX; v += 1) {
         const a = position + v;
         const stop = Math.floor(a / PX) % c.STOPS;
         out.push(rowBits(strip[reel * c.STOPS + stop], a % PX));
@@ -60,12 +81,12 @@ function pixelAdapter(machine) {
       const out = [];
       const sx = geo.pitchX / 8;
       const sy = geo.pitchY / 8;
-      for (let v = 0; v < 72; v += 1) {
+      for (let v = 0; v < ROWS_PX; v += 1) {
         let row = 0;
-        for (let bit = 0; bit < 24; bit += 1) {
-          const cellCol = REEL_COL(reel) + (bit >> 3);
+        for (let bit = 0; bit < WIDTH; bit += 1) {
+          const cellCol = col(reel) + (bit >> 3);
           const x = geo.x0 + cellCol * geo.pitchX + Math.floor(((bit & 7) + 0.5) * sx);
-          const y = geo.y0 + (REEL_TOP - 1) * geo.pitchY + Math.floor((v + 0.5) * sy);
+          const y = geo.y0 + (top - 1) * geo.pitchY + Math.floor((v + 0.5) * sy);
           row = (row << 1) | ink(x, y);
         }
         out.push(row >>> 0);
@@ -85,6 +106,8 @@ function quadAdapter() {
     unit: 'quadrant row (4 pixels)',
     positions: c.STOPS * ROWS,
     unitsPerSymbol: ROWS,
+    symbolPixels: 24,
+    window: { col: 1, row: 3, cols: 11, rows: 10 },
     expected(reel, position) {
       const nibbles = [];
       const rowAt = (a) => pseudo(strip[reel * c.STOPS + (Math.floor(a / ROWS) % c.STOPS)], a % ROWS);
@@ -122,6 +145,8 @@ function textAdapter(reference) {
     unit: 'symbol',
     positions: c.STOPS,
     unitsPerSymbol: 1,
+    symbolPixels: 24,
+    window: { col: 1, row: 3, cols: 11, rows: 10 },
     expected(reel, position) {
       const out = [];
       for (let row = 0; row < c.ROWS; row += 1) out.push(strip[reel * c.STOPS + ((position + row) % c.STOPS)]);

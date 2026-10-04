@@ -3,7 +3,7 @@
 //
 // A reel's position is the strip pixel row at the top of its window, kept as
 // the symbol under that row (`stop`, 0..STOPS-1) and the row within it (`row`,
-// 0..SYMBOL_PIXELS-1). Scrolling down means that position counts DOWN. `start`
+// 0..symbol height-1). Scrolling down means that position counts DOWN. `start`
 // fixes the whole distance in advance so the last step lands exactly on the
 // drawn stop with row 0: the picture never decides the outcome, the draw does.
 //
@@ -16,6 +16,13 @@
 //
 // Up to five reels, so the 5x5 uses the same file.
 import { feel } from "@shared/feel.8bs";
+import { SYMBOL_CELLS_H } from "@generated/tiles/classic.8bs";
+
+// A symbol's height in pixels is the tile data's cell height times eight (24 for
+// three cells, 16 on the web's two), and the speed schedule below is cut from it:
+// eight symbols out, four, one. Each boundary is a multiple of the step before it,
+// so a reel always lands on its stop. (A const is a literal or a const here, so the
+// arithmetic is written where it is used and folded.)
 
 let stops: array<utinyint, 5>;
 let rows: array<utinyint, 5>;
@@ -24,9 +31,6 @@ let waits: array<utinyint, 5>;
 let gaps: array<utinyint, 5>;
 
 export namespace reelscroll {
-    // Pixels of a symbol, and the frames between redraws of one reel.
-    const SYMBOL: utinyint = 24;
-
     function place(reel: utinyint, stop: utinyint): void {
         stops[reel] = stop;
         rows[reel] = 0;
@@ -48,15 +52,15 @@ export namespace reelscroll {
     }
 
     // Start `reel` toward stop `target` on a strip of `count` stops: at least
-    // `minimum` pixels (a multiple of SYMBOL), then however many more it takes to
+    // `minimum` pixels (a multiple of a symbol's pixels), then however many more it takes to
     // land on the target. The reel is at rest when this is called (row 0).
     function start(reel: utinyint, target: utinyint, minimum: usmallint, count: utinyint): void {
         let around: usmallint = count;
-        around = around * 24;
+        around = around * (SYMBOL_CELLS_H * 8);
         let origin: usmallint = stops[reel];
-        origin = origin * 24;
+        origin = origin * (SYMBOL_CELLS_H * 8);
         let goal: usmallint = target;
-        goal = goal * 24;
+        goal = goal * (SYMBOL_CELLS_H * 8);
         // distance down the strip from `origin` to `goal`, wrapping
         let extra: usmallint = origin + around;
         extra = extra - goal;
@@ -93,13 +97,13 @@ export namespace reelscroll {
         let left: usmallint = remaining[reel];
         let pixels: utinyint = feel.FAR;
         let wait: utinyint = feel.WAIT;
-        if (pixels > 12 && left <= 192) {
+        if (pixels > 12 && left <= SYMBOL_CELLS_H * 64) {
             pixels = 12;
         }
-        if (pixels > 8 && left <= 96) {
+        if (pixels > 8 && left <= SYMBOL_CELLS_H * 32) {
             pixels = 8;
         }
-        if (left <= 24) {
+        if (left <= SYMBOL_CELLS_H * 8) {
             pixels = 4;
         }
         if (left <= 8) {
@@ -109,7 +113,7 @@ export namespace reelscroll {
         // slide the window up the strip by `pixels`
         let at: utinyint = rows[reel];
         if (at < pixels) {
-            at = at + 24;
+            at = at + SYMBOL_CELLS_H * 8;
             stops[reel] = (stops[reel] - 1) & (count - 1);
         }
         rows[reel] = at - pixels;

@@ -4,8 +4,8 @@
 // What it holds the 6502 code to:
 //   * exact: after the spins a headless entry takes by itself from a fixed seed,
 //     each reel on the screen shows exactly the picture the odds table and the draw
-//     order say — the pixels (C64, X16), the quadrant blocks (PET, VIC-20) or the
-//     symbols (web) — and WIN, CREDIT and BET are the oracle's. Four entries cover a
+//     order say — the pixels (C64, X16 and the web's 16x16 art) or the quadrant blocks
+//     (PET, VIC-20) — and WIN, CREDIT and BET are the oracle's. Four entries cover a
 //     loss, a two-payline win, small wins and the jackpot;
 //   * scrolling: sampled frame after frame while a spin runs, every reel is at a real
 //     position on its strip and only ever moves down it;
@@ -15,13 +15,14 @@
 //
 // It needs the emulators (xpet, xvic, x64sc, x16emu; the web needs none) and several
 // minutes a machine, so it is `pnpm run test:machines`, not part of CI's `pnpm test`.
-// A machine whose emulator is not installed is skipped by name.
-// MACHINES=c64,web narrows a run.
+// A machine whose emulator is not installed is skipped by name, and so is the web
+// until the pinned 8BitScript has its glyph table (EIGHTBS_CHECKOUT=/path/to/8bitscript
+// runs a checkout that does). MACHINES=c64,web narrows a run.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadTable } from './support/table.mjs';
 import { play } from './support/reference.mjs';
-import { MACHINES, available, capture } from './support/emulator.mjs';
+import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng, LAYOUT } from './support/screen.mjs';
 import { adapterFor, inkReader, precompute, matches } from './support/adapters.mjs';
 
@@ -68,7 +69,7 @@ function bestChain(shots, positions, perFrame) {
 }
 
 for (const machine of MACHINES) {
-  describe(machine, { skip: available(machine) ? false : `${machine}: emulator not installed` }, () => {
+  describe(machine, { skip: unavailable(machine) ?? false }, () => {
     let geo;
     let ref;
     let adapter;
@@ -160,7 +161,7 @@ for (const machine of MACHINES) {
       const [r] = chains(await observe(frames));
       log(`reel 0 comes to rest at frame ~${rest}; steps (${adapter.unit}s): ${r.steps.join(' ')}`);
       assert.ok(r.chain.length >= 4, 'enough captures chain down the strip');
-      const pxPerUnit = 24 / adapter.unitsPerSymbol;
+      const pxPerUnit = adapter.symbolPixels / adapter.unitsPerSymbol;
       if (adapter.unitsPerSymbol > 1) {
         const last = r.steps.filter((d) => d > 0).slice(-4);
         assert.ok(last.length > 0 && last.every((d) => d * pxPerUnit <= 12), `the last steps are 12 pixels or less (${last.map((d) => d * pxPerUnit).join(', ')})`);
@@ -175,7 +176,8 @@ for (const machine of MACHINES) {
       const regionOf = (png) => {
         // every pixel of the reel window, as one string: sees a colour change as well as a shape change
         const out = [];
-        for (let y = geo.y0 + 3 * geo.pitchY; y < geo.y0 + 13 * geo.pitchY; y += 2) for (let x = geo.x0 + geo.pitchX; x < geo.x0 + 12 * geo.pitchX; x += 2) out.push(png.at(x, y));
+        const w = adapter.window;
+        for (let y = geo.y0 + w.row * geo.pitchY; y < geo.y0 + (w.row + w.rows) * geo.pitchY; y += 2) for (let x = geo.x0 + w.col * geo.pitchX; x < geo.x0 + (w.col + w.cols) * geo.pitchX; x += 2) out.push(png.at(x, y));
         return out.join(',');
       };
       const seen = new Set();

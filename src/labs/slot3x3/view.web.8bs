@@ -1,0 +1,271 @@
+// The reels on the web: pixel-smooth, composed into the runtime's redefinable
+// glyph table (@8bitscript/web/charset, codes 176-255: 80 glyphs of 8x8).
+//
+// This is view.8bs's composer, written for a table that is written one pixel row
+// at a time and that is small: the web's art is 16x16 (2x2 cells; the theme says
+// "cells": {"web": [2, 2]}), so a reel window of three symbols is 2 cells across
+// by 6 down = 12 glyphs a reel, 36 for the three reels, and the 14 cells of the
+// machine's frame bring the total to 50 of the 80. (At 24x24 the window needs 81
+// glyphs for the reels alone and 95 with the frame — 15 more than the table holds.)
+//
+// The screen map never moves: each cell of a reel always shows the same code, and
+// a scroll step rewrites only those glyphs' rows — the window of the strip at the
+// reel's pixel offset, copied out of the symbols' bitmaps. Sizes come from the
+// tile data (SYMBOL_CELLS_W/H), not from this file. A glyph takes its cell's one
+// ink, so a cell is coloured by whichever symbol cell supplies most of its rows.
+//
+// The game calls only begin, draw, drawAll, moved and flashLine (see view.8bs).
+import { text, TextColor } from "@8bitscript/text";
+import { charset } from "@8bitscript/web/charset";
+import { layout } from "@shared/layout.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
+import {
+    SYMBOL_CELLS_W, SYMBOL_CELLS_H, SYMBOL_CELLS, SYMBOL_BYTES, SYMBOL_BITMAP, SYMBOL_COLOR,
+    FRAME_CELLS, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
+    FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R,
+    FRAME_BITMAP, FRAME_COLOR
+} from "@generated/tiles/classic.8bs";
+
+// The colour of a reel's cells depends only on which stop is on top and which
+// source cell row dominates; remember it and skip the pass when neither moved.
+let inkKey: array<utinyint, 5>;
+
+export namespace view {
+    // The frame's top row; the reels' first row is the next one. Placed so the
+    // machine sits in the space the 3x3-cell art would fill.
+    const TOP: utinyint = 6;
+
+    // The sizes everything below is cut from, all from the tile data and the odds
+    // table (a const is a literal or a const, so the arithmetic lives in these).
+    //
+    // Pixels in a symbol (24 for three cells, 16 for the web's two).
+    function symbol(): utinyint {
+        return SYMBOL_CELLS_H * 8;
+    }
+
+    // Cells down the reel window: ROWS symbols.
+    function down(): utinyint {
+        return SYMBOL_CELLS_H * ROWS;
+    }
+
+    // The glyphs one reel owns, and the code of the first frame glyph after them all.
+    function perReel(): utinyint {
+        return SYMBOL_CELLS_W * SYMBOL_CELLS_H * ROWS;
+    }
+
+    function frameCode(): utinyint {
+        return REELS * SYMBOL_CELLS_W * SYMBOL_CELLS_H * ROWS;
+    }
+
+    // Columns from one reel's first cell to the next (the divider between them).
+    function stride(): utinyint {
+        return SYMBOL_CELLS_W + 1;
+    }
+
+    // The machine is a frame cell, the reels with a divider between each pair, a
+    // frame cell. The game centres a block 13 cells wide; this machine sits in the
+    // middle of it, `left` cells in.
+    function width(): utinyint {
+        return 2 + REELS * SYMBOL_CELLS_W + REELS - 1;
+    }
+
+    function left(): utinyint {
+        return (13 - view.width()) >> 1;
+    }
+
+    // The row of the payline arrows: the middle of the middle symbol.
+    function arrowRow(): utinyint {
+        return view.TOP + SYMBOL_CELLS_H + (SYMBOL_CELLS_H >> 1);
+    }
+
+    // ---- the glyph table ---------------------------------------------------
+
+    function defineFrame(): void {
+        for (let cell: utinyint = 0; cell < FRAME_CELLS; cell++) {
+            let code: utinyint = charset.FIRST + view.frameCode() + cell;
+            for (let i: utinyint = 0; i < 8; i++) {
+                charset.setRow(code, i, FRAME_BITMAP[cell * 8 + i]);
+            }
+        }
+    }
+
+    function putFrame(col: utinyint, row: utinyint, cell: utinyint): void {
+        let at: usmallint = layout.cell(view.left() + col, row);
+        text.putChar(at, charset.FIRST + view.frameCode() + cell);
+        text.putColor(at, FRAME_COLOR[cell]);
+    }
+
+    function drawFrame(): void {
+        let last: utinyint = view.width() - 1;
+        for (let col: utinyint = 0; col < view.width(); col++) {
+            let top: utinyint = FRAME_T;
+            let low: utinyint = FRAME_B;
+            if (col == 0) {
+                top = FRAME_TL;
+                low = FRAME_BL;
+            } else if (col == last) {
+                top = FRAME_TR;
+                low = FRAME_BR;
+            } else if (col % view.stride() == 0) {
+                top = FRAME_DIVT;
+                low = FRAME_DIVB;
+            }
+            view.putFrame(col, view.TOP - 1, top);
+            view.putFrame(col, view.TOP + view.down(), low);
+        }
+        for (let row: utinyint = 0; row < view.down(); row++) {
+            let left: utinyint = FRAME_L;
+            let right: utinyint = FRAME_R;
+            if (view.TOP + row == view.arrowRow()) {
+                left = FRAME_ARROW_L;
+                right = FRAME_ARROW_R;
+            }
+            view.putFrame(0, view.TOP + row, left);
+            view.putFrame(last, view.TOP + row, right);
+            for (let divider: utinyint = 1; divider < REELS; divider++) {
+                view.putFrame(divider * view.stride(), view.TOP + row, FRAME_DIV);
+            }
+        }
+    }
+
+    // Tell the screen which character each cell of every reel shows, once.
+    function mapCells(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            for (let down: utinyint = 0; down < view.down(); down++) {
+                for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                    let code: utinyint = charset.FIRST + reel * view.perReel() + down * SYMBOL_CELLS_W + across;
+                    text.putChar(layout.cell(view.left() + 1 + reel * view.stride() + across, view.TOP + down), code);
+                }
+            }
+        }
+    }
+
+    // ---- the composer ------------------------------------------------------
+
+    // Compose reel `reel` at its current pixel offset into its glyphs. For each
+    // cell row of the window, the strip pixel row where it starts is walked down
+    // from the reel's (stop, row); each of a glyph's eight rows then comes from
+    // the symbol it falls in, which may be the next one down the strip.
+    function drawBytes(reel: utinyint): void {
+        let stop: utinyint = reelscroll.stop(reel);
+        let row: utinyint = reelscroll.row(reel);
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        for (let down: utinyint = 0; down < view.down(); down++) {
+            for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                let code: utinyint = charset.FIRST + reel * view.perReel() + down * SYMBOL_CELLS_W + across;
+                let at: utinyint = stop;
+                let inSymbol: utinyint = row;
+                for (let i: utinyint = 0; i < 8; i++) {
+                    let symbol: usmallint = STRIPS[strip + at];
+                    let bytes: usmallint = symbol;
+                    bytes = bytes * SYMBOL_BYTES;
+                    let cellRow: utinyint = inSymbol >> 3;
+                    let offset: usmallint = cellRow * SYMBOL_CELLS_W + across;
+                    offset = offset * 8;
+                    charset.setRow(code, i, SYMBOL_BITMAP[bytes + offset + (inSymbol & 7)]);
+                    inSymbol = inSymbol + 1;
+                    if (inSymbol >= view.symbol()) {
+                        inSymbol = 0;
+                        at = (at + 1) & STOP_MASK;
+                    }
+                }
+            }
+            // the next cell row starts eight pixel rows further down the strip
+            row = row + 8;
+            if (row >= view.symbol()) {
+                row = row - view.symbol();
+                stop = (stop + 1) & STOP_MASK;
+            }
+        }
+    }
+
+    // …then the colour of every cell: the ink of whichever symbol cell supplies
+    // most of its eight rows, so a colour never pops for a sliver.
+    function drawColors(reel: utinyint): void {
+        let stop: utinyint = reelscroll.stop(reel);
+        let row: utinyint = reelscroll.row(reel);
+        let band: utinyint = row >> 3;
+        if ((row & 7) > 4) {
+            band = band + 1;
+        }
+        let key: utinyint = stop * 4 + band;
+        if (inkKey[reel] == key) {
+            return;
+        }
+        inkKey[reel] = key;
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        let at: usmallint = layout.cell(view.left() + 1 + reel * view.stride(), view.TOP);
+        for (let down: utinyint = 0; down < view.down(); down++) {
+            let symbol: utinyint = STRIPS[strip + stop];
+            let inkRow: utinyint = row >> 3;
+            if ((row & 7) > 4) {
+                // mostly the cell below: the next cell row, or the next symbol's first
+                if (inkRow < SYMBOL_CELLS_H - 1) {
+                    inkRow = inkRow + 1;
+                } else {
+                    inkRow = 0;
+                    symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
+                }
+            }
+            let index: utinyint = symbol * SYMBOL_CELLS + inkRow * SYMBOL_CELLS_W;
+            for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                text.putColor(at + across, SYMBOL_COLOR[index + across]);
+            }
+            at = at + text.COLUMNS;
+            row = row + 8;
+            if (row >= view.symbol()) {
+                row = row - view.symbol();
+                stop = (stop + 1) & STOP_MASK;
+            }
+        }
+    }
+
+    // ---- what the game calls -----------------------------------------------
+
+    // Once, after the screen is blank: the frame's glyphs, the cell map, the frame.
+    function begin(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            inkKey[reel] = 255;
+        }
+        view.defineFrame();
+        view.mapCells();
+        view.drawFrame();
+    }
+
+    // Redraw `reel` at its current position.
+    function draw(reel: utinyint): void {
+        view.drawBytes(reel);
+        view.drawColors(reel);
+    }
+
+    function drawAll(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            view.draw(reel);
+        }
+    }
+
+    // A reel moved `pixels` down: the composer redraws on every move.
+    function moved(reel: utinyint, pixels: utinyint): void {
+        view.draw(reel);
+    }
+
+    // Show payline `line` lit (or put the reels back as they were).
+    function flashLine(line: utinyint, on: bool): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            let row: utinyint = LINES[line * REELS + reel];
+            if (on) {
+                for (let down: utinyint = 0; down < SYMBOL_CELLS_H; down++) {
+                    for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                        text.putColor(layout.cell(view.left() + 1 + reel * view.stride() + across, view.TOP + row * SYMBOL_CELLS_H + down), TextColor.WHITE);
+                    }
+                }
+            } else {
+                inkKey[reel] = 255;
+                view.draw(reel);
+            }
+        }
+    }
+}

@@ -118,12 +118,13 @@ on a 24x24 grid with a small vector API (`rect circle ellipse ring rrect poly li
 | --- | --- | --- |
 | C64, X16 | the art at 24x24, one colour per cell | multicolour (the C64 could do 2 bits a pixel at half the width) and a second colour in a cell |
 | VIC-20 | the same, with ink colours 0-7 | colours 8-15 (they shift to the nearest of eight) |
-| web | the same, from the 80-glyph table | bit order differs (mirrored in `classic.web.8bs`), and 80 glyphs: 3x3 cells x 6 symbols + 14 frame = 68 fit, a scrolling composer needs more (see below) |
+| web | 16x16 art (2x2 cells) from the runtime's 80-glyph table | a third of the pixels of the 24x24 art, and bit order differs (mirrored in `classic.web.8bs`): the table holds 80 glyphs, which a scrolling composer fills at 36 for three reels + 14 frame = 50 with 2x2 cells but not with 3x3 (81 + 14) |
 | PET | 6x6 pseudo-pixels in the ROM's block glyphs | everything finer than half a cell, and all colour |
 
 A glyph is shared by every cell with the same bits and colour, but the classic theme has only 7
-duplicates in 68 cells, so de-duplication does not change the budget. The lever is symbol size:
-`"cells": { "web": [2, 2] }` in `theme.json` gives 16x16 symbols (24 symbol glyphs + 14 frame).
+duplicates in 68 cells, so de-duplication does not change the budget. The lever is symbol size, and
+the themes pull it for the web: `"cells": { "web": [2, 2] }` in `theme.json` gives 16x16 symbols
+(`view.web.8bs` composes 12 glyphs a reel, 36 for three reels, and the frame adds 14).
 
 ## Proving it on a machine
 
@@ -148,8 +149,9 @@ multiplying a glyph code by 8.
 
 ## Next
 
-- **Web in the lab.** It needs `@8bitscript/web/charset` (8bitscript #303), which is on trunk but in
-  no release yet, so the lab builds for four machines until the next 8BitScript release.
+- **Web in the tile-test lab.** The slot machine uses the web's glyph table through `view.web.8bs`;
+  the tile-test lab still lists four machines, because `@8bitscript/web/charset` (8bitscript #303)
+  is on trunk but in no release yet.
 - **Upgrades.** `TILE_MODE` and the table layout are stable so a renderer can pick a better mode
   without touching a game: C64 multicolour bitmaps; the X16's 4/8-bpp tiles with a real palette; a
   `.8bg` `tileset` kind in 8BitScript so a picture is a first-class asset (a later 8BitScript change,

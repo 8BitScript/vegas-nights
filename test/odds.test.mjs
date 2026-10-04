@@ -37,8 +37,16 @@ test('every symbol the strips use has art, on every machine', () => {
     assert.equal(tiles.consts.ART_SYMBOLS, c.SYMBOL_COUNT, `${file}: one picture per symbol of the odds table`);
     assert.equal(tiles.arrays.SYMBOL_BITMAP.length, c.SYMBOL_COUNT * tiles.consts.SYMBOL_BYTES, `${file}: SYMBOL_BITMAP covers every symbol`);
     assert.equal(tiles.arrays.SYMBOL_COLOR.length, c.SYMBOL_COUNT * tiles.consts.SYMBOL_CELLS, `${file}: SYMBOL_COLOR covers every symbol`);
-    assert.equal(tiles.consts.SYMBOL_CELLS_W, 3, `${file}: the composer assumes 3x3-cell symbols`);
-    assert.equal(tiles.consts.SYMBOL_CELLS_H, 3);
+    // view.8bs composes 3x3-cell symbols; the web's glyph table holds 80 glyphs, which
+    // a 3-cell window does not fit (81 for the reels and 14 for the frame), so view.web.8bs
+    // composes 2x2-cell symbols (12 glyphs a reel, 36 for the reels and 50 with the frame).
+    const cells = file.includes('web') ? 2 : 3;
+    assert.equal(tiles.consts.SYMBOL_CELLS_W, cells, `${file}: ${cells}x${cells}-cell symbols`);
+    assert.equal(tiles.consts.SYMBOL_CELLS_H, cells);
+    if (file.includes('web')) {
+      const glyphs = c.REELS * cells * cells * c.ROWS + tiles.consts.FRAME_CELLS;
+      assert.ok(glyphs <= 80, `${file}: the reels and the frame need ${glyphs} glyphs; the web's table holds 80`);
+    }
   }
   const pet = loadFile('tiles/classic.pet.8bs');
   assert.equal(pet.consts.ART_SYMBOLS, c.SYMBOL_COUNT);

@@ -20,7 +20,7 @@ on all five machines.
 | --- | --- | --- |
 | `main` | The lobby: a title screen that says how to run a lab | builds and runs on all five machines |
 | `hello-reels` | Three text cells that cycle symbols when you press confirm | builds and runs on all five machines |
-| `slot3x3` | A graphical 3×3 slot with three paylines, scrolling reels, bet and win | all five machines; the web uses a cell-step fallback |
+| `slot3x3` | A graphical 3×3 slot with three paylines, scrolling reels, bet and win | all five machines; the web needs an 8BitScript newer than 0.24.0 (its glyph table, [below](#where-it-is-not-what-it-should-be)) |
 
 ## Run it
 
@@ -134,7 +134,8 @@ src/shared/
   sound.8bs                    tick / stop / win / bonus hooks, empty until audio is wired in
 src/labs/slot3x3/
   game.8bs                     the machine: spin, stop, evaluate, pay, flash (no pixels)
-  view.8bs                     the reels where glyphs can be redefined, and the text fallback
+  view.8bs                     the reels where glyphs can be redefined (C64, X16), and the text fallback
+  view.web.8bs                 the reels on the web: pixel-smooth, 16x16 art, composed into its glyph table
   view.pet.8bs view.vic20.8bs  thin wrappers over quad.8bs
   quad.8bs                     the reels from the ROM's quadrant blocks (PET, VIC-20)
 ```
@@ -155,7 +156,7 @@ they came to rest on.
 | X16 | the same, through VERA's data port | 1 pixel | ~0.25 frames | 8,285 B / 197 B |
 | PET | the reel is built from the 16 quadrant blocks in the character ROM | 4 pixels (one block row) | ~0.7 frames | 6,008 B / 100 B |
 | VIC-20 | the same, with a colour for every cell | 4 pixels | ~0.9 frames | 6,376 B / 99 B |
-| web | **fallback:** one character a symbol, redrawn when the symbol changes | 24 pixels | — | 1,032 B const / 68 B |
+| web | the reel is 12 redefined glyphs (2 across, 6 down) of the runtime's 80-glyph table, rewritten a pixel row at a time from 16×16 art; every reel every frame | 1 pixel (8 a frame while spinning) | not measured: the runtime redraws the screen from memory | 732 B const / 68 B |
 
 On the glyph machines the screen map never moves: each cell of a reel always shows
 the same character code, and a scroll step rewrites only those characters' bytes —
@@ -184,13 +185,19 @@ possible on a 1 MHz machine.
 
 ### Where it is not what it should be
 
-- **The web uses the fallback** (one character a symbol, cell-step). Its redefinable
-  glyph table holds 80 glyphs (codes 176–255) and a 3×3-cell reel window needs 81
-  for the reels alone and 95 with the frame: a **shortfall of 15**. The
-  tile pipeline can emit 16×16 symbols for the web (`"cells": {"web": [2, 2]}`),
-  which needs about 50; the composer takes its sizes from the data and could use
-  them, but that is not done here. (The web glyph table is also in no release of
-  8BitScript yet.)
+- **The web needs an 8BitScript newer than 0.24.0, and its art is smaller.** The reels
+  are composed into the runtime's redefinable glyph table (`@8bitscript/web/charset`,
+  8BitScript [#303](https://github.com/8BitScript/8bitscript/pull/303)), which is on
+  8BitScript's trunk but in no release: the pinned 0.24.0 has no table, and its runtime would
+  put the glyph writes into screen memory. So the web's `view.web.8bs` builds and runs only
+  against a newer 8BitScript — `.8bitscript/toolchain.json` pointing at a checkout, or
+  `EIGHTBS_CHECKOUT` for the tests — and this lab's CI (which installs the pinned release)
+  can build the web again only after a release carries #303 and the pin is raised. The table
+  holds 80 glyphs; 24×24 art needs 81 for the reels and 14 for the frame, so the web draws
+  16×16 symbols (the theme's `"cells": {"web": [2, 2]}`): 36 glyphs for the reels and 14 for
+  the frame, 50 in all. The art is smaller on the screen than on the C64 and X16 and has a
+  third of the pixels. Raising the runtime's table past 80 (codes 148–168 and 170–175 are
+  free beside 176–255) would allow 24×24 there too; that is an 8BitScript change.
 - **The VIC-20 has no RAM character set** here: the 8K program is linked from
   `$1201` upward over `$1C00`–`$1FFF`, the only RAM the video chip can read glyphs
   from, and there is no way yet to reserve a hole in the image. It uses the PET's
@@ -245,25 +252,29 @@ Numbers are from `pnpm run test:machines` and `scripts/measure-redraw.mjs` on a 
 | X16 | yes | 8,285 / 197 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs through VERA, pixel art |
 | PET | yes (4032, 32K) | 6,008 / 100 B | exact, block for block | 12 px (3 block rows) every 3rd frame | 4 px (1 block row) | quadrant blocks, no colour |
 | VIC-20 | yes (8K) | 6,376 / 99 B | exact, block for block | 12 px every 3rd frame | 4 px | quadrant blocks, coloured |
-| web | yes | 1,032 B const / 68 B | exact, symbol for symbol | 24 px (a symbol) each 2 frames | whole symbols | **cell-step fallback** |
+| web | yes (needs 8BitScript past 0.24.0) | 732 B const / 68 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs, 16×16 pixel art |
 
-**Falls back to cell-step: the web, and why.** The composer needs 81 glyphs for the
-reels and 14 for the frame; the web's redefinable table (8BitScript #303, in no
-release yet) holds 80, a shortfall of 15. So on the web a reel is three characters
-a symbol (`7`, `B`, `C`, `L`, `.`) in a white ink, and it jumps a symbol at a time.
-Two ways out, neither done here: the tile pipeline can emit 16×16 symbols for the
-web (about 50 glyphs, which fit), or the quadrant composer (`quad.8bs`) can run on
-the web's own 2×2 block glyphs at codes 128–143, which need no table at all — that
-one needs the web's block order mapped to `QUAD_CODE`, and the web's `cells` twin.
+**The web, and why its art is 16×16.** The pixel composer needs, per reel, one glyph for every
+cell of a three-symbol window: 27 at 24×24, 81 for three reels, and 14 more for the machine's
+frame — 95 against the web's 80. At 16×16 (two cells a symbol) it is 12 a reel, 36 in all, and 50
+with the frame, so the web gets the same composed, pixel-smooth reels as the C64 and X16 with real
+tile art, from `view.web.8bs`, which reads every size from the tile data. The cost is a smaller
+picture. Run it with an 8BitScript checkout (see above); `pnpm run test:machines` skips the web
+by name when it has none (`EIGHTBS_CHECKOUT=/path/to/8bitscript MACHINES=web pnpm run test:machines`).
+
+The web, a few frames into a spin (frames 33, 38, 41, 46 and 52 of the `lines` entry): the reels
+slide down by whole pixels, with a symbol cut by the window's edge, in the same pixel art as at rest.
+
+![the web slot mid-spin](docs/slot3x3/web-spin.png)
 
 ## What the 5x5 reuses
 
 `reelscroll`, `feel`, `glyphs`, `cells`, `bank` and `layout` take their sizes from
-data and are the 5x5's as they are; `quad.8bs` and `view.8bs` are written for three
+data and are the 5x5's as they are; `quad.8bs`, `view.8bs` and `view.web.8bs` are written for three
 reels and need their reel count, window height and block width lifted into
 constants (the 5×5 needs `REELS = 5`, `ROWS = 5`, 45 glyphs a reel on the glyph
 machines, 225 in all against the C64's and X16's 127 free codes — so a 5×5 on those
-machines wants either the 16×16 art or a second glyph bank, not a bigger table).
+machines wants either the 16×16 art (the web's already is) or a second glyph bank, not a bigger table).
 
 
 ## Cursor / VS Code
