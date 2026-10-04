@@ -1,0 +1,30 @@
+// The bonus round's look: what a machine does to the whole picture while the free
+// spins run, over and above the banner and the pulsing frame every machine gets.
+// This file is the portable answer — nothing — and every machine that can do better
+// has a twin (fx.c64.8bs, fx.cx16.8bs, fx.vic20.8bs, fx.pet.8bs, fx.web.8bs) that
+// replaces it whole. docs/fx.md is the brief for writing one.
+//
+//   RASTER  frame() does something on this machine, so the game calls it. Name and
+//           meaning: true where the bonus runs raster effects (colour bars, a wobble,
+//           a palette cycle); a twin whose effect is not a raster one (a flashing
+//           frame, say) sets it true too, since the game only counts frames and calls
+//           frame() when it is. False costs nothing: the counter and the call fold away.
+//   begin   the bonus round starts (the FREE SPINS banner goes up).
+//   frame   once per frame while the bonus round runs, through spins, wins and
+//           pauses; `tick` is the frames since begin, wrapping at 256.
+//   end     the round is over. It must put back everything begin and frame changed
+//           (registers, colours, raster list), so the normal look returns exactly.
+//
+// An empty function a program calls folds to no code, so this file costs nothing.
+export namespace fx {
+    const RASTER: bool = false;
+
+    function begin(): void {
+    }
+
+    function frame(tick: utinyint): void {
+    }
+
+    function end(): void {
+    }
+}

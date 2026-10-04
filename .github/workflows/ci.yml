@@ -90,4 +90,4 @@ jobs:
         with:
           node-version: 26
           package-manager-cache: false # no dependencies; do not look for pnpm
-      - run: node --test test/odds.test.mjs test/odds5.test.mjs
+      - run: node --test test/odds.test.mjs test/odds5.test.mjs test/fx.test.mjs
