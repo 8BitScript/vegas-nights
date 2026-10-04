@@ -32,6 +32,7 @@ import {
 // same draws in JavaScript).
 export const DEFAULT_SEED: usmallint = 2026;
 const START_CREDITS: usmallint = 2000;
+const BIG_WIN: usmallint = 2000; // credits at the base bet: twenty bets or more is a big pay
 
 // Layout, in cells from the block's left edge (the machine is 13 cells wide).
 const BLOCK_WIDTH: utinyint = 13;
@@ -193,9 +194,15 @@ function settle(): void {
         sound.bonus();
     } else if (bank.winning()) {
         message(2);
-        sound.win();
+        // A pay of twenty times the bet or more (the engine's credits at the base bet) is big.
+        if (base >= BIG_WIN) {
+            sound.big();
+        } else {
+            sound.win();
+        }
     } else {
         message(4);
+        sound.stop();
     }
     if (bank.winning()) {
         flashLeft = 8;
@@ -209,21 +216,32 @@ function settle(): void {
 
 function frameSpinning(): void {
     let any: bool = false;
+    let stepped: bool = false;
+    let stopped: bool = false;
     for (let reel: utinyint = 0; reel < REELS; reel++) {
         let moved: utinyint = reelscroll.step(reel, STOPS);
         if (moved != 0) {
             view.moved(reel, moved);
-            sound.tick();
+            stepped = true;
             if (!reelscroll.moving(reel)) {
-                sound.stop();
+                stopped = true;
             }
         }
         if (reelscroll.moving(reel)) {
             any = true;
         }
     }
+    // One sound a frame: a reel coming to rest outranks the ticking (a new
+    // effect cuts the old one off), and three reels ticking at once is one tick.
+    // The frame the last reel rests settles the spin, and the result has its own
+    // sound (a pay's jingle, or the stop itself for a loss), so no stop is struck
+    // under it: a second tone started over the first on the SID would not retrigger.
     if (!any) {
         settle();
+    } else if (stopped) {
+        sound.stop();
+    } else if (stepped) {
+        sound.tick();
     }
 }
 
@@ -311,6 +329,10 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
     while (true) {
         waitFrame();
         input.poll();
+        sound.update();
+        if (input.cancel()) {
+            sound.toggle();
+        }
         if (state == 1) {
             frameSpinning();
         } else if (state == 2) {

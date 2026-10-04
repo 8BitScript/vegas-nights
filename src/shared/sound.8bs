@@ -1,24 +1,59 @@
-// The sound hooks: the game calls these at the moments that should be heard, and
-// until a machine's audio is wired in they do nothing (and cost nothing — an
-// empty function a program calls folds to no code).
+// The game's sound hooks: the game calls these at the moments that should be
+// heard, and they play the effects in sfx.8bs through @8bitscript/audio's
+// `audio.tone` (the SID, the VIC-I, the PET's speaker, the X16's PSG, the web's
+// oscillator). On a machine with no sound driver `audio.NOTE_HIGH` is 0 and
+// every call folds to nothing, so a silent machine pays no bytes.
 //
-//   tick   a reel moved one step
-//   stop   a reel came to rest
-//   win    a spin paid
-//   bonus  a jackpot or bonus
-//
-// The audio package is being verified per machine separately; when that lands, a
-// twin of this file (sound.c64.8bs, ...) fills these in.
+//   tick    the reels moved a step (at most once a frame)
+//   stop    a reel came to rest
+//   win     a spin paid
+//   big     a spin paid a lot
+//   bonus   a jackpot or bonus
+//   update  once a frame, from the game loop
+//   toggle  mute / unmute (the cancel key)
+import { sfx } from "./sfx.8bs";
+
+let muted: bool = false;
+
 export namespace sound {
     function tick(): void {
+        if (!muted) {
+            sfx.tick();
+        }
     }
 
     function stop(): void {
+        if (!muted) {
+            sfx.stop();
+        }
     }
 
     function win(): void {
+        if (!muted) {
+            sfx.win();
+        }
+    }
+
+    function big(): void {
+        if (!muted) {
+            sfx.big();
+        }
     }
 
     function bonus(): void {
+        if (!muted) {
+            sfx.bonus();
+        }
+    }
+
+    function update(): void {
+        sfx.update();
+    }
+
+    function toggle(): void {
+        muted = !muted;
+        if (muted) {
+            sfx.silence();
+        }
     }
 }
