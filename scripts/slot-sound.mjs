@@ -40,7 +40,8 @@ const PROBES = [
 const QUIET_PROBES = [
   { name: 'lobby', program: 'main', frames: 700 },
   { name: 'slot5x5 loses and sits', program: 'slot5x5-lose', frames: 2500 },
-  { name: 'slot5x5 bonus ends and sits', program: 'slot5x5-bonus', frames: 4200 },
+  // The C64 finishes the bonus round's free spins around frame 6,400 (it composes its reels more slowly than the web does).
+  { name: 'slot5x5 bonus ends and sits', program: 'slot5x5-bonus', frames: 7600 },
 ];
 // game.8bs: a pay of this many credits at the base bet or more is "big".
 const BIG_WIN = 2000;
