@@ -82,7 +82,7 @@ function symbolAt(reel: utinyint, position: utinyint, row: utinyint): utinyint {
     return STRIPS[reel * STOPS + stop];
 }
 
-function drawSymbol(at: usmallint, symbol: utinyint): void {
+export function drawSymbol(at: usmallint, symbol: utinyint): void {
     text.putChar(at, GLYPH_LEFT[symbol]);
     text.putChar(at + 1, GLYPH_MID[symbol]);
     text.putChar(at + 2, GLYPH_RIGHT[symbol]);

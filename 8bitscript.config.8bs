@@ -20,6 +20,11 @@ export default {
     'slot3x3-auto1': { entry: 'src/labs/slot3x3/auto1.8bs' },
     'slot3x3-auto2': { entry: 'src/labs/slot3x3/auto2.8bs' },
     'slot3x3-auto3': { entry: 'src/labs/slot3x3/auto3.8bs' },
+    // Test support, not games: a ruler that prints two letters a known number
+    // of cells apart (so a screenshot's cell size can be measured), and a
+    // sheet of every symbol and digit exactly as the game draws them.
+    'slot3x3-ruler': { entry: 'src/labs/slot3x3/ruler.8bs' },
+    'slot3x3-glyphs': { entry: 'src/labs/slot3x3/glyphs.8bs' },
   },
   // The machine the labs are designed on: every fact they test is true on
   // it, and `8bs build --release` reports what each other build is short of

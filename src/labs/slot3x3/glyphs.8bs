@@ -1,0 +1,21 @@
+// Test support: every symbol, drawn by the game's own drawSymbol on rows 2-7
+// of the block, and the ten digits on row 9 — the reference the screenshot
+// test matches the real machine's cells against, in the machine's own font
+// and colours.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+import { drawSymbol } from "./game.8bs";
+import { SYMBOL_COUNT } from "@generated/classic3x3.8bs";
+
+export function main(): void {
+    screen.blank();
+    layout.centre(11);
+    for (let symbol: utinyint = 0; symbol < SYMBOL_COUNT; symbol++) {
+        drawSymbol(layout.cell(0, 2 + symbol), symbol);
+    }
+    text.print(layout.cell(0, 10), "0123456789");
+    while (true) {
+        waitFrame();
+    }
+}

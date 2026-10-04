@@ -1,0 +1,16 @@
+// Test support: two letters on an otherwise empty screen, at the block's
+// cell (0, 1) and (10, 15). A screenshot of this program is how the test
+// measures where text cells land in pixels on each machine.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+
+export function main(): void {
+    screen.blank();
+    layout.centre(11);
+    text.print(layout.cell(0, 1), "M");
+    text.print(layout.cell(10, 15), "M");
+    while (true) {
+        waitFrame();
+    }
+}
