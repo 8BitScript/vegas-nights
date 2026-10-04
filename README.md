@@ -302,6 +302,43 @@ those tables as `const` arrays, so they live in the program image, not RAM.
 Nothing is hand-tuned in a lab, and changing a paytable means regenerating and
 re-reading the proof.
 
+## Sound
+
+`src/shared/sfx.8bs` is the slot machines' sounds — a reel tick, a reel stop,
+a small win, a big win and the bonus fanfare — through `@8bitscript/audio`'s
+`audio.tone`. Call `sfx.update()` once a frame instead of `audio.update()`, and
+`sfx.tick()`, `sfx.stop()`, `sfx.win()`, `sfx.big()`, `sfx.bonus()` when
+something happens. A jingle is a run of (note, frames) steps in two const arrays,
+so it is data in the program image; a new effect cuts the one sounding off. All
+notes are inside C4..B5 (the `.8ba` index 48..71), the range the PET's one-bit
+speaker, the VIC-I, the SID and the X16's PSG all play without moving a note by
+an octave. A sound is timed in calls of `sfx.update()`: a loop that overruns a
+frame stretches a sound by that frame.
+
+`pnpm run start:sound-test:<machine>` is the lab: it plays all five effects once
+as it starts, then up/down choose and confirm plays. `pnpm run sound` is the
+check: it builds the lab, records each machine's audio headlessly (VICE in
+console mode at 2% volume, x16emu on SDL's dummy drivers, the web as the
+rendered register timeline of the compiled program) and measures the pitch of
+every note of every effect against the note it names. No window opens and
+nothing worth hearing plays. It needs an 8BitScript checkout that has
+`audio.tone` (`EIGHTBS_CHECKOUT`, default `../8bitscript`); the recording of
+VICE's audio needs macOS.
+
+What that check found: every note of every effect is the pitch it names on the
+C64 (it reads the SID's registers: exact), the X16 and the web (exact), the PET
+(a recorded WAV; a 50 ms note has only a few cycles to count, so those read to
+about 40 cents and the long ones to within a few), and within the VIC-I's own
+7-bit divisor on the VIC-20 (up to 50 cents flat or sharp; its table is NTSC and
+a PAL VIC-20 plays about a semitone and a half sharp). The web's sound has **not been heard**: no
+browser tab was available. One VIC-20 step is a frame long: the first step of
+`big` measures 4.95 frames where its neighbours measure 4.00, and the cause is
+not found.
+
+`audio.tone` and `audio.NOTE_HIGH` are in 8BitScript's trunk, not in the
+released 0.24.0, so `sound-test` does not build with the pinned CLI until the
+release after that; `pnpm run check` and CI have the same limit.
+
 ## The baseline
 
 `baseline: 'c64'` in the config names the machine the labs are designed on.
