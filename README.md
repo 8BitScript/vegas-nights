@@ -241,6 +241,14 @@ pnpm run test:machines    # every machine, headless, under its own emulator (min
 MACHINES=c64,web pnpm run test:machines
 ```
 
+`test/composer-offsets.test.mjs` (part of `test:machines`) holds each reel composer, in both
+games, to the picture the tile data and the strip say: it draws the reels pinned at every
+pixel offset a composer works at (all eight within a cell row on the pixel machines, 0 and 4
+on the quadrant ones; `src/labs/slot3x3/offsets.8bs` and `src/labs/slot5x5/offsets.8bs`, which
+read `--define ROW` and `STOP`) and compares every pixel. It needs `EIGHTBS_CHECKOUT`, because
+`#define` is on 8BitScript's trunk and in no release yet. The sampled spin tests alone missed a
+C64 composer bug that was wrong at six of the eight offsets.
+
 `test/odds.test.mjs` enumerates all 64³ outcomes through the payline evaluator and
 holds the result to the engine's exact RTP and hit frequency, checks that the
 strips and the art cover the same symbols, and that the generator's masked stops

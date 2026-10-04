@@ -22,16 +22,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadFile, loadTable } from './support/table.mjs';
+import { loadTable } from './support/table.mjs';
 import { play } from './support/reference5.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng } from './support/screen.mjs';
-import { inkReader, nibbleOf, quadCell } from './support/adapters.mjs';
+import { inkReader } from './support/adapters.mjs';
+import { KIND, pixelAdapter, quadAdapter } from './support/adapters5.mjs';
 import { bestChain } from './support/chain.mjs';
 
 const table = loadTable('grid5x5');
 const c = table.consts;
-const a = table.arrays;
 
 // Frames to let a machine run: one base spin settles (the VICE machines spend ~215 frames
 // booting; the spin starts 20 frames after the program does), and a whole bonus round ends.
@@ -44,84 +44,15 @@ const roundFrames = (machine, granted) => ROUND[machine][0] + ROUND[machine][1] 
 const MAX_PX_PER_FRAME = { c64: 12, cx16: 8, pet: 12, vic20: 12, web: 12, c64web: 12 };
 // A frame well before the first spin starts.
 const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
-const KIND = { pet: 'quad', vic20: 'quad', web: 'quad', c64: 'pixel', cx16: 'pixel', c64web: 'pixel' };
 const SAMPLES = { c64: 10, vic20: 8, pet: 8, cx16: 6, web: 10, c64web: 10 };
 
 // Where the game puts things (src/labs/slot5x5/game.8bs, view.8bs, view.pet.8bs).
 const PANEL = (machine) => (KIND[machine] === 'pixel' ? 14 : 17);
-const TOP = (machine) => (KIND[machine] === 'pixel' ? 3 : 1);
 
 const log = (...args) => console.log('   ', ...args);
 
 /** The seed the entry plays from. */
 const seedOf = (name) => Number(/play\(1, (\d+)\)/.exec(readFileSync(new URL(`../src/labs/slot5x5/${name}.8bs`, import.meta.url), 'utf8'))[1]);
-
-// ---- how each kind of machine draws a reel, and how to read it back ----------------------
-
-function pixelAdapter(machine) {
-  const bitmap = loadFile(machine === 'cx16' ? 'tiles/cosmic.cx16.8bs' : 'tiles/cosmic.8bs').arrays.SYMBOL_BITMAP;
-  const PX = 16;
-  const rowBits = (symbol, y) => (bitmap[symbol * 32 + ((y >> 3) * 2) * 8 + (y & 7)] << 8) | bitmap[symbol * 32 + ((y >> 3) * 2 + 1) * 8 + (y & 7)];
-  return {
-    unit: 'pixel',
-    positions: c.STOPS * PX,
-    unitsPerSymbol: PX,
-    pxPerUnit: 1,
-    expected(reel, position) {
-      const out = [];
-      for (let v = 0; v < 80; v += 1) {
-        const at = position + v;
-        out.push(rowBits(a.STRIPS[reel * c.STOPS + (Math.floor(at / PX) % c.STOPS)], at % PX));
-      }
-      return out.join(',');
-    },
-    observe(png, geo, ink, reel) {
-      const out = [];
-      const sx = geo.pitchX / 8;
-      const sy = geo.pitchY / 8;
-      for (let v = 0; v < 80; v += 1) {
-        let row = 0;
-        for (let bit = 0; bit < 16; bit += 1) {
-          const x = geo.x0 + (1 + 3 * reel + (bit >> 3)) * geo.pitchX + Math.floor(((bit & 7) + 0.5) * sx);
-          const y = geo.y0 + (TOP(machine) - 1) * geo.pitchY + Math.floor((v + 0.5) * sy);
-          row = (row << 1) | ink(x, y);
-        }
-        out.push(row >>> 0);
-      }
-      return out.join(',');
-    },
-  };
-}
-
-function quadAdapter(machine) {
-  const pixels = loadFile('tiles/cosmic.pet.8bs').arrays.SYMBOL_PIXELS;
-  const R = 6; // pseudo-pixel rows in a symbol
-  const rowAt = (reel, at) => pixels[a.STRIPS[reel * c.STOPS + (Math.floor(at / R) % c.STOPS)] * R + (at % R)];
-  return {
-    unit: 'quadrant row (4 pixels)',
-    positions: c.STOPS * R,
-    unitsPerSymbol: R,
-    pxPerUnit: 4,
-    expected(reel, position) {
-      const nibbles = [];
-      for (let down = 0; down < 15; down += 1) {
-        const upper = rowAt(reel, position + down * 2);
-        const lower = rowAt(reel, position + down * 2 + 1);
-        for (let across = 0; across < 3; across += 1) nibbles.push(nibbleOf(upper, lower, across));
-      }
-      return nibbles.join(',');
-    },
-    observe(png, geo, ink, reel) {
-      const out = [];
-      for (let down = 0; down < 15; down += 1) {
-        for (let across = 0; across < 3; across += 1) {
-          out.push(quadCell(ink, geo, geo.x0 + (1 + 4 * reel + across) * geo.pitchX, geo.y0 + (TOP(machine) + down - 1) * geo.pitchY));
-        }
-      }
-      return out.join(',');
-    },
-  };
-}
 
 for (const machine of MACHINES) {
   // The web's 5x5 draws with the host font's block glyphs and needs no redefinable glyph table, so

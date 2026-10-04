@@ -18,6 +18,9 @@ const CLI = CHECKOUT
   ? join(CHECKOUT, 'packages', 'cli', 'bin', '8bs.mjs')
   : join(ROOT, 'node_modules', '@8bitscript', 'cli', 'bin', '8bs.mjs');
 
+/** True when this run can build programs that read `#define` (it is on 8BitScript's trunk, in no release yet). */
+export const HAS_DEFINE = Boolean(CHECKOUT);
+
 // `c64web` is the C64 built through the wasm backend (`8bs run c64 --web`) and painted by the
 // page's own compositor: the same program as `c64`, run with no emulator. It needs an 8BitScript
 // that has a C64 wasm port (EIGHTBS_CHECKOUT, or a release that has one).
@@ -51,7 +54,7 @@ export function available(machine) {
   return unavailable(machine) === null;
 }
 
-export function capture(machine, program, name, frames) {
+export function capture(machine, program, name, frames, defines = {}) {
   const dir = join(ROOT, 'shots', 'tests');
   mkdirSync(dir, { recursive: true });
   const out = join(dir, `${name}-${machine}.png`);
@@ -60,6 +63,7 @@ export function capture(machine, program, name, frames) {
     ? [CLI, 'run', 'c64', '--web', '--program', program, '--screenshot', out]
     : [CLI, 'run', machine, '--program', program, '--screenshot', out];
   if (CHECKOUT) args.push('--checkout', CHECKOUT);
+  for (const [key, value] of Object.entries(defines)) args.push('--define', `${key}=${value}`);
   if (frames !== undefined) args.push('--frames', String(frames));
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
