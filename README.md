@@ -372,7 +372,7 @@ variable bytes, before sound, after):
 | VIC-20 8K | 6376 / 99 | 7172 / 108 | +796 / +9 |
 | C64 | 7768 / 103 | 9241 / 114 | +1473 / +11 |
 | X16 | 8290 / 197 | 9334 / 197 | +1044 / 0 |
-| web (const data) | 1032 / 68 | 1098 / 74 | +66 / +6 |
+| web (const data) | 732 / 68 | 798 / 74 | +66 / +6 |
 
 `pnpm run sound:slot` is the check that a spin sounds right. It builds the four
 headless slot programs (a loss, a small win, a big win, the jackpot), whose last
