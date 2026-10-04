@@ -581,6 +581,12 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
     while (true) {
         waitFrame();
         input.poll();
+        // The sounds count their frames in calls of update(): a loop that never calls it never
+        // closes the gate of the first note it opens, and the machine drones for ever.
+        sound.update();
+        if (input.cancel()) {
+            sound.toggle();
+        }
         frameBonusPulse();
         frameFx();
         if (state == 1) {
