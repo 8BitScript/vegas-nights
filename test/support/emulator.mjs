@@ -2,7 +2,7 @@
 // and CI-less machines run locally. Never opens a window.
 import { spawn } from 'node:child_process';
 import { mkdirSync, existsSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import { ROOT } from './table.mjs';
 
 // MACHINES=c64,web narrows a run to those machines.
@@ -11,10 +11,15 @@ export const MACHINES = (process.env.MACHINES ?? 'pet,vic20,c64,cx16,web').split
 // Which emulator each machine needs on PATH (web needs none).
 const BINARY = { pet: 'xpet', vic20: 'xvic', c64: 'x64sc', cx16: 'x16emu', web: null };
 
+// Where the emulators are installed (Homebrew on Apple silicon and Intel, the system
+// bin directories): fixed locations, not a search of $PATH. The CLI finds the emulator
+// itself when it runs; this only decides whether to skip a machine by name.
+const EMULATOR_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/usr/games'];
+
 export function available(machine) {
   const bin = BINARY[machine];
   if (!bin) return true;
-  return (process.env.PATH ?? '').split(delimiter).some((dir) => dir && existsSync(join(dir, bin)));
+  return EMULATOR_DIRS.some((dir) => existsSync(join(dir, bin)));
 }
 
 export function capture(machine, program, name, frames) {
