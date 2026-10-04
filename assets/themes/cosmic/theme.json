@@ -9,5 +9,6 @@
     "yellow": "#bfce72", "orange": "#8b5429", "grey": "#787878", "dgrey": "#505050", "lgrey": "#9f9f9f"
   },
   "cells": { "default": [3, 3], "c64": [2, 2], "cx16": [2, 2], "web": [2, 2] },
+  "quad": {"default": 4, "vic20": 3, "web": 4},
   "frame": "frame.json"
 }

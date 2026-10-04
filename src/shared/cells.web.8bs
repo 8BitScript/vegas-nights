@@ -18,4 +18,14 @@ export namespace cells {
     function tint(at: usmallint, color: utinyint): void {
         text.putColor(at, color);
     }
+
+    // The host font's blocks are 128 + the pattern, so the complement is the code xor 15.
+    function invert(code: utinyint): utinyint {
+        return code ^ 15;
+    }
+
+    // The screen code to print for frame cell `cell` (FRAME_TL ... in the tile data).
+    function frameCode(cell: utinyint): utinyint {
+        return 143; // the host font's solid block; the frame cells are told apart by colour
+    }
 }

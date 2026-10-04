@@ -3,4 +3,7 @@
 export namespace feel {
     const WAIT: utinyint = 1;
     const FAR: utinyint = 12;
+    const REEL_WAIT: utinyint = 1;
+    const REEL_FAR: utinyint = 12;
+    const EASE: utinyint = 24; // a symbol (3 cells) here
 }

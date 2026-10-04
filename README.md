@@ -147,7 +147,9 @@ src/generated/classic3x3.8bs   the odds (tools/slotmath): strips, paylines, payt
 src/generated/tiles/           the art (tools/tiles): per-machine pixel or block tables
 src/shared/
   reelscroll.8bs               where a reel is, in pixels, and the staged speed schedule
+  symbolpx.*.8bs               per machine: how tall a symbol is (the speeds are cut from it)
   feel.*.8bs                   per machine: frames between redraws, pixels per redraw
+  move.8bs scr.*.8bs           the 6502 block copy a reel hops with, and where a machine keeps its screen (PET, VIC-20)
   glyphs.*.8bs                 per machine: can glyphs be redefined, and how (C64, X16)
   cells.*.8bs                  per machine: write a raw screen code and ink (PET, VIC-20)
   bank.8bs                     exact six-digit credits
@@ -156,9 +158,9 @@ src/shared/
 src/labs/slot3x3/
   game.8bs                     the machine: spin, stop, evaluate, pay, flash (no pixels)
   view.8bs                     the reels where glyphs can be redefined (C64, X16), and the text fallback
-  view.web.8bs                 the reels on the web: pixel-smooth, 16x16 art, composed into its glyph table
-  view.pet.8bs view.vic20.8bs  thin wrappers over quad.8bs
-  quad.8bs                     the reels from the ROM's quadrant blocks (PET, VIC-20)
+  view.pet.8bs view.vic20.8bs  where the panel goes on each, and thin wrappers over quad.8bs
+  view.web.8bs
+  quad.8bs                     the reels from the quadrant blocks (PET, VIC-20, web): 6x6-cell symbols, table-driven
 ```
 
 `game.8bs` knows reels, stops and pixels, never how to draw one. Everything it
@@ -175,9 +177,9 @@ they came to rest on.
 | --- | --- | --- | --- | --- |
 | C64 | the reel is 27 redefined characters; a frame rewrites their bytes from the symbol bitmaps, in assembly | 1 pixel | ~0.6 frames a reel | 7,768 B / 103 B |
 | X16 | the same, through VERA's data port | 1 pixel | ~0.25 frames | 8,285 B / 197 B |
-| PET | the reel is built from the 16 quadrant blocks in the character ROM | 4 pixels (one block row) | ~0.7 frames | 6,008 B / 100 B |
-| VIC-20 | the same, with a colour for every cell | 4 pixels | ~0.9 frames | 6,376 B / 99 B |
-| web | the reel is 12 redefined glyphs (2 across, 6 down) of the runtime's 80-glyph table, rewritten a pixel row at a time from 16×16 art; every reel every frame | 1 pixel (8 a frame while spinning) | not measured: the runtime redraws the screen from memory | 732 B const / 68 B |
+| PET | the reel is built from the 16 quadrant blocks in the character ROM: 6×6-cell symbols (48 px), three precomputed tables, a 6502 block-copy hop | 4 pixels (half a block row) | 1.25 frames to redraw, **0.32 to hop** | 8,439 B / 121 B |
+| VIC-20 | the same, with a colour for every cell (the hop moves the colour RAM too) | 4 pixels | 2.71 frames to redraw, **0.67 to hop 8 px, 0.83 for 16** | 9,452 B / 133 B |
+| web | the reel is built from the host font's sixteen 2×2 block glyphs (codes 128–143) with a colour per cell, 6×6 cells a symbol; no runtime change, a reel is redrawn whole each step | 4 pixels (8 a frame while spinning) | free (the runtime) | 1,327 B const / 82 B |
 
 On the glyph machines the screen map never moves: each cell of a reel always shows
 the same character code, and a scroll step rewrites only those characters' bytes —
@@ -191,11 +193,12 @@ and finally 2 pixels a redraw, each distance a multiple of the step before, so t
 last step lands exactly on the drawn stop with the reel at rest — the picture never
 decides the outcome. How often a reel is redrawn and how far it hops far out are
 per-machine settings ([`feel.*.8bs`](src/shared)), set from the measured redraw
-cost: the C64 steps 12 pixels every second frame, the X16 8 pixels every frame, the
-PET and VIC-20 12 pixels (3 block rows) every third frame, and every machine eases
-in to 2-pixel (the PET and VIC-20: 4-pixel) steps at the end.
+cost: the C64 steps 12 pixels every second frame, the X16 8 pixels and the web 8 pixels
+every frame, the PET hops 8 pixels (one block row) every frame, the VIC-20 hops 16 (two
+block rows) about every third frame, and every machine eases in to 2-pixel (the PET,
+VIC-20 and web: 4-pixel) steps at the end.
 
-### What a redraw costs
+### What a redraw costs, and what a hop saves
 
 `scripts/measure-redraw.mjs` redraws one reel N times under each machine's own
 emulator and finds when the program finishes, so the cost is a number, not a guess:
@@ -204,30 +207,47 @@ with the row maths in assembly and **0.6 with the whole reel in one assembly cal
 Taking the redraw out of compiled code is what makes a reel hop every second frame
 possible on a 1 MHz machine.
 
+The quadrant machines draw reels twice as big as they used to (6×6-cell symbols, 48 pixels: a reel window of
+108 cells instead of 27), and recomposing every cell of a bigger
+reel at every four-pixel step would have cost 3× what the old reels cost: **1.23 frames a reel on the PET
+and 2.67 on the VIC-20**. So they do not recompose. A reel that moves a whole cell row (8 pixels) or two
+does not change the pictures in its cells, it moves them: `quad.hop` copies the reel's rows down with a
+6502 block copy (`src/shared/move.8bs`, 18 cycles a byte, the colour RAM too on the VIC-20) and composes only the
+new top row or two from the tables. `scripts/measure-hops.mjs` times it the same way (frames per reel move,
+boot and setup cancelling):
+
+| frames per reel move | full redraw | hop 8 px | hop 16 px |
+| --- | ---: | ---: | ---: |
+| PET | 1.25 | **0.32** | 0.39 |
+| VIC-20 | 2.71 | **0.67** | 0.83 |
+
+— 3.9× and 4.0× cheaper, which is what lets the PET move all three reels 8 pixels every frame and the
+VIC-20 a reel 16 pixels about every third. `test/hops.test.mjs` is the proof that it is only cheaper:
+three reels walked twenty moves up their strips, once by the spin's own path and once with a full redraw
+after every move, must end on the *same screen*, pixel for pixel (8 and 16 pixel moves, crossing several
+symbol boundaries); breaking the 16-pixel copy makes it fail. Where the host owns the screen (the web)
+there is nothing to copy and a reel is redrawn whole.
+
 ### Where it is not what it should be
 
-- **The web needs an 8BitScript newer than 0.24.0, and its art is smaller.** The reels
-  are composed into the runtime's redefinable glyph table (`@8bitscript/web/charset`,
-  8BitScript [#303](https://github.com/8BitScript/8bitscript/pull/303)), which is on
-  8BitScript's trunk but in no release: the pinned 0.24.0 has no table, and its runtime would
-  put the glyph writes into screen memory. So the web's `view.web.8bs` builds and runs only
-  against a newer 8BitScript — `.8bitscript/toolchain.json` pointing at a checkout, or
-  `EIGHTBS_CHECKOUT` for the tests — and this lab's CI (which installs the pinned release)
-  can build the web again only after a release carries #303 and the pin is raised. The table
-  holds 80 glyphs; 24×24 art needs 81 for the reels and 14 for the frame, so the web draws
-  16×16 symbols (the theme's `"cells": {"web": [2, 2]}`): 36 glyphs for the reels and 14 for
-  the frame, 50 in all. The art is smaller on the screen than on the C64 and X16 and has a
-  third of the pixels. Raising the runtime's table past 80 (codes 148–168 and 170–175 are
-  free beside 176–255) would allow 24×24 there too; that is an 8BitScript change.
+- **The web and the pinned 8BitScript.** The web's 3×3 no longer needs the runtime's redefinable
+  glyph table: it draws its reels from the host font's block glyphs like the PET, so it builds against
+  0.24.0. (Its 5×5 and the C64-in-wasm still need an 8BitScript newer than the release.) The cost is the
+  look: block graphics are blockier than the C64's and X16's pixel art, and the BAR symbols are told apart
+  by how many bars they have, not by their lettering (the 12×12 grid cannot hold a word).
 - **The VIC-20 has no RAM character set** here: the 8K program is linked from
   `$1201` upward over `$1C00`–`$1FFF`, the only RAM the video chip can read glyphs
   from, and there is no way yet to reserve a hole in the image. It uses the PET's
-  quadrant composer instead, with colour — recognisable, and scrolling in 4-pixel
-  steps, but blockier than the C64 and X16.
+  quadrant blocks instead, with colour — recognisable, scrolling in 4-pixel steps,
+  but blockier than the C64 and X16. The reels now fill the whole 22-column screen (87%).
 - **Tearing.** The reel redraw is not synchronised to the raster beam, so a
   headless screenshot taken mid-spin can catch half of one frame and half of the
-  next (the tests skip those captures). It is invisible at rest; it reads as motion
-  blur while a reel spins.
+  next. On the quadrant machines this is a *seam*: a hop moves a reel's rows bottom-first, against
+  the beam, so for the one frame in which the beam crosses the reel while the CPU is copying, the
+  rows above the seam are the old picture and the rest the new (a four-pixel recompose writes
+  top-first and leaves the old picture below). The motion test knows exactly this and accepts nothing
+  else; it is invisible at rest and reads as motion blur while a reel spins. Making the three reels
+  finish before the beam reaches the window would need each hop under 0.1 frame.
 - **Panels are text.** The credit, bet and win are in the machine's own font; the
   frame, dividers and payline arrows are graphics.
 - **The jackpot is fixed-odds**, not a progressive meter, and there is no bonus
@@ -249,6 +269,9 @@ read `--define ROW` and `STOP`) and compares every pixel. It needs `EIGHTBS_CHEC
 `#define` is on 8BitScript's trunk and in no release yet. The sampled spin tests alone missed a
 C64 composer bug that was wrong at six of the eight offsets.
 
+`test/hops.test.mjs` (part of `test:machines`, `src/labs/slot3x3/hops.8bs`) holds a hop to the picture a
+full redraw makes — see [What a redraw costs, and what a hop saves](#what-a-redraw-costs-and-what-a-hop-saves).
+
 `test/odds.test.mjs` enumerates all 64³ outcomes through the payline evaluator and
 holds the result to the engine's exact RTP and hit frequency, checks that the
 strips and the art cover the same symbols, and that the generator's masked stops
@@ -263,7 +286,9 @@ grid; then:
   pixel (C64, X16) or block for block (PET, VIC-20), the picture the oracle says
   the drawn stop gives; WIN, CREDIT and BET must match digit for digit;
 - **scrolling** — frame after frame while a spin runs, each reel is at a real
-  position on its strip and only ever moves down it;
+  position on its strip and only ever moves down it (on the quadrant machines a frame may show one
+  *seam* between two adjacent positions — the beam crossing a reel while it is being rewritten — and
+  nothing else);
 - **easing** — in the last frames of a spin the steps are small (≤ 12 pixels);
 - **the win flash** — the paying lines blink and the reels come to rest as they were.
 
@@ -279,20 +304,22 @@ Numbers are from `pnpm run test:machines` and `scripts/measure-redraw.mjs` on a 
 | --- | :-: | --- | :-: | --- | --- | --- |
 | C64 | yes | 7,768 / 103 B | exact, pixel for pixel | 12 px every 2nd frame | 2 px | composed glyphs, pixel art |
 | X16 | yes | 8,285 / 197 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs through VERA, pixel art |
-| PET | yes (4032, 32K) | 6,008 / 100 B | exact, block for block | 12 px (3 block rows) every 3rd frame | 4 px (1 block row) | quadrant blocks, no colour |
-| VIC-20 | yes (8K) | 6,376 / 99 B | exact, block for block | 12 px every 3rd frame | 4 px | quadrant blocks, coloured |
-| web | yes (needs 8BitScript past 0.24.0) | 732 B const / 68 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs, 16×16 pixel art |
+| PET | yes (4032, 32K) | 8,439 / 121 B (was 6,689 / 108) | exact, block for block | 8 px every frame (3 reels) | 4 px | 6×6-cell quadrant blocks, no colour; 44% of the screen (was 14%) |
+| VIC-20 | yes (8K) | 9,452 / 133 B (was 7,254 / 111) | exact, block for block | 16 px about every 3rd frame | 4 px | 6×6-cell quadrant blocks, coloured; 87% of the screen (was 28%) |
+| web | yes | 1,327 B const / 82 B (was 798 / 78) | exact, block for block | 8 px every frame | 4 px (over the last 32) | 6×6-cell blocks of the host font, coloured; 44% of a 40×25 grid (34% of the Modern host's) |
 
-**The web, and why its art is 16×16.** The pixel composer needs, per reel, one glyph for every
-cell of a three-symbol window: 27 at 24×24, 81 for three reels, and 14 more for the machine's
-frame — 95 against the web's 80. At 16×16 (two cells a symbol) it is 12 a reel, 36 in all, and 50
-with the frame, so the web gets the same composed, pixel-smooth reels as the C64 and X16 with real
-tile art, from `view.web.8bs`, which reads every size from the tile data. The cost is a smaller
-picture. Run it with an 8BitScript checkout (see above); `pnpm run test:machines` skips the web
-by name when it has none (`EIGHTBS_CHECKOUT=/path/to/8bitscript MACHINES=web pnpm run test:machines`).
+**The reels got bigger.** The quadrant machines (PET, VIC-20, web) draw 6×6-cell symbols, 48 pixels
+a side, twice what they drew before, so the 3×3 fills 44% of a 40×25 screen (it was 14%) and the whole
+width of the VIC-20 (22 of 22 columns). The art is cut from tables the tile pipeline emits for any symbol
+size (`tools/tiles/src/quadtables.mjs`, [docs/tiles.md](docs/tiles.md)), from symbols drawn by hand on
+the 12×12 grid: at that size the master's lettering and fine detail are a smudge.
 
-The web, a few frames into a spin (frames 33, 38, 41, 46 and 52 of the `lines` entry): the reels
-slide down by whole pixels, with a symbol cut by the window's edge, in the same pixel art as at rest.
+The PET, a few frames into a spin (frames 215–220 of the `lines` entry): the reels slide down by
+whole block rows, with a symbol cut by the window's edge:
+
+![the PET mid-spin](docs/slot3x3/pet-spin.png)
+
+The web, a few frames into a spin:
 
 ![the web slot mid-spin](docs/slot3x3/web-spin.png)
 
@@ -407,6 +434,12 @@ or more (9,077 B against the 15,359 of the 16K model; the 8K model's 7,167 is 1,
 `memory.ram`; the config builds the PET as the 32K 4032 and the VIC-20 with 8K.
 
 ### Where it is not what it should be
+
+- **The 5×5 has not been enlarged yet.** On the PET and web it could be 26 columns wide with 4×4-cell symbols and
+  the panel moved to the side of the reels; the tables and the hand-drawn 8×8 art for that (`cosmic.quad*.8bs`,
+  `overrides.quad4` / `quad3` in `assets/themes/cosmic/art.mjs`) are generated and tested already, and the
+  hop is size-independent, but the 5×5's own composer and panel still use the old 3×3-cell symbols. The VIC-20's
+  22 columns cannot hold more than they do now (5 reels × 4 cells + 1 = 21).
 
 - **The reels move slower than the 3x3's.** Five reels redraw in the time three did, so a C64 reel
   hops 8 pixels about every third frame (about 3 pixels a frame), the PET and VIC-20 hop 12 pixels

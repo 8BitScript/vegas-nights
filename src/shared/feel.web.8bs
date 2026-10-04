@@ -2,4 +2,7 @@
 export namespace feel {
     const WAIT: utinyint = 0;
     const FAR: utinyint = 8;
+    const REEL_WAIT: utinyint = 0;
+    const REEL_FAR: utinyint = 8;
+    const EASE: utinyint = 32; // the web redraws a whole reel for free, so it can ease in over more of the last symbol
 }

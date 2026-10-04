@@ -11,7 +11,7 @@ import { screen } from "@8bitscript/screen";
 import { layout } from "@shared/layout.8bs";
 import { reelscroll } from "@shared/reelscroll.8bs";
 import { STOP_MASK } from "@generated/classic3x3.8bs";
-import { SYMBOL_CELLS_H } from "@generated/tiles/classic.8bs";
+import { symbolpx } from "@shared/symbolpx.8bs";
 import { view } from "./view.8bs";
 
 const ROW: utinyint = #define("ROW", 0);
@@ -19,12 +19,12 @@ const STOP: utinyint = #define("STOP", 3);
 
 export function main(): void {
     screen.blank();
-    layout.centre(13);
+    layout.centre(view.BLOCK_WIDTH);
     view.begin();
     for (let reel: utinyint = 0; reel < 3; reel++) {
         let row: utinyint = ROW + reel * 8;
-        while (row >= SYMBOL_CELLS_H * 8) {
-            row = row - SYMBOL_CELLS_H * 8;
+        while (row >= symbolpx.CELLS_H * 8) {
+            row = row - symbolpx.CELLS_H * 8;
         }
         reelscroll.pin(reel, (STOP + reel * 5) & STOP_MASK, row);
         view.draw(reel);

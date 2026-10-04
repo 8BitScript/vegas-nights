@@ -12,6 +12,7 @@ import { loadTheme, ROOT } from '../src/theme.mjs';
 import { buildTheme, convertTheme } from '../src/build.mjs';
 import { tileTestCells, expectedScreen } from '../src/layout.mjs';
 import { compare } from '../src/shotcheck.mjs';
+import { quadTables, pseudoPixels, emitQuadTables, QUAD_OUTPUTS } from '../src/quadtables.mjs';
 
 // ---- png -------------------------------------------------------------------
 
@@ -143,7 +144,7 @@ test('the classic theme lists the engine\'s symbols in the engine\'s order, and 
 
 test('every machine gets a file, each symbol has ink, and the sizes follow the theme', () => {
   const { files, report } = buildTheme(theme);
-  assert.deepEqual(Object.keys(files).sort(), ['classic.8bs', 'classic.cx16.8bs', 'classic.pet.8bs', 'classic.vic20.8bs', 'classic.web.8bs']);
+  assert.deepEqual(Object.keys(files).sort(), ['classic.8bs', 'classic.cx16.8bs', 'classic.pet.8bs', 'classic.quad.8bs', 'classic.quad.vic20.8bs', 'classic.quad.web.8bs', 'classic.vic20.8bs', 'classic.web.8bs']);
   for (const [machine, r] of Object.entries(report)) {
     assert.ok(r.bytes > 1000, machine);
     r.data.symbols.forEach((s) => assert.ok((s.ink ?? 1) > 0, `${machine} ${s.id} has ink`));
@@ -241,4 +242,90 @@ test('compare passes an exact image, and fails when one ink pixel moves or a col
   const fx = first % e.w, fy = Math.floor(first / e.w);
   png.rgba.set([1, 2, 3, 255], ((fy + 5) * W + fx + 3) * 4);
   assert.ok(compare(png, e, { left: 3, top: 5 }).inconsistent > 0);
+});
+
+
+// ---- quadrant tables ---------------------------------------------------------------------------------------------
+
+const fileTables = (text) => {
+  const out = {};
+  for (const m of text.matchAll(/^export const (\w+): (?:\w+) = (\d+|true|false);/gm)) out[m[1]] = m[2] === 'true' ? true : m[2] === 'false' ? false : Number(m[2]);
+  for (const m of text.matchAll(/^export const (\w+): array<\w+, \d+> = \[([^\]]*)\];/gm)) out[m[1]] = m[2].split(',').map((v) => Number(v.trim()));
+  return out;
+};
+
+test('quadrant files exist for the PET, the VIC-20 and the web, at the sizes the theme names, and only the colour machines carry ink', () => {
+  const { files } = buildTheme(theme);
+  const pet = fileTables(files['classic.quad.8bs']);
+  const vic = fileTables(files['classic.quad.vic20.8bs']);
+  const web = fileTables(files['classic.quad.web.8bs']);
+  for (const t of [pet, vic, web]) {
+    assert.equal(t.QUAD_S, 6, 'classic is 6x6 cells on the quadrant machines');
+    assert.equal(t.QUAD_P, 12);
+    assert.equal(t.QUAD_C0.length, 6 * 6 * 6);
+    assert.equal(t.QUAD_C1.length, 6 * 5 * 6);
+    assert.equal(t.QUAD_CX.length, 6 * 6 * 6);
+  }
+  assert.equal(pet.QUAD_COLORED, false);
+  assert.deepEqual(pet.QUAD_K, [0], 'no ink table on a machine with no colour');
+  assert.equal(vic.QUAD_K.length, 6 * 6 * 6);
+  assert.ok(vic.QUAD_K.every((v) => v >= 0 && v <= 7), "the VIC-20's ink is a number 0-7");
+  assert.ok(web.QUAD_C0.every((v) => v >= 128 && v <= 143), "the web's blocks are the host font's codes 128-143");
+  assert.ok(pet.QUAD_C0.every((v) => QUAD_CODE.includes(v)), "the PET's blocks are the sixteen codes of its character ROM");
+});
+
+test('quadrant tables round-trip: C0 decodes back to the symbols\' pseudo-pixels, C1 and CX cover exactly the rows they say', () => {
+  const S = 6, P = 12;
+  const images = theme.symbols.map((sym) => sym.overrides[`quad${S}`] ?? sym.img);
+  const t = quadTables(images, S, QUAD_CODE, null);
+  const decode = (code) => { const p = QUAD_CODE.indexOf(code); return [(p >> 3) & 1, (p >> 2) & 1, (p >> 1) & 1, p & 1]; };
+  images.forEach((img, sym) => {
+    const want = pseudoPixels(img, S);
+    for (let k = 0; k < S; k += 1) for (let c = 0; c < S; c += 1) {
+      const [a, b, d, e] = decode(t.C0[(sym * S + k) * S + c]);
+      assert.deepEqual([want[2 * k][2 * c], want[2 * k][2 * c + 1], want[2 * k + 1][2 * c], want[2 * k + 1][2 * c + 1]], [a, b, d, e], `C0 symbol ${sym} cell ${k},${c}`);
+    }
+    // C1: the pair that starts on an odd row (rows 2k+1 and 2k+2)
+    for (let k = 0; k < S - 1; k += 1) for (let c = 0; c < S; c += 1) {
+      const [a, b, d, e] = decode(t.C1[(sym * (S - 1) + k) * S + c]);
+      assert.deepEqual([want[2 * k + 1][2 * c], want[2 * k + 1][2 * c + 1], want[2 * k + 2][2 * c], want[2 * k + 2][2 * c + 1]], [a, b, d, e], `C1 symbol ${sym} cell ${k},${c}`);
+    }
+    // CX: this symbol's last row over every other symbol's first
+    images.forEach((other, next) => {
+      const w2 = pseudoPixels(other, S);
+      for (let c = 0; c < S; c += 1) {
+        const [a, b, d, e] = decode(t.CX[(sym * images.length + next) * S + c]);
+        assert.deepEqual([want[P - 1][2 * c], want[P - 1][2 * c + 1], w2[0][2 * c], w2[0][2 * c + 1]], [a, b, d, e], `CX ${sym} over ${next} column ${c}`);
+      }
+    });
+  });
+});
+
+test('a symbol hand-drawn on the quadrant grid (<ID>.quad6.png) is the shape the tables are cut from; the colour master supplies only the ink', () => {
+  const bar1 = theme.symbols.find((sym) => sym.id === 'BAR1');
+  assert.ok(bar1.overrides.quad6, 'the committed classic theme draws BAR1 on the 12x12 grid');
+  const drawn = pseudoPixels(bar1.overrides.quad6, 6);
+  assert.equal(drawn.flat().reduce((n, v) => n + v, 0), 10 * 4, 'BAR1 is one bar, ten pseudo-pixels wide and four tall');
+  const out = QUAD_OUTPUTS.find((o) => o.machine === 'vic20');
+  const text = emitQuadTables(theme, out, 6);
+  const { QUAD_K } = fileTables(text);
+  const master = toPixelSymbol(bar1.img, 'vic20', 6, 6).colors;
+  const index = theme.symbols.indexOf(bar1);
+  assert.deepEqual(QUAD_K.slice(index * 36, index * 36 + 36), [...master].map((v) => v & 7), 'the ink of BAR1 is the master\'s');
+});
+
+test('the three BAR symbols are told apart by how many bars they have on every quadrant machine', () => {
+  const rowsWithInk = (id) => {
+    const sym = theme.symbols.find((x) => x.id === id);
+    return pseudoPixels(sym.overrides.quad6 ?? sym.img, 6).filter((row) => row.some(Boolean)).length;
+  };
+  const bars = (id) => {
+    const sym = theme.symbols.find((x) => x.id === id);
+    const px = pseudoPixels(sym.overrides.quad6 ?? sym.img, 6);
+    let runs = 0, inRun = false;
+    for (const row of px) { const on = row.some(Boolean); if (on && !inRun) runs += 1; inRun = on; }
+    return runs;
+  };
+  assert.deepEqual([bars('BAR1'), bars('BAR2'), bars('BAR3')], [1, 2, 3]);
+  assert.ok(rowsWithInk('BAR1') > 0);
 });

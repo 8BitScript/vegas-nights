@@ -1,0 +1,7 @@
+// The pet: a symbol is QUAD_S cells tall in the quadrant tables (src/generated/tiles/classic.quad*.8bs resolves to
+// this machine's file).
+import { QUAD_S } from "@generated/tiles/classic.quad.8bs";
+
+export namespace symbolpx {
+    const CELLS_H: utinyint = QUAD_S;
+}

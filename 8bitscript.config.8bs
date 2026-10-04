@@ -41,6 +41,9 @@ export default {
     'slot3x3-glyphs': { entry: 'src/labs/slot3x3/glyphs.8bs' },
     // The reels held at one pixel offset (--define ROW=0..7, STOP=n): what the composer-offset test draws.
     'slot3x3-offset': { entry: 'src/labs/slot3x3/offsets.8bs' },
+    // The reels walked up the strip HOPS times, STEP pixels each, drawn by the spin's own path or by full redraws (FULL=1):
+    // what test/hops.test.mjs compares.
+    'slot3x3-hops': { entry: 'src/labs/slot3x3/hops.8bs' },
   },
   // The machine the labs are designed on: every fact they test is true on
   // it, and `8bs build --release` reports what each other build is short of

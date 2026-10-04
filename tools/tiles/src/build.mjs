@@ -3,6 +3,7 @@ import { MACHINES, nearest } from './palettes.mjs';
 import { toPixelSymbol, toQuadSymbol, quadCodeForCell, QUAD_CODE } from './convert.mjs';
 import { emitPixels, emitQuadrants } from './emit.mjs';
 import { cellsFor } from './theme.mjs';
+import { QUAD_OUTPUTS, emitQuadTables } from './quadtables.mjs';
 
 /** The PET screen code for a frame cell: the theme's explicit choice (a 4-bit quadrant pattern like "1100" = top half, or a screen code number), else the nearest block pattern. */
 function petCode(cell) {
@@ -49,6 +50,15 @@ export function buildTheme(theme) {
       : emitPixels(theme, out.machine, data, out.serves, { lsbLeft: out.lsbLeft });
     files[out.file(theme.name)] = text;
     report[out.machine] = { data, bytes: Buffer.byteLength(text), clash: data.symbols.reduce((n, s) => n + (s.clash ?? 0), 0), ink: data.symbols.reduce((n, s) => n + s.ink, 0) };
+  }
+  // Quadrant tables, for the machines whose reels are built from the ROM's block glyphs at any symbol size:
+  // theme.json says `"quad": { "default": 6, "vic20": 6 }` (cells a side).
+  const quad = theme.meta.quad;
+  if (quad) {
+    for (const out of QUAD_OUTPUTS) {
+      const S = quad[out.machine] ?? quad.default;
+      if (S) files[out.file(theme.name)] = emitQuadTables(theme, out, S);
+    }
   }
   return { files, report };
 }

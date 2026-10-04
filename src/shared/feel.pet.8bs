@@ -1,0 +1,11 @@
+// How fast the PET can let a reel move.
+export namespace feel {
+    // The 5x5 still recomposes a reel whole (24-pixel symbols): 12 pixels every third frame.
+    const WAIT: utinyint = 2;
+    const FAR: utinyint = 12;
+    // The 3x3 moves a reel a whole cell row (8 pixels) with a 6502 block copy (shared/move.8bs): all three reels hop
+    // inside one frame, so none waits. The last 16 pixels are four pixels a step (a recompose).
+    const REEL_WAIT: utinyint = 0;
+    const REEL_FAR: utinyint = 8;
+    const EASE: utinyint = 16;
+}

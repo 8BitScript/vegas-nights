@@ -86,6 +86,28 @@ recalled: codes 96-127 hold eight patterns and bit 7 reverses a glyph, so the ot
 those +128. The test re-derives it from the ROMs when VICE's data is installed, and it is the
 same table `@8bitscript/pet/blocks` uses.
 
+### Quadrant tables (PET, VIC-20, web: any symbol size)
+
+A theme with `"quad": { "default": 6, "web": 6 }` (cells a side) also gets, for the three machines that build
+a reel from 2×2 block glyphs, `<theme>.quad.8bs` (PET), `<theme>.quad.vic20.8bs` and `<theme>.quad.web.8bs`
+(the machine's twin is chosen by the build, as for any file). A symbol is `QUAD_S` × `QUAD_S` cells, each a
+2×2 picture, so `2·QUAD_S` square "pseudo-pixels" of four screen pixels. A display cell of a scrolling reel
+takes two consecutive pseudo-pixel rows of the window, so its screen code is one of three precomputed tables
+and a redraw is one read and one write a cell:
+
+| table | index | the cell for |
+| --- | --- | --- |
+| `QUAD_C0` | `(symbol * S + k) * S + c` | rows 2k and 2k+1 of the symbol (the window starts on an even row) |
+| `QUAD_C1` | `(symbol * (S - 1) + k) * S + c` | rows 2k+1 and 2k+2 (an odd start), k < S - 1 |
+| `QUAD_CX` | `(symbol * QUAD_SYMBOLS + next) * S + c` | the last row of `symbol` over the first row of `next` |
+| `QUAD_K` | `(symbol * S + k) * S + c` | the ink of symbol cell (k, c) — only where there is colour |
+
+`src/labs/slot3x3/quad.8bs` is the composer. The shape of a symbol is the master PNG resampled to the grid, or,
+if the theme has `symbols/<ID>.quad<S>.png`, that hand-drawn image (`art.mjs` `overrides.quad6`): the three
+BAR symbols are told apart by how many bars they have because the master's lettering does not survive 12×12.
+The ink always comes from the colour master. `test/pipeline.test.mjs` decodes every table back to the
+symbols' pseudo-pixels and checks C1 and CX cover exactly the rows they claim.
+
 ### The frame
 
 Every theme supplies the same 14 cells (`frame-kit.mjs` makes them; a theme sets the colours or

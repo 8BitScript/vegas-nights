@@ -41,6 +41,28 @@ export namespace view {
     const WIDTH: utinyint = 13;
     const TOP: utinyint = 4;
 
+    // ---- where everything else goes, in cells from the block's left edge (game.8bs asks) ----
+    const BLOCK_WIDTH: utinyint = 13;
+    const CREDIT_ROW: utinyint = 15;
+    const CREDIT_NUM: utinyint = 8;
+    const BET_ROW: utinyint = 16;
+    const BET_NUM: utinyint = 8;
+    const WIN_ROW: utinyint = 17;
+    const WIN_NUM: utinyint = 8;
+    const MESSAGE_ROW: utinyint = 19;
+    const MESSAGE_COL: utinyint = 1;
+    const MESSAGE_WIDTH: utinyint = 20;
+
+    // The words that never change: the title, the labels of the three numbers and the key hint.
+    function statics(): void {
+        text.print(layout.cell(1, 1), "VEGAS NIGHTS");
+        text.print(layout.cell(1, 2), "SLOT 3X3");
+        text.print(layout.cell(1, 15), "CREDIT");
+        text.print(layout.cell(1, 16), "BET");
+        text.print(layout.cell(1, 17), "WIN");
+        text.print(layout.cell(1, 21), "UP DOWN: BET");
+    }
+
     // The glyph codes after the 81 the reels use belong to the frame.
     const FRAME_CODE: utinyint = 81;
 

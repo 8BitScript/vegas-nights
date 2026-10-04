@@ -1,8 +1,31 @@
-// The reels on the VIC-20: the quadrant composer (quad.8bs), in four-pixel steps and with colour, in the ROM's own blocks (a RAM character set needs memory the 8K program already occupies).
+// The reels on the VIC-20: the quadrant composer (quad.8bs), in four-pixel steps (a whole cell row, eight pixels,
+// is a block copy of the screen and of the colour RAM), in colour. The block is the whole 22-column screen; under it,
+// two lines of numbers, and the message goes where the title would be.
 // The game calls only this interface; see view.8bs for what each function means.
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
 import { quad } from "./quad.8bs";
 
 export namespace view {
+    // ---- where everything else goes, in cells from the block's left edge ----
+    const BLOCK_WIDTH: utinyint = 22;
+    const CREDIT_ROW: utinyint = 21;
+    const CREDIT_NUM: utinyint = 3;
+    const BET_ROW: utinyint = 21;
+    const BET_NUM: utinyint = 14;
+    const WIN_ROW: utinyint = 22;
+    const WIN_NUM: utinyint = 4;
+    const MESSAGE_ROW: utinyint = 0;
+    const MESSAGE_COL: utinyint = 0;
+    const MESSAGE_WIDTH: utinyint = 22;
+
+    function statics(): void {
+        text.print(layout.cell(0, 21), "CR");
+        text.print(layout.cell(10, 21), "BET");
+        text.print(layout.cell(0, 22), "WIN");
+        text.print(layout.cell(11, 22), "UP DN: BET");
+    }
+
     function begin(): void {
         quad.begin();
     }

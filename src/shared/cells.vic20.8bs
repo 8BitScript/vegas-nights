@@ -4,6 +4,8 @@
 import { Video } from "@8bitscript/vic20/geometry";
 import { SYMBOL_COLOR } from "@generated/tiles/classic.8bs";
 
+import { FRAME_CODE } from "@generated/tiles/classic.pet.8bs";
+
 export namespace cells {
     const COLORED: bool = true;
 
@@ -17,5 +19,15 @@ export namespace cells {
 
     function tint(at: usmallint, color: utinyint): void {
         memory.write(Video.COLOR + at, color & 7);
+    }
+
+    // Reverse video is the block with its pattern complemented: the screen code plus 128.
+    function invert(code: utinyint): utinyint {
+        return code ^ 128;
+    }
+
+    // The screen code to print for frame cell `cell` (FRAME_TL ... in the tile data).
+    function frameCode(cell: utinyint): utinyint {
+        return FRAME_CODE[cell];
     }
 }

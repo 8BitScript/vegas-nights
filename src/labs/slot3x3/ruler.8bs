@@ -5,10 +5,11 @@
 import { screen } from "@8bitscript/screen";
 import { text } from "@8bitscript/text";
 import { layout } from "@shared/layout.8bs";
+import { view } from "./view.8bs";
 
 export function main(): void {
     screen.blank();
-    layout.centre(13);
+    layout.centre(view.BLOCK_WIDTH);
     text.setReverse(true);
     text.print(layout.cell(0, 1), " ");
     text.print(layout.cell(10, 15), " ");

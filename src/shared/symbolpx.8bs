@@ -1,0 +1,9 @@
+// How tall a symbol is, in cells, on this machine: the one number reelscroll cuts its speeds from. The base
+// answer is the pixel machines' (the C64 and X16: the tile file's SYMBOL_CELLS_H); the machines that build the
+// reel from block glyphs have a twin that answers from their quadrant tables (QUAD_S, which is not the same
+// size: it is the size the owner wanted the reels to be on that machine).
+import { SYMBOL_CELLS_H } from "@generated/tiles/classic.8bs";
+
+export namespace symbolpx {
+    const CELLS_H: utinyint = SYMBOL_CELLS_H;
+}
