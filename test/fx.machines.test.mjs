@@ -4,10 +4,14 @@
 //
 // A machine's effect is tested through the border, the one place every raster effect can be seen
 // and no game cell ever is: a column of border pixels read down the screen. For each machine that
-// has an entry in FX below it holds the twin to four things:
+// has an entry in FX below it holds the twin to these things ("Gold": docs/fx-brief.md):
 //   * before the bonus round the border is one plain colour (begin() has not leaked into play);
-//   * during the round the border shows bars — several colours down the column;
-//   * the bars move: two frames of the round differ, and the reels' own cells are not what changed;
+//   * during the round the border shows the glow — at least 3 and at most `maxColours` colours down
+//     the column (a rainbow of bars is what the first version was);
+//   * the glow moves: two frames of the round differ in the border;
+//   * NOTHING ELSE changes colour: in every sampled frame of the round the rows under the panel
+//     (`free`) are the one plain colour they were before it (the first version flashed the whole
+//     playfield a stripe colour in 4 frames of 16);
 //   * after the round ends the border is one plain colour again (end() restores everything).
 // Add a machine by adding its row — the frames and the border column are the machine's own
 // (a VICE capture has a different border from the web's) — and removing nothing else.
@@ -24,9 +28,12 @@ import { loadPng } from './support/screen.mjs';
 // after: a frame after the round and its pause are over (test/slot5x5.machines.test.mjs, ROUND);
 // column: an x inside the left border.
 //
-// kind 'flash' is for a machine whose effect is not bars: the whole border takes one colour and changes it
-// every few frames, and a marquee of lights runs down a column of cells nothing else is drawn in. frames
-// are then four frames of the round, `marquee` an x inside that column and the picture rows to read it over.
+// kind 'pulse' is for a machine whose effect is not bars: the whole border takes one colour and changes it
+// slowly between two (a breathing, one change in ten frames or more), and a marquee of lights runs down a
+// column of cells nothing else is drawn in. frames are then six frames of the round spaced twelve apart,
+// `marquee` an x inside that column and the picture rows to read it over. Every sampled frame must show
+// exactly ONE border colour: a write that landed mid-frame would show two (the seam the first version
+// had in 5 frames of 58).
 //
 // kind 'margins' is for a machine with no border and one ink (the PET): the effect is written into the cells
 // beside the machine, so the test reads `columns` (x values, taken together down the screen) through those
@@ -34,27 +41,29 @@ import { loadPng } from './support/screen.mjs';
 // least `moved` pixels different between the two `frames`), and exactly the pixels it had before once the
 // round is over.
 const FX = {
-  web: { frames: [1000, 1006], before: 5, after: 7400, column: 2 },
-  // The C64 built through wasm: the same bars in the side borders (a picture-line list cannot reach the border
-  // above and below the 200 lines), and the background bars in the five empty text rows.
-  c64web: { frames: [1000, 1004], before: 5, after: 7400, column: 2, free: { x0: 48, x1: 336, y0: 192, y1: 218 } },
-  // The C64's bars scroll one 6-line stripe every other frame; its VICE capture has a 32-pixel border.
-  // free: a rectangle of the picture nothing is drawn in, which the background bars use.
-  c64: { frames: [1000, 1004], before: 60, after: 8000, column: 4, free: { x0: 48, x1: 336, y0: 192, y1: 218 } },
-  // The VIC-20 cannot afford bars (a raster list held the reels back by 78%; see src/shared/fx.vic20.8bs):
-  // before is the first spin, after the round is long over; the border is x 0-39 of the capture, the
+  // The web and the C64 built through wasm run one game-loop pass to a video frame, so a step of the glow is
+  // exactly 5 frames; the wasm C64 draws only the side borders (a picture-line list cannot name the border
+  // above and below the 200 lines). `free` is the rows under the panel, which must never change colour.
+  web: { frames: [1000, 1012], calm: [1003, 1020], before: 5, after: 7400, column: 2, maxColours: 7 },
+  c64web: { frames: [1000, 1012], calm: [1003, 1020], before: 5, after: 7400, column: 2, maxColours: 7, free: { x0: 48, x1: 336, y0: 192, y1: 218 } },
+  // The C64: seven 36-line stripes of a ten-notch ramp, one notch every 5 video frames (the handler counts
+  // them); its VICE capture has a 32-pixel border. free: a rectangle of the picture nothing is drawn in.
+  c64: { frames: [1000, 1012], calm: [1004, 1008, 1020], before: 60, after: 8000, column: 4, maxColours: 7, free: { x0: 48, x1: 336, y0: 192, y1: 218 } },
+  // The VIC-20 cannot afford bars (a raster list held the reels back by 78%; see src/shared/fx.vic20.8bs): its
+  // border breathes between red and yellow, one change in ten frames or more, written only at the top of the
+  // frame. before is the first spin, after the round is long over; the border is x 0-39 of the capture, the
   // marquee the picture's last 16-pixel column (x 376-391).
-  vic20: { kind: 'flash', frames: [2400, 2412, 2424, 2436], before: 600, after: 13000, column: 10, marquee: { x: 384, rows: [24, 200] } },
-  // The PET's effect is a marquee ring, falling coins and blinking stars written into the margins beside the
-  // machine (src/shared/fx.pet.8bs). The 4032 is 40 columns; a capture's screen starts at pixel (32, 36), 8
-  // pixels a cell; the machine is columns 9-29. The columns read are the middle of margin cells: the ring on
-  // the two edges (0 and 39), the coin lanes (2, 4, 6 and 33, 35, 37) and the star lanes (1, 3, 5, 7 and
-  // 31-38). The forced bonus round starts near frame 508 and ends near 3,957 (3,905 without the twin,
-  // measured in docs/fx.md), so `before` is after the machine is drawn and before the round, and `after` is
-  // well past it.
+  vic20: { kind: 'pulse', frames: [2400, 2412, 2424, 2436, 2448, 2460], before: 600, after: 13000, column: 10, marquee: { x: 384, rows: [24, 200] } },
+  // The PET's effect is a marquee ring and a banner scanner written into the margins beside the machine
+  // (src/shared/fx.pet.8bs). The 4032 is 40 columns; a capture's screen starts at pixel (32, 36), 8 pixels a
+  // cell; the machine is columns 9-29. The columns read are the middle of margin cells: the ring on the two
+  // edges (0 and 39) and the margin lanes beside the machine. The forced bonus round starts near frame 508
+  // and ends near 3,957, so `before` is after the machine is drawn and before the round, and `after` is well
+  // past it.
   pet: { kind: 'margins', frames: [3000, 3012], before: 400, after: 6000, columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 31, 32, 33, 34, 35, 36, 37, 38, 39].map((c) => 32 + 8 * c + 4), colours: 2, moved: 40 },
-  // The X16's border is 16 pixels wide once screen.8bs insets the picture: x = 8 is inside it.
-  cx16: { frames: [1100, 1106], before: 200, after: 4400, column: 8 },
+  // The X16's border is 16 pixels wide once screen.8bs insets the picture: x = 8 is inside it. Its glow is a
+  // palette cycle, twelve stripes of a 24-step gold table, one notch every 4 video frames.
+  cx16: { frames: [1100, 1112], calm: [1104], before: 200, after: 4400, column: 8, maxColours: 14 },
 };
 
 /** The values down one column of a capture. */
@@ -72,21 +81,33 @@ for (const machine of MACHINES) {
     const why = unavailable(machine) ?? (FX[machine] ? null : `${machine}: no bonus effect measured yet (add its row to FX)`);
     const config = FX[machine];
 
-    test('the border is plain before the round, barred during it, moving, and plain again after', { skip: why ?? (config.kind ? 'this machine has no border bars: its own test below holds it' : false) }, async () => {
+    test('the border is plain before the round, glows during it, moves, and is plain again after; nothing else changes colour', { skip: why ?? (config.kind ? 'this machine has no border bars: its own test below holds it' : false) }, async () => {
       const shot = async (frames) => loadPng(await capture(machine, 'slot5x5-bonus', `fx-${frames}`, frames));
       const beforePng = await shot(config.before);
       const before = columnOf(beforePng, config.column);
       assert.equal(new Set(before).size, 1, 'one border colour before the bonus round');
-      if (config.free) assert.equal(colorsIn(beforePng, config.free), 1, 'the free rows are one plain colour before the round');
+      const freeBefore = config.free ? colorsIn(beforePng, config.free) : 1;
+      if (config.free) assert.equal(freeBefore, 1, 'the free rows are one plain colour before the round');
+      const freeColour = config.free ? beforePng.at(config.free.x0, config.free.y0) : null;
 
       const aPng = await shot(config.frames[0]);
       const a = columnOf(aPng, config.column);
       const b = columnOf(await shot(config.frames[1]), config.column);
-      if (config.free) assert.ok(colorsIn(aPng, config.free) >= 3, `background bars in the free rows during the round: ${colorsIn(aPng, config.free)} colours`);
-      assert.ok(new Set(a).size >= 4, `bars during the round: ${new Set(a).size} colours down the border`);
+      assert.ok(new Set(a).size >= 3, `a glow during the round: ${new Set(a).size} colours down the border`);
+      assert.ok(new Set(a).size <= config.maxColours, `a glow, not a rainbow: ${new Set(a).size} colours down the border (at most ${config.maxColours})`);
       let moved = 0;
       for (let y = 0; y < a.length; y += 1) if (a[y] !== b[y]) moved += 1;
-      assert.ok(moved >= 20, `the bars move between frames ${config.frames.join(' and ')}: ${moved} border rows changed`);
+      assert.ok(moved >= 20, `the glow moves between frames ${config.frames.join(' and ')}: ${moved} border rows changed`);
+
+      // Nothing but the border changes colour: the rows under the panel stay what they were in every
+      // sampled frame, not only in the first.
+      if (config.free) {
+        for (const frames of [config.frames[0], ...config.calm]) {
+          const png = frames === config.frames[0] ? aPng : await shot(frames);
+          assert.equal(colorsIn(png, config.free), 1, `the free rows stay one plain colour at frame ${frames}`);
+          assert.equal(png.at(config.free.x0, config.free.y0), freeColour, `the free rows stay the colour they were before the round, at frame ${frames}`);
+        }
+      }
 
       const afterPng = await shot(config.after);
       const after = columnOf(afterPng, config.column);
@@ -95,7 +116,7 @@ for (const machine of MACHINES) {
       assert.deepEqual(after, before, 'the border is exactly what it was before the round');
     });
 
-    test('the border flashes and the marquee runs during the round, and both are put back after', { skip: why ?? (config.kind === 'flash' ? false : 'this machine does not flash: another test holds it') }, async () => {
+    test('the border breathes between two colours and the marquee runs during the round, and both are put back after', { skip: why ?? (config.kind === 'pulse' ? false : 'this machine does not pulse: another test holds it') }, async () => {
       const shot = async (frames) => loadPng(await capture(machine, 'slot5x5-bonus', `fx-${frames}`, frames));
       const [y0, y1] = config.marquee.rows;
       const marqueeOf = (png) => columnOf(png, config.marquee.x).slice(y0, y1);
@@ -108,20 +129,28 @@ for (const machine of MACHINES) {
 
       const during = [];
       for (const frames of config.frames) during.push(await shot(frames));
-      // The colour is written once a frame, right after waitFrame(); when a frame's work ran past its
-      // edge the write lands partway down and that one frame shows two colours. So: at most two colours
-      // in a frame, and the flash is judged by each frame's main colour.
+      // The colour is written only at the top of the frame (the beam is read first, and it is written
+      // within the first twenty lines), so a frame's border is one colour. On the frame of a change a
+      // VICE capture, which stops at a cycle count and so can land partway down the picture, shows the
+      // new colour above that point and the old below it: two colours in that one frame. So: never more
+      // than two colours in a frame, and at most one of the sampled frames split; the old effect's seam
+      // was in 5 frames of 58, a different row each time, with nothing to do with a change.
       const borders = during.map((png) => columnOf(png, config.column));
-      const mainColour = (column) => {
+      const mainOf = (column) => {
         const counts = new Map();
         for (const v of column) counts.set(v, (counts.get(v) ?? 0) + 1);
-        return [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0];
+        return [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
       };
       for (const [i, column] of borders.entries()) {
-        assert.ok(new Set(column).size <= 2, `the border is one colour, or two when the write lands mid-frame, at frame ${config.frames[i]}: ${new Set(column).size}`);
+        assert.ok(new Set(column).size <= 2, `the border is at most two colours at frame ${config.frames[i]}: ${new Set(column).size}`);
       }
-      const colours = new Set(borders.map(mainColour));
-      assert.ok(colours.size >= 3, `the border flashes: ${colours.size} colours over frames ${config.frames.join(', ')}`);
+      const split = borders.filter((column) => new Set(column).size > 1).length;
+      assert.ok(split <= 1, `at most one sampled frame shows a change in progress: ${split} of ${borders.length}`);
+      const colours = new Set(borders.map((column) => mainOf(column)[0]));
+      assert.equal(colours.size, 2, `the border breathes between exactly two colours over frames ${config.frames.join(', ')}: ${colours.size}`);
+      let changes = 0;
+      for (let i = 1; i < borders.length; i += 1) if (mainOf(borders[i])[0] !== mainOf(borders[i - 1])[0]) changes += 1;
+      assert.ok(changes <= 3, `the border changes slowly: ${changes} changes over ${borders.length} frames twelve apart`);
 
       const marquees = during.map(marqueeOf);
       assert.ok(new Set(marquees[0]).size >= 3, `the marquee shows lights: ${new Set(marquees[0]).size} colours down its column`);

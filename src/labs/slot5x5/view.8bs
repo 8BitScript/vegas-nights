@@ -32,8 +32,10 @@ const LETTER: array<utinyint, 9> = [83, 77, 85, 75, 79, 82, 46, 87, 88];
 // remember it and skip the pass when it has not moved.
 let inkKey: array<utinyint, 5>;
 
-// The colours the frame cycles through in a bonus round.
-const PULSE: array<utinyint, 4> = [7, 2, 1, 4];
+// The bonus round's frame colour. It holds one colour (it used to cycle yellow, red, white and
+// purple, which clashed with the border and read as flashing); a win flashes the reels' rows
+// white instead (game.8bs lightRows).
+const GOLD_FRAME: utinyint = 7;     // the reel frame's colour for the whole bonus round: yellow, the gold of the Gold look
 
 // 1 << n, as a table: the 6502 backends take no run-time shift amount.
 const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
@@ -313,12 +315,12 @@ export namespace view {
         }
     }
 
-    // The bonus round's frame: every frame cell in colour `phase` of the cycle.
+    // The bonus round's frame: every frame cell in gold, held.
     function pulse(phase: utinyint): void {
         if (!glyphs.AVAILABLE) {
             return;
         }
-        let color: utinyint = PULSE[phase & 3];
+        let color: utinyint = GOLD_FRAME;
         for (let col: utinyint = 0; col < 16; col++) {
             text.putColor(layout.cell(col, view.TOP - 1), color);
             text.putColor(layout.cell(col, view.TOP + 10), color);

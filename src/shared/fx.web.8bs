@@ -1,45 +1,41 @@
-// The bonus round on the web: copper bars. The web's renderer applies a raster list at
-// paint time (@8bitscript/raster, #fact(video.raster) true, 64 entries, border and
-// background colours per picture line), so the whole effect is a list built once in
-// begin() and rewritten, value bytes only, once a frame.
+// The bonus round on the web: the same warm gold glow as the C64. The web's renderer applies a
+// raster list at paint time (@8bitscript/raster, #fact(video.raster) true, 64 entries, border and
+// background colours per picture line), so the whole effect is a list of twelve border stripes
+// built once in begin(), with only its colour bytes rewritten, one notch along the ramp, every
+// STEP frames. The wasm build runs one game-loop pass to a video frame, so a step is exactly
+// STEP frames apart.
 //
-//   * Border bars: the border takes a colour every 8 picture lines, down the whole
-//     height, from a 32-step table of four bars (blue, red/yellow, green, purple/cyan)
-//     that scrolls down the screen one step every other frame. Both side borders show it.
-//   * Background bars: the same table, half a turn out of step, behind the rows below
-//     the credit panel (picture line 184 on) where nothing is drawn. Everywhere above that
-//     the background is held at black, so no digit or reel ever sits on a bar.
-//   * No wobble: a horizontal SCROLL_X wobble would shift the reels and the panel the
-//     player reads (and the tests read) every frame. The web has no banner row to wobble
-//     (view.TITLE is false), so there is nothing the wobble could safely move.
+//   * Border only, 21 lines to a stripe, a ramp of black, brown, orange, light red, yellow,
+//     a white peak and back (docs/fx-brief.md, "Gold"). The background is held at black, so
+//     no digit or reel ever sits on a bar.
+//   * No wobble: it would shift the cells the player and the tests read, and the web has no
+//     banner row to animate (view.TITLE is false).
 //
-// The reel composer writes glyphs and screen codes, never the raster list, so the two do
-// not meet. end() empties the list and turns the renderer back to the plain picture.
+// The reel composer writes glyphs and screen codes, never the raster list, so the two do not meet.
+// end() empties the list and turns the renderer back to the plain picture.
 import { raster, Slot } from "@8bitscript/raster";
 
-// Four bars of five stripes and a gap, in the C64 palette the web uses. (A const array
-// cannot be a namespace member yet, so it is the module's.)
-const BAR: array<utinyint, 32> = [
-    0, 6, 14, 1, 14, 6, 0, 0,
-    0, 2, 10, 7, 10, 2, 0, 0,
-    0, 5, 13, 1, 13, 5, 0, 0,
-    0, 4, 3, 1, 3, 4, 0, 0,
-];
+// The ramp, in the C64 palette the web uses: black, brown, orange, light red, yellow, white, back.
+const GOLD: array<utinyint, 12> = [0, 9, 8, 10, 7, 1, 7, 10, 8, 9, 0, 0];
 
-// The stripes: one list entry per 8 picture lines, as many as the picture has (an entry
-// past its last line is refused, harmlessly), and the first line the background bars
-// may use (row 23: the panel ends on row 22).
-const STRIPES: utinyint = 32;
-const STEP: utinyint = 8;
-const BARS_FROM: utinyint = 23;
+const STRIPES: utinyint = 12;     // border stripes, one raster entry each
+const PITCH: utinyint = 21;       // picture lines to a stripe: 0, 21, ... 231
+const STEP: utinyint = 5;         // frames to a step of the glow
 
-// The index of stripe `k`'s border entry in the list (entry 0 is the black background
-// at the top): from row BARS_FROM each stripe also carries a background entry.
-function borderEntry(k: utinyint): utinyint {
-    let index: utinyint = 1 + k;
-    if (k >= BARS_FROM) {
-        index = index + (k - BARS_FROM);
+let phase: utinyint = 0;
+let waiting: utinyint = 0;
+
+function colourOf(k: utinyint): utinyint {
+    let at: utinyint = k + 12 - phase;
+    if (at >= 12) {
+        at = at - 12;
     }
+    return GOLD[at];
+}
+
+// The byte offset of stripe `k`'s entry in the list (entry 0 is the black background).
+function entryOf(k: utinyint): utinyint {
+    let index: utinyint = 1 + k;
     return index * raster.STRIDE;
 }
 
@@ -47,31 +43,33 @@ export namespace fx {
     const RASTER: bool = #fact(video.raster);
 
     function begin(): void {
+        phase = 0;
+        waiting = STEP - 1;
         raster.clear();
         raster.at(0, Slot.BACKGROUND, 0);
         for (let k: utinyint = 0; k < STRIPES; k++) {
             let line: usmallint = k;
-            line = line * STEP;
-            raster.at(line, Slot.BORDER, BAR[k]);
-            if (k >= BARS_FROM) {
-                raster.at(line, Slot.BACKGROUND, BAR[(k + 16) & 31]);
-            }
+            line = line * PITCH;
+            raster.at(line, Slot.BORDER, colourOf(k));
         }
         raster.commit();
         raster.enable();
     }
 
     function frame(tick: utinyint): void {
-        let phase: utinyint = (tick >> 1) & 31;
-        for (let k: utinyint = 0; k < STRIPES; k++) {
-            let at: utinyint = (k + 32 - phase) & 31;
-            let entry: utinyint = borderEntry(k);
-            raster.setValue(entry, BAR[at]);
-            if (k >= BARS_FROM) {
-                raster.setValue(entry + raster.STRIDE, BAR[(at + 16) & 31]);
+        if (waiting == 0) {
+            waiting = STEP - 1;
+            phase = phase + 1;
+            if (phase >= 12) {
+                phase = 0;
             }
+            for (let k: utinyint = 0; k < STRIPES; k++) {
+                raster.setValue(entryOf(k), colourOf(k));
+            }
+            raster.commit();
+        } else {
+            waiting = waiting - 1;
         }
-        raster.commit();
     }
 
     function end(): void {

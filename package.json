@@ -66,7 +66,9 @@
     "shot:slot5x5": "node scripts/shot.mjs slot5x5",
     "test": "node --test test/odds.test.mjs test/odds5.test.mjs test/fx.test.mjs test/glyph-budget.test.mjs",
     "test:machines": "node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs test/hops.test.mjs",
-    "test:c64web": "MACHINES=c64web node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs test/hops.test.mjs"
+    "test:c64web": "MACHINES=c64web node --test test/machines.test.mjs test/slot5x5.machines.test.mjs test/fx.machines.test.mjs test/composer-offsets.test.mjs test/hops.test.mjs",
+    "motion": "node scripts/motion.mjs",
+    "motion:plan": "node scripts/motion-plan.mjs"
   },
   "devDependencies": {
     "@8bitscript/cli": "0.24.0"
@@ -76,6 +78,7 @@
     "@8bitscript/graphics": "0.24.0",
     "@8bitscript/i18n": "0.24.0",
     "@8bitscript/input": "0.24.0",
+    "@8bitscript/pointer": "0.24.0",
     "@8bitscript/random": "0.24.0",
     "@8bitscript/raster": "0.24.0",
     "@8bitscript/screen": "0.24.0",

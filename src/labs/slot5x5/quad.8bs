@@ -30,7 +30,7 @@ let inverted: array<utinyint, 5>;
 
 // 1 << n, as a table: the 6502 backends take no run-time shift amount.
 const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
-const PULSE: array<utinyint, 4> = [7, 2, 1, 4];
+const GOLD_FRAME: utinyint = 7;     // the reel frame's colour for the whole bonus round: yellow, the gold of the Gold look
 
 export namespace quad {
     // The block: a frame cell, five three-cell reels with a divider between, a frame
@@ -178,13 +178,13 @@ export namespace quad {
         quad.drawReel(reel);
     }
 
-    // The bonus round's frame: every frame cell in colour `phase` of the cycle (the
-    // VIC-20 has colour; the PET's frame stays as it is).
+    // The bonus round's frame: every frame cell in gold, held (the VIC-20 has colour; the
+    // PET's frame stays as it is).
     function pulse(phase: utinyint): void {
         if (!cells.COLORED) {
             return;
         }
-        let color: utinyint = PULSE[phase & 3];
+        let color: utinyint = GOLD_FRAME;
         for (let col: utinyint = 0; col < 21; col++) {
             cells.tint(layout.cell(col, 0), color);
             cells.tint(layout.cell(col, 16), color);

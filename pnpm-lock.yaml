@@ -187,6 +187,9 @@ importers:
       '@8bitscript/pet':
         specifier: 0.24.0
         version: 0.24.0
+      '@8bitscript/pointer':
+        specifier: 0.24.0
+        version: 0.24.0
       '@8bitscript/random':
         specifier: 0.24.0
         version: 0.24.0
@@ -326,6 +329,9 @@ packages:
 
   '@8bitscript/plus4@0.24.0':
     resolution: {integrity: sha512-42oBtWCQPP1fvWZYpXCL3g0Eo4OvXn7iRZs7eNxqRymQhJ1zgpknITNn8TWP+eU2xIP+c0PcVOgQ1wz9vp9RyA==}
+
+  '@8bitscript/pointer@0.24.0':
+    resolution: {integrity: sha512-8etqbqE7fB05gw5ZiN1NEEej35WDDjVy1y0pc+yDdXfDHATzxQCfvZfMQEI6sr5qq9Fi8VyRGlBzyhVP9jvFGQ==}
 
   '@8bitscript/random@0.24.0':
     resolution: {integrity: sha512-nBGZyEJ8YZ8wSyHs8t/2Fd1CwNz3ZQoQWsRL3CBi+yFTpKyvRm2AVUXI2E5fxM94Jx78p2U0MHiYAKyyqZKSFw==}
@@ -571,6 +577,43 @@ snapshots:
   '@8bitscript/pet@0.24.0': {}
 
   '@8bitscript/plus4@0.24.0': {}
+
+  '@8bitscript/pointer@0.24.0':
+    dependencies:
+      '@8bitscript/apple2': 0.24.0
+      '@8bitscript/atari2600': 0.24.0
+      '@8bitscript/atari5200': 0.24.0
+      '@8bitscript/atari7800': 0.24.0
+      '@8bitscript/atari8': 0.24.0
+      '@8bitscript/bbc': 0.24.0
+      '@8bitscript/c128': 0.24.0
+      '@8bitscript/c64': 0.24.0
+      '@8bitscript/channelf': 0.24.0
+      '@8bitscript/coco': 0.24.0
+      '@8bitscript/coleco': 0.24.0
+      '@8bitscript/cpc': 0.24.0
+      '@8bitscript/cx16': 0.24.0
+      '@8bitscript/gamegear': 0.24.0
+      '@8bitscript/gb': 0.24.0
+      '@8bitscript/gbc': 0.24.0
+      '@8bitscript/input': 0.24.0
+      '@8bitscript/lynx': 0.24.0
+      '@8bitscript/mega65': 0.24.0
+      '@8bitscript/msx': 0.24.0
+      '@8bitscript/nes': 0.24.0
+      '@8bitscript/odyssey2': 0.24.0
+      '@8bitscript/oric': 0.24.0
+      '@8bitscript/pce': 0.24.0
+      '@8bitscript/pet': 0.24.0
+      '@8bitscript/plus4': 0.24.0
+      '@8bitscript/sg1000': 0.24.0
+      '@8bitscript/sms': 0.24.0
+      '@8bitscript/spectrum': 0.24.0
+      '@8bitscript/supervision': 0.24.0
+      '@8bitscript/text': 0.24.0
+      '@8bitscript/vectrex': 0.24.0
+      '@8bitscript/vic20': 0.24.0
+      '@8bitscript/web': 0.24.0
 
   '@8bitscript/random@0.24.0':
     dependencies:

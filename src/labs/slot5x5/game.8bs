@@ -23,8 +23,9 @@
 // another) -> PAYING (the winning cells flash) -> IDLE, or, when the bonus round is
 // running, -> WAITING (the next free spin) -> SPINNING …
 import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
+import { text, TextColor } from "@8bitscript/text";
 import { input } from "@8bitscript/input";
+import { pointer } from "@8bitscript/pointer";
 import { random } from "@8bitscript/random";
 import { purse } from "@shared/purse.8bs";
 import { layout } from "@shared/layout.8bs";
@@ -83,6 +84,8 @@ let pauseLeft: utinyint = 0;
 let pulsePhase: utinyint = 0;
 let fxTick: utinyint = 0;            // frames since the bonus round began, for fx.frame
 let pulseWait: utinyint = 0;
+let glowPhase: utinyint = 0;         // where the FREE SPINS banner is in its glow
+let glowWait: utinyint = 0;
 let freeSpin: bool = false;          // the spin on the reels is a free one
 
 // ---- the panels ------------------------------------------------------------------
@@ -179,13 +182,45 @@ function drawStatic(): void {
     }
 }
 
+// The banner's glow: one brightness after another along the Gold ramp, orange, light red,
+// yellow, white, yellow, light red (a pulse every 6 steps, a step every GLOW_STEP passes).
+// The text never moves.
+const GLOW: array<utinyint, 6> = [8, 10, 7, 1, 7, 10];
+const GLOW_STEP: utinyint = 5;
+const BANNER_CELLS: utinyint = 16;
+
+function paintBanner(color: utinyint): void {
+    for (let col: utinyint = 0; col < BANNER_CELLS; col++) {
+        text.putColor(layout.cell(col, 1), color);
+    }
+}
+
 // The bonus round's banner, where the machine has a row above the frame for one.
 function banner(on: bool): void {
     if (view.TITLE) {
         if (on) {
             text.print(layout.cell(0, 1), "-- FREE SPINS --");
+            glowPhase = 0;
+            glowWait = 0;
         } else {
             text.print(layout.cell(0, 1), "COSMIC 5X5      ");
+            paintBanner(TextColor.WHITE);
+        }
+    }
+}
+
+// Glow the FREE SPINS banner: colour only, never a pixel of movement.
+function glowBanner(): void {
+    if (view.TITLE) {
+        if (glowWait == 0) {
+            glowWait = GLOW_STEP - 1;
+            glowPhase = glowPhase + 1;
+            if (glowPhase >= 6) {
+                glowPhase = 0;
+            }
+            paintBanner(GLOW[glowPhase]);
+        } else {
+            glowWait = glowWait - 1;
         }
     }
 }
@@ -378,6 +413,7 @@ function settle(): void {
             fsLeft = award;
             fsGranted = award;
             purse.clear(purse.SESSION);
+            pulseWait = 0;
             banner(true);
             fx.begin();
             if (fx.RASTER) {
@@ -486,13 +522,15 @@ function framePaying(): void {
 
 function frameBonusPulse(): void {
     if (inBonus) {
+        // The reel frame holds its gold (view.pulse sets it); it is put back about once a second
+        // and at every spin start, in case a win's flash redrew a frame cell.
         if (pulseWait == 0) {
-            pulsePhase = pulsePhase + 1;
             view.pulse(pulsePhase);
-            pulseWait = 6;
+            pulseWait = 60;
         } else {
             pulseWait = pulseWait - 1;
         }
+        glowBanner();
     }
 }
 
@@ -558,6 +596,7 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
     layout.centre(view.WIDTH);
     random.seed(seed);
     input.begin();
+    pointer.hide();
     purse.set(purse.BALANCE, 0, START_THOUSANDS, 0);
     purse.clear(purse.WIN);
     purse.clear(purse.SESSION);

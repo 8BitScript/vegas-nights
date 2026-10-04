@@ -1,105 +1,70 @@
-// The bonus round on the C64's wasm build: copper bars through the portable raster
-// list. fx.c64.8bs builds the C64's own address-form list (@8bitscript/c64/raster, an
-// interrupt that writes a register at the end of chosen raster lines), which is
-// machine code the wasm backend never lowers. The page applies the portable list
-// (@8bitscript/raster: BORDER, BACKGROUND, SCROLL_X at a picture line) to the same
-// registers' pixels at paint time, so the same bars are expressed in that:
+// The bonus round on the C64's wasm build: the same warm gold glow as the real C64, through the
+// portable raster list. fx.c64.8bs builds the C64's own address-form list (@8bitscript/c64/raster,
+// an interrupt that writes a register at the end of chosen raster lines), which is machine code
+// the wasm backend never lowers. The page applies the portable list (@8bitscript/raster: BORDER
+// at a picture line) to the same registers' pixels at paint time, so the same glow is expressed
+// in that:
 //
-//   * Border bars: the border takes a new colour every 6 picture lines, from line 0 to
-//     198 -- 34 stripes of the same 32-step table of four bars (blue/cyan/white, red/
-//     orange/yellow, green/white, purple/pink), scrolling down one stripe every other
-//     frame. Both side borders show them.
-//   * Background bars: the same table half a turn out of step, the other way, in the five
-//     text rows nothing is drawn in (20-24, picture lines 160-199). Above them the
-//     background is the plain black it always is.
-//   * A wobble: text row 1 -- the `-- FREE SPINS --` banner (picture lines 8-15) -- is
-//     shifted 0-6 pixels by the fine scroll, one entry every two lines, following a sine
-//     that advances every other frame, and reset to 0 before row 2 where the reels'
-//     frame starts, so no cell the player reads or the tests read is ever moved.
+//   * Border only: the border takes a new colour every 17 picture lines, from line 0 to 187 --
+//     twelve stripes of the ramp black, brown, orange, light red, yellow, white and back,
+//     creeping down one notch every STEP frames. Both side borders show it.
+//   * The background is never written: the playfield and the rows under the panel are the plain
+//     black they always are, and nothing wobbles.
 //
-// What the wasm build cannot show: the machine's bars also run through the border above
-// and below the 200 picture lines (raster lines 29-49 and 250-251), where a picture-line
-// list has no line to name. The page paints that border in its plain colour. So the C64
-// has 38 stripes and the wasm build 34, all of them in the side borders.
+// What the wasm build cannot show: the machine's stripes also run through the border above and
+// below the 200 picture lines (raster lines 15-49 and 250-255), where a picture-line list has no
+// line to name. The page paints that border in its plain colour.
 //
-// 46 of the list's 63 entries: 34 border stripes, 7 background stripes, 5 wobble (4 + the
-// reset). Which entry is which is recorded as the list is built, so the per-frame rewrite
-// never has to know the order.
+// The wasm build runs one game-loop pass to a video frame, so a step is exactly STEP frames.
+// end() empties the list; the page reads the registers again, and nothing here wrote them.
 import { raster, Slot } from "@8bitscript/raster";
 
-// Four bars of eight stripes, in C64 colour numbers.
-const BAR: array<utinyint, 32> = [
-    0, 6, 14, 3, 1, 3, 14, 6,
-    0, 2, 8, 10, 7, 10, 8, 2,
-    0, 5, 13, 3, 1, 3, 13, 5,
-    0, 4, 10, 15, 1, 15, 10, 4,
-];
+// The ramp, in C64 colour numbers: black, brown, orange, light red, yellow, white, back.
+const GOLD: array<utinyint, 12> = [0, 9, 8, 10, 7, 1, 7, 10, 8, 9, 0, 0];
 
-// A 32-step sine, 0..6: the banner's horizontal offset in pixels.
-const SWAY: array<utinyint, 32> = [
-    3, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 5, 5, 5, 4, 4,
-    3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2,
-];
+const STRIPES: utinyint = 12;     // border stripes, one raster entry each
+const PITCH: utinyint = 17;       // picture lines to a stripe: 0, 17, ... 187
+const STEP: utinyint = 5;         // frames to a step of the glow
 
-const STRIPES: utinyint = 34;           // border stripes: picture lines 0, 6, ... 198
-const PITCH: utinyint = 6;              // lines to a stripe
-const BACKGROUND_FROM: utinyint = 27;   // the first stripe with a background entry too (line 162, text row 20)
-const BANNER_FROM: utinyint = 8;        // text row 1 starts at picture line 8
+let phase: utinyint = 0;
+let waiting: utinyint = 0;
 
-// Each entry's byte offset in the list (its index x raster.STRIDE), by what it is.
-let borderAt: array<utinyint, 34>;
-let backgroundAt: array<utinyint, 34>;
-let wobbleAt: array<utinyint, 4>;
+function colourOf(k: utinyint): utinyint {
+    let at: utinyint = k + 12 - phase;
+    if (at >= 12) {
+        at = at - 12;
+    }
+    return GOLD[at];
+}
 
 export namespace fx {
     const RASTER: bool = #fact(video.raster);
 
     function begin(): void {
+        phase = 0;
+        waiting = STEP - 1;
         raster.clear();
-        let offset: utinyint = 0;
-        for (let line: utinyint = 0; line < 200; line = line + 2) {
-            if (line % PITCH == 0) {
-                let k: utinyint = line / PITCH;
-                borderAt[k] = offset;
-                raster.at(line, Slot.BORDER, BAR[k & 31]);
-                offset = offset + raster.STRIDE;
-                if (k >= BACKGROUND_FROM) {
-                    backgroundAt[k] = offset;
-                    raster.at(line, Slot.BACKGROUND, BAR[(k + 16) & 31]);
-                    offset = offset + raster.STRIDE;
-                }
-            }
-            if (line >= BANNER_FROM && line <= 16) {
-                let i: utinyint = (line - BANNER_FROM) >> 1;
-                if (i < 4) {
-                    wobbleAt[i] = offset;
-                    raster.at(line, Slot.SCROLL_X, SWAY[(i * 5) & 31]);
-                } else {
-                    raster.at(line, Slot.SCROLL_X, 0);
-                }
-                offset = offset + raster.STRIDE;
-            }
+        for (let k: utinyint = 0; k < STRIPES; k++) {
+            raster.at(k * PITCH, Slot.BORDER, colourOf(k));
         }
         raster.enable();
     }
 
     function frame(tick: utinyint): void {
-        if ((tick & 1) == 0) {
-            let phase: utinyint = (tick >> 1) & 31;
+        if (waiting == 0) {
+            waiting = STEP - 1;
+            phase = phase + 1;
+            if (phase >= 12) {
+                phase = 0;
+            }
             for (let k: utinyint = 0; k < STRIPES; k++) {
-                raster.setValue(borderAt[k], BAR[(k + 32 - phase) & 31]);
-                if (k >= BACKGROUND_FROM) {
-                    raster.setValue(backgroundAt[k], BAR[(k + 16 + phase) & 31]);
-                }
+                raster.setValue(k * raster.STRIDE, colourOf(k));
             }
-            for (let i: utinyint = 0; i < 4; i++) {
-                raster.setValue(wobbleAt[i], SWAY[(phase * 2 + i * 5) & 31]);
-            }
+        } else {
+            waiting = waiting - 1;
         }
     }
 
-    // The page reads the registers again once the list is off, and nothing here
-    // wrote them: the border and background are the black they were.
     function end(): void {
         raster.disable();
         raster.clear();

@@ -1,0 +1,200 @@
+{
+ "summary": {
+  "machine": "cx16",
+  "frames": 16,
+  "firstFrame": 1100,
+  "lastFrame": 1115,
+  "spanFrames": 15,
+  "maxColoursInAFrame": 20,
+  "maxBorderColoursInColumn": 8,
+  "meanChangedPct": 3.13,
+  "meanBorderChangedPct": 26.67,
+  "framesWithNoMotion": 10,
+  "framesWithMotion": 5,
+  "preBonusColours": 11,
+  "shifts": [
+   -24,
+   0,
+   0,
+   0,
+   -24,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   -24,
+   0,
+   0
+  ],
+  "meanAbsShift": 24,
+  "framesMoving": 3,
+  "of": 15
+ },
+ "rows": [
+  {
+   "frame": 1100,
+   "colours": 15,
+   "borderColours": 7,
+   "stripes": 13
+  },
+  {
+   "frame": 1101,
+   "colours": 20,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 11.49,
+   "borderChangedPct": 100,
+   "shift": -24,
+   "shiftMismatch": 100
+  },
+  {
+   "frame": 1102,
+   "colours": 15,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 0.24,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1103,
+   "colours": 15,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 0.15,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1104,
+   "colours": 15,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 0.06,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1105,
+   "colours": 19,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 11.53,
+   "borderChangedPct": 100,
+   "shift": -24,
+   "shiftMismatch": 100
+  },
+  {
+   "frame": 1106,
+   "colours": 16,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 0.11,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1107,
+   "colours": 16,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 0.09,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1108,
+   "colours": 16,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 0.07,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1109,
+   "colours": 20,
+   "borderColours": 8,
+   "stripes": 13,
+   "changedPct": 6.14,
+   "borderChangedPct": 58.75,
+   "shift": 0,
+   "shiftMismatch": 58.8
+  },
+  {
+   "frame": 1110,
+   "colours": 19,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 5.39,
+   "borderChangedPct": 41.25,
+   "shift": 0,
+   "shiftMismatch": 41.3
+  },
+  {
+   "frame": 1111,
+   "colours": 16,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 0.12,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1112,
+   "colours": 16,
+   "borderColours": 6,
+   "stripes": 11,
+   "changedPct": 0.05,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1113,
+   "colours": 16,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 11.33,
+   "borderChangedPct": 100,
+   "shift": -24,
+   "shiftMismatch": 100
+  },
+  {
+   "frame": 1114,
+   "colours": 16,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 0.01,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  },
+  {
+   "frame": 1115,
+   "colours": 16,
+   "borderColours": 7,
+   "stripes": 13,
+   "changedPct": 0.14,
+   "borderChangedPct": 0,
+   "shift": 0,
+   "shiftMismatch": 0
+  }
+ ],
+ "flashes": {
+  "frames": 58,
+  "usual": "000000",
+  "flashFrames": [],
+  "flashPct": 0
+ }
+}
