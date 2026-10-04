@@ -21,7 +21,7 @@
 // machine plays, not whether it sounds nice (the web has not been heard in a browser).
 import { loadTable } from '../test/support/table.mjs';
 import { play } from '../test/support/reference.mjs';
-import { MACHINES, EFFECTS, NOTE, FRAMES, FIRST, build, record, skipReason, sidTones, vicTones, cents, noteHz } from './sound.mjs';
+import { MACHINES, EFFECTS, NOTE, FRAMES, FIRST, build, record, eachMachine, attempt, sidTones, vicTones, cents, noteHz } from './sound.mjs';
 
 const PROBES = [
   { name: 'lose', program: 'slot3x3-lose', seed: 2026, spins: 3, frames: 2500 },
@@ -156,32 +156,19 @@ function checkWav(machine, analysis, effect) {
 
 // ---- main ------------------------------------------------------------------------
 
-const asked = process.argv.slice(2);
-const targets = (asked.length > 0 ? asked : Object.keys(MACHINES)).filter((m) => MACHINES[m]);
-let failed = 0;
-for (const machine of targets) {
-  const m = MACHINES[machine];
-  const why = skipReason(machine);
-  if (why) {
-    console.log(`${machine}: skipped (${why})`);
-    continue;
-  }
-  console.log(`${machine}:`);
+const failed = await eachMachine(async (machine) => {
+  let problems = 0;
   for (const probe of PROBES) {
     const effect = expectedEffect(probe);
     console.log(` ${probe.name} (seed ${probe.seed}, ${probe.spins} spin${probe.spins === 1 ? '' : 's'}):`);
-    try {
+    problems += await attempt(async () => {
       build(machine, probe.program);
       const recorded = await record(machine, probe.program, { frames: probe.frames });
-      const { lines, bad } = machine === 'web' ? checkTones(machine, webTones(recorded.timeline), effect)
-        : m.dump ? checkDump(machine, recorded, effect) : checkWav(machine, recorded, effect);
-      console.log(lines.join('\n'));
-      failed += bad;
-    } catch (error) {
-      console.log(`  FAIL ${error.message}`);
-      failed += 1;
-    }
+      if (machine === 'web') return checkTones(machine, webTones(recorded.timeline), effect);
+      return MACHINES[machine].dump ? checkDump(machine, recorded, effect) : checkWav(machine, recorded, effect);
+    });
   }
-}
+  return problems;
+});
 console.log(failed === 0 ? 'slot-sound: every spin ends on the sound its result calls for' : `slot-sound: ${failed} problem(s)`);
 process.exit(failed === 0 ? 0 : 1);

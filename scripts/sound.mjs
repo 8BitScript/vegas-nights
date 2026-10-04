@@ -210,33 +210,45 @@ export function skipReason(machine) {
   return null;
 }
 
-// ---- main ------------------------------------------------------------------------
-
-// Run the check only when this file is the program, so scripts/slot-sound.mjs can import the helpers.
-const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
-if (isMain) {
-
+// Run `each(machine)` for every machine named on the command line (all of them if none is) that
+// can be recorded here, naming each one, and add up the problems `each` returns.
+export async function eachMachine(each) {
   const asked = process.argv.slice(2);
   const targets = (asked.length > 0 ? asked : Object.keys(MACHINES)).filter((m) => MACHINES[m]);
   let failed = 0;
   for (const machine of targets) {
-    const m = MACHINES[machine];
     const why = skipReason(machine);
     if (why) {
       console.log(`${machine}: skipped (${why})`);
       continue;
     }
     console.log(`${machine}:`);
-    try {
-      build(machine);
-      const { lines, bad } = check(machine, await record(machine));
-      console.log(lines.join('\n'));
-      failed += bad;
-    } catch (error) {
-      console.log(`  FAIL ${error.message}`);
-      failed += 1;
-    }
+    failed += await each(machine);
   }
+  return failed;
+}
+
+// One build-record-check step: print what it found and return its problems; a throw is one problem.
+export async function attempt(step) {
+  try {
+    const { lines, bad } = await step();
+    console.log(lines.join('\n'));
+    return bad;
+  } catch (error) {
+    console.log(`  FAIL ${error.message}`);
+    return 1;
+  }
+}
+
+// ---- main ------------------------------------------------------------------------
+
+// Run the check only when this file is the program, so scripts/slot-sound.mjs can import the helpers.
+const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+if (isMain) {
+  const failed = await eachMachine((machine) => attempt(async () => {
+    build(machine);
+    return check(machine, await record(machine));
+  }));
   console.log(failed === 0 ? 'sound: every note of every effect is the pitch it names' : `sound: ${failed} problem(s)`);
   process.exit(failed === 0 ? 0 : 1);
 }
