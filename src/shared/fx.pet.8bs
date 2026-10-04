@@ -1,0 +1,320 @@
+// The bonus round on the PET: a marquee, falling coins and twinkling stars, written straight into
+// screen RAM. The PET has one ink, no border, no colour and a fixed character ROM, so the effect
+// is made of what the screen map can say: the ROM's solid, shade and quarter-block characters and
+// its reverse video, from const tables, in cells the game never reads.
+//
+//   * Marquee. A ring of dots runs round the edge of the screen (the left and right edges, the
+//     bottom row, and the top row beside the machine) and four comets (a solid block, then a
+//     shade, then back to a dot) chase round it, one cell every four frames each, a different
+//     comet on every frame.
+//   * Coins. Six dollar signs fall down the margins beside the machine, three on each side,
+//     wrapping from the bottom to the top; one coin drops a row on every frame, in turn.
+//   * Stars. Eight cells of the margins blink a '*' on and off, one star every eight frames.
+//   * Cabinet sides. A strip of shade blocks runs down both sides of the machine, drawn once.
+//   * Banner. There is no title row on the PET (view.TITLE is false), so "-- FREE SPINS --"
+//     goes on the free row under the panel (row 23), and a block of reverse video scans along
+//     it, a cell every other frame.
+//
+// What it does NOT do, and why. The PET's only raster effect is the character-set split on the
+// 3032/4032 (@8bitscript/pet/rasterline, Slot.CHARSET). Its driver busy-waits down the frame to
+// the last entry's line (about 5,209 + 50 cycles a line of a ~20,000-cycle frame), and the
+// quadrant composer that draws the five reels already needs most of the rest of it, so a split
+// over the banner row (line 184) would take nearly the whole frame from the reels. A split over
+// the reels would turn their block graphics into letters. So RASTER here is not
+// #fact(video.raster): it is true on every PET, because frame() does something on all of them.
+//
+// What it touches, and puts back. Only cells outside the machine: the margins (columns before
+// the block and after it), the top row beside the block, the bottom row, and row 23. The block
+// is rows 0-16 and the panel rows 17-22, in the 21 columns layout.centre() chose; neither the
+// reels, the frame, the panel digits nor the meters are written here. end() puts a space in
+// every cell begin() and frame() can have written.
+//
+// Cost. The PET has almost no time to spare: the quadrant composer that redraws the reels takes
+// most of a frame, and any work added to a frame that is already near the limit costs a whole
+// frame some of the time. Measured by the frame the forced bonus round ends on (about 3,397
+// frames from its start at frame 508 without this file): a first version that worked out each
+// cell's address with row * columns (a software multiply on a 6502, three times a cell) ended
+// 519 frames later, 15 per cent; with the addresses in tables, 140 later (4 per cent); with the
+// work spread so that one comet, one coin and one banner cell move on a frame, 52 later (1.5 per
+// cent). Nothing here multiplies once the round is running: begin() lays every address into
+// tables and frame() only looks them up and adds. See docs/fx.md, "The PET".
+
+import { text } from "@8bitscript/text";
+import { cells } from "@shared/cells.8bs";
+import { layout } from "@shared/layout.8bs";
+
+// Screen codes. The game runs in the PET's text set (upper and lower case), where the letters
+// are 1-26 for lower case and 65-90 for capitals; the codes below read the same in both sets.
+// 160 is reverse video's solid block; 102 the checkerboard shade; 36 the dollar sign (a coin);
+// 42 the asterisk; 46 the full stop.
+const BLANK: utinyint = 32;
+const DOT: utinyint = 46;
+const SHADE: utinyint = 102;
+const BULB: utinyint = 160;
+const COIN: utinyint = 36;
+const STAR: utinyint = 42;
+
+// The ring has 2 * columns + 25 places once the 21 columns of the machine are taken out of the
+// top row: 105 on a 40-column PET, 185 on an 80-column one. An array length cannot be an
+// expression, so the table is the 80-column size on both (160 zero bytes in the 40-column image).
+const SIDE_FIRST_ROW: utinyint = 1;
+const SIDE_ROWS: utinyint = 22;
+
+const COMET_COUNT: utinyint = 4;
+const COIN_COUNT: utinyint = 6;
+const STAR_COUNT: utinyint = 8;
+const BANNER_LEN: utinyint = 16;
+const BANNER_ROW: utinyint = 23;
+const LAST_ROW: utinyint = 24;
+const FIRST_COIN_ROW: utinyint = 1;
+const LAST_COIN_ROW: utinyint = 23;
+
+// "-- FREE SPINS --" as screen codes (capitals are 65-90 in the text set); +128 is the same in
+// reverse video.
+const BANNER: array<utinyint, 16> = [45, 45, 32, 70, 82, 69, 69, 32, 83, 80, 73, 78, 83, 32, 45, 45];
+
+// Where the coins fall and the stars blink: a column offset from the left edge (or, where the
+// "from right" flag is 1, from the right edge) and a start row for the coins, a row for the stars.
+const COIN_OFFSET: array<utinyint, 6> = [2, 4, 6, 3, 5, 7];
+const COIN_RIGHT: array<utinyint, 6> = [0, 0, 0, 1, 1, 1];
+const COIN_START: array<utinyint, 6> = [3, 12, 19, 8, 16, 22];
+const STAR_OFFSET: array<utinyint, 8> = [3, 5, 1, 7, 4, 6, 2, 8];
+const STAR_RIGHT: array<utinyint, 8> = [0, 0, 0, 0, 1, 1, 1, 1];
+const STAR_ROW: array<utinyint, 8> = [3, 9, 14, 19, 6, 12, 17, 22];
+
+let indent: utinyint = 0;       // the block's left column
+let pathLength: utinyint = 0;   // cells in the marquee ring
+let head: array<utinyint, 4>;   // each comet's head, as a place on the ring
+// The screen offset of each place on the ring, as two tables of 16-bit offsets of 93 places
+// each: a single table of 185 offsets is 370 bytes, and the 6502 backend indexes one with an
+// 8-bit index register, so on an 80-column PET every place from the 128th would land on top of
+// one of the first 57. (The 40-column ring has 105 places, so its second table holds 12.)
+const RING_HALF: utinyint = 93;
+let ringFirst: array<usmallint, 93>;
+let ringSecond: array<usmallint, 92>;
+let coinRow: array<utinyint, 6>;
+let coinAt: array<usmallint, 6>;    // where each coin is now
+let coinHome: array<usmallint, 6>;  // where each coin starts its fall
+let starOn: array<utinyint, 8>;
+let starAt: array<usmallint, 8>;
+let bannerAt: usmallint = 0;    // the first cell of the banner
+let sideLeft: usmallint = 0;    // the first cell of the strip beside the machine's left, and ...
+let sideRight: usmallint = 0;   // ... of its right
+let bannerPos: utinyint = 0;    // the banner cell in reverse video
+let coinTurn: utinyint = 0;     // the coin that drops on the next frame
+
+// The offset of the cell `row`, `col`. A multiply: begin() only.
+function at(row: utinyint, col: utinyint): usmallint {
+    let a: usmallint = row;
+    a = a * text.COLUMNS;
+    a = a + col;
+    return a;
+}
+
+// A margin cell: `offset` columns from the left edge, or from the right edge when `right` is 1.
+function margin(row: utinyint, offset: utinyint, right: utinyint): usmallint {
+    let col: utinyint = offset;
+    if (right == 1) {
+        col = text.COLUMNS - 1 - offset;
+    }
+    return at(row, col);
+}
+
+// The screen offset of place `i` on the ring.
+function ringCell(i: utinyint): usmallint {
+    if (i < RING_HALF) {
+        return ringFirst[i];
+    }
+    return ringSecond[i - RING_HALF];
+}
+
+function setRing(n: utinyint, a: usmallint): void {
+    if (n < RING_HALF) {
+        ringFirst[n] = a;
+    } else {
+        ringSecond[n - RING_HALF] = a;
+    }
+}
+
+// Lay the marquee ring out in the ring tables, by adding and subtracting only. It starts on the top row at
+// the cell beside the machine and goes left, then down the left edge, along the bottom row, up the
+// right edge and left again along the top row to the machine's right-hand side.
+function layRing(): void {
+    let n: utinyint = 0;
+    let a: usmallint = indent;
+    a = a - 1;
+    for (let i: utinyint = 0; i < indent; i++) {
+        setRing(n, a);
+        a = a - 1;
+        n = n + 1;
+    }
+    a = text.COLUMNS;
+    for (let i: utinyint = 0; i < LAST_ROW; i++) {
+        setRing(n, a);
+        a = a + text.COLUMNS;
+        n = n + 1;
+    }
+    a = a - text.COLUMNS;
+    a = a + 1;
+    for (let i: utinyint = 1; i < text.COLUMNS; i++) {
+        setRing(n, a);
+        a = a + 1;
+        n = n + 1;
+    }
+    a = a - text.COLUMNS;
+    a = a - 1;
+    for (let i: utinyint = 0; i < LAST_ROW; i++) {
+        setRing(n, a);
+        a = a - text.COLUMNS;
+        n = n + 1;
+    }
+    a = text.COLUMNS;
+    a = a - 2;
+    for (let i: utinyint = indent + 21; i < text.COLUMNS - 1; i++) {
+        setRing(n, a);
+        a = a - 1;
+        n = n + 1;
+    }
+    pathLength = n;
+}
+
+function wrapNext(place: utinyint): utinyint {
+    let n: utinyint = place + 1;
+    if (n >= pathLength) {
+        n = 0;
+    }
+    return n;
+}
+
+function wrapPrevious(place: utinyint): utinyint {
+    if (place == 0) {
+        return pathLength - 1;
+    }
+    return place - 1;
+}
+
+function drawBanner(): void {
+    for (let k: utinyint = 0; k < BANNER_LEN; k++) {
+        cells.put(bannerAt + k, BANNER[k]);
+    }
+}
+
+// The strips beside the machine: `code` down SIDE_ROWS cells each.
+function drawSides(code: utinyint): void {
+    let left: usmallint = sideLeft;
+    let right: usmallint = sideRight;
+    for (let i: utinyint = 0; i < SIDE_ROWS; i++) {
+        cells.put(left, code);
+        cells.put(right, code);
+        left = left + text.COLUMNS;
+        right = right + text.COLUMNS;
+    }
+}
+
+// One comet moves on a place: a new head, the old head becomes shade, the old shade a dot.
+function stepComet(k: utinyint): void {
+    let was: utinyint = head[k];
+    let now: utinyint = wrapNext(was);
+    cells.put(ringCell(wrapPrevious(was)), DOT);
+    cells.put(ringCell(was), SHADE);
+    cells.put(ringCell(now), BULB);
+    head[k] = now;
+}
+
+function stepCoin(k: utinyint): void {
+    cells.put(coinAt[k], BLANK);
+    let row: utinyint = coinRow[k] + 1;
+    if (row > LAST_COIN_ROW) {
+        row = FIRST_COIN_ROW;
+        coinAt[k] = coinHome[k];
+    } else {
+        coinAt[k] = coinAt[k] + text.COLUMNS;
+    }
+    coinRow[k] = row;
+    cells.put(coinAt[k], COIN);
+}
+
+function blinkStar(j: utinyint): void {
+    if (starOn[j] == 1) {
+        cells.put(starAt[j], BLANK);
+        starOn[j] = 0;
+    } else {
+        cells.put(starAt[j], STAR);
+        starOn[j] = 1;
+    }
+}
+
+export namespace fx {
+    const RASTER: bool = true;
+
+    function begin(): void {
+        // The block is the 21 columns layout.centre() put at `indent`; the ring runs outside it.
+        let left: usmallint = layout.cell(0, 0);
+        indent = left;
+        layRing();
+        for (let i: utinyint = 0; i < pathLength; i++) {
+            cells.put(ringCell(i), DOT);
+        }
+        for (let k: utinyint = 0; k < COMET_COUNT; k++) {
+            head[k] = (pathLength >> 2) * k;
+            cells.put(ringCell(head[k]), BULB);
+            cells.put(ringCell(wrapPrevious(head[k])), SHADE);
+        }
+        for (let k: utinyint = 0; k < COIN_COUNT; k++) {
+            coinRow[k] = COIN_START[k];
+            coinAt[k] = margin(COIN_START[k], COIN_OFFSET[k], COIN_RIGHT[k]);
+            coinHome[k] = margin(FIRST_COIN_ROW, COIN_OFFSET[k], COIN_RIGHT[k]);
+            cells.put(coinAt[k], COIN);
+        }
+        for (let j: utinyint = 0; j < STAR_COUNT; j++) {
+            starOn[j] = 0;
+            starAt[j] = margin(STAR_ROW[j], STAR_OFFSET[j], STAR_RIGHT[j]);
+        }
+        sideLeft = at(SIDE_FIRST_ROW, indent - 1);
+        sideRight = at(SIDE_FIRST_ROW, indent + 21);
+        drawSides(SHADE);
+        bannerAt = at(BANNER_ROW, (text.COLUMNS - BANNER_LEN) >> 1);
+        bannerPos = 0;
+        coinTurn = 0;
+        drawBanner();
+        cells.put(bannerAt, BANNER[0] + 128);
+    }
+
+    function frame(tick: utinyint): void {
+        // One comet and one coin move on every frame; everything else waits its turn.
+        stepComet(tick & 3);
+        stepCoin(coinTurn);
+        coinTurn = coinTurn + 1;
+        if (coinTurn == COIN_COUNT) {
+            coinTurn = 0;
+        }
+        if ((tick & 7) == 0) {
+            blinkStar((tick >> 3) & 7);
+        }
+        // The reverse-video block moves to the next banner cell on every other frame.
+        if ((tick & 1) == 0) {
+            cells.put(bannerAt + bannerPos, BANNER[bannerPos]);
+            bannerPos = bannerPos + 1;
+            if (bannerPos == BANNER_LEN) {
+                bannerPos = 0;
+            }
+            cells.put(bannerAt + bannerPos, BANNER[bannerPos] + 128);
+        }
+    }
+
+    function end(): void {
+        for (let i: utinyint = 0; i < pathLength; i++) {
+            cells.put(ringCell(i), BLANK);
+        }
+        for (let k: utinyint = 0; k < COIN_COUNT; k++) {
+            cells.put(coinAt[k], BLANK);
+        }
+        for (let j: utinyint = 0; j < STAR_COUNT; j++) {
+            cells.put(starAt[j], BLANK);
+        }
+        for (let k: utinyint = 0; k < BANNER_LEN; k++) {
+            cells.put(bannerAt + k, BLANK);
+        }
+        drawSides(BLANK);
+    }
+}

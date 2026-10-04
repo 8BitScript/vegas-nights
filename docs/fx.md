@@ -28,7 +28,7 @@ A machine that does better has a twin that **replaces the file whole** (8BitScri
 | `src/shared/fx.c64.8bs` | Commodore 64 | copper bars (done; see "The C64" below) |
 | `src/shared/fx.cx16.8bs` | Commander X16 | to write |
 | `src/shared/fx.vic20.8bs` | VIC-20 | border flash and a marquee (done; no bars, see below) |
-| `src/shared/fx.pet.8bs` | PET | to write |
+| `src/shared/fx.pet.8bs` | PET | marquee, coins, stars, banner scanner (done; see "The PET") |
 
 Those five names are the only twins; `test/fx.test.mjs` (CI) fails on any other. It also fails if a
 twin adds, drops, renames or retypes a member, so the per-machine files cannot drift apart: the
@@ -204,3 +204,74 @@ on its own assertion: `end()` leaving the border flashing; `end()` leaving the m
 twin), so this twin is only ever built on 8K and up. PAL was not captured; the effect uses nothing
 region-specific, but the end-of-round figures above are NTSC.
 
+## The PET
+
+`src/shared/fx.pet.8bs`. The PET has one ink, no border and no colour, and a fixed character ROM,
+so its bonus look is made of screen-RAM writes in cells the game never reads: a marquee ring of dots
+round the edge of the screen with four comets (solid block, shade, dot) chasing round it, dollar-sign
+coins falling in the margins, `*` stars blinking, shade strips down both sides of the machine, and a
+reverse-video block scanning along a `-- FREE SPINS --` banner on row 23 (the PET has no title row:
+`view.TITLE` is false). `RASTER` is `true` on every PET model, because `frame()` does something on
+all of them; it is deliberately not `#fact(video.raster)`.
+
+![the PET's bonus round](fx/pet-bonus-a.png) ![a few frames later](fx/pet-bonus-b.png)
+
+![the same on the 8032, 80 columns](fx/pet8032-bonus.png)
+
+### Why no character-set split
+
+The 3032 and 4032 can split the character set at a line (`Slot.CHARSET`,
+`@8bitscript/pet/rasterline`), and a split over the banner row would flicker its text case. It is not
+used. The driver busy-waits down the frame to its last entry's line (about 5,209 + 50 cycles a line of
+a ~20,000-cycle frame), so an entry at the banner's line 184 spends nearly the whole frame, and the
+quadrant composer that redraws five reels needs most of a frame already. A split over the reels would
+turn their block graphics into letters. So the PET's effect is not a raster one.
+
+### What it costs
+
+The measurement that mattered was not bytes, it was time. The composer leaves the PET little to spare
+in the bonus round, and `waitFrame()` loses a whole frame whenever a frame's work runs over. Both
+builds are deterministic, so the forced bonus round (`slot5x5-bonus`, seeded, starting near frame 508)
+was timed by bisecting for the frame its free-spin counter disappears on (`--frames`, 4032, 32K):
+
+| build | round ends at frame | longer than the stub |
+| --- | --- | --- |
+| portable stub (no effect) | 3,905 | |
+| first version: each cell's address worked out with `row * columns` | 4,424 | 519 frames, 15% |
+| addresses in tables, half of everything moving every other frame | 4,046 | 140 frames, 4% |
+| shipped: one comet, one coin and one banner cell move per frame, ring split in two tables | 3,957 | 52 frames, 1.5% |
+
+A 16-bit multiply by the column count is a software loop on a 6502, and the first version did three
+a cell written. Nothing multiplies once the round is running: `begin()` lays the ring, coin, star and
+banner addresses into tables and `frame()` looks them up and adds. The ring table is two arrays of 93
+sixteen-bit offsets, not one of 185: the backend indexes a 16-bit array with an 8-bit register, so on
+the 80-column 8032 (a 185-place ring) every place from the 128th landed on top of one of the first 57
+and the left edge disappeared; the 40-column 4032 (105 places) never showed it.
+
+`8bs build pet --program slot5x5-bonus --size`, program bytes / RAM for variables:
+
+| build | program | RAM |
+| --- | --- | --- |
+| portable stub | 9,369 | 101 |
+| with `fx.pet.8bs` (4032, 32K) | 11,896 | 112 |
+| with `fx.pet.8bs` (8032) | 11,933 | 112 |
+
+About 370 of the extra bytes are the zero-filled ring tables, sized for the 80-column ring on both
+(an array length cannot be an expression).
+
+### How it is checked
+
+`test/fx.machines.test.mjs` has a PET row, `kind: 'margins'` (the third path beside the bars and the VIC-20's flash). The PET has no border, so it reads a set of pixel columns
+through the margin cells (the ring's two edges, the coin lanes and the star lanes) and asserts the
+four things every machine's row does: plain before the round (frame 400), the effect during it (two
+ink colours, the cells different between frames 3,000 and 3,012), and exactly the pixels it had
+before once the round is over (frame 6,000). Two mutations fail it: leaving the ring in `end()`, and a
+`frame()` that does nothing. The existing 3x3 and 5x5 PET tests, which read the free-spin counter and
+the exact credit during the bonus and retrigger rounds, pass with the effect running (16 of 16).
+
+### Not verified
+
+A real PET: the timings are VICE's, and a real machine's 50 Hz or 60 Hz frame may differ from
+`xpet`'s. The 8032 was looked at in a screenshot after the ring fix (above) but is not in the
+on-screen test, which runs the 4032. The 2001, 3008 and 3016 are not targets of the 5x5 (it does not
+fit their RAM); the 4016 and 3032 were not run.
