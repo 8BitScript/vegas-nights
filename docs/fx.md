@@ -25,7 +25,7 @@ A machine that does better has a twin that **replaces the file whole** (8BitScri
 | --- | --- | --- |
 | `src/shared/fx.8bs` | every machine without a twin | the stub: nothing, free |
 | `src/shared/fx.web.8bs` | web | copper bars (done; the reference twin) |
-| `src/shared/fx.c64.8bs` | Commodore 64 | to write |
+| `src/shared/fx.c64.8bs` | Commodore 64 | copper bars (done; see "The C64" below) |
 | `src/shared/fx.cx16.8bs` | Commander X16 | to write |
 | `src/shared/fx.vic20.8bs` | VIC-20 | to write |
 | `src/shared/fx.pet.8bs` | PET | to write |
@@ -114,3 +114,40 @@ On a machine with the stub the round is still unmistakable, and an effect must n
 thing that says so: the `-- FREE SPINS --` banner where the machine has a row for it, the pulsing
 frame (`view.pulse`), the `FS nn X3` counter and the FREE SPINS! message. A twin adds to these; it
 does not replace them.
+
+## The C64
+
+`src/shared/fx.c64.8bs` — rainbow copper bars from the raw raster list
+(`@8bitscript/c64/raster`; the portable `@8bitscript/raster` refuses lines outside the 200-line
+picture, and the border above and below it is where most of the bars are).
+
+- **Border bars.** `$D020` takes a new colour every 6 raster lines from line 29 to 251: 38
+  stripes from a 32-step table of four bars (blue/cyan/white, red/orange/yellow, green/white,
+  purple/pink), scrolling down one stripe every other frame. All four borders show them.
+- **Background bars.** The same table half a turn out of step, scrolling the other way, in text
+  rows 20-24 (raster lines 210-249), the five rows nothing is drawn in; `$D021` is black
+  everywhere above, so no digit, reel or frame cell ever sits on a bar.
+- **Wobble.** The `-- FREE SPINS --` banner row only: `$D016`'s fine scroll, 0-6 pixels, one
+  entry every two lines (the pitch the handler keeps up with), following a sine; reset to 0
+  before the reels' frame starts. It is gentle (the banner's left edge moves between x = 153 and
+  157 in the captures) and it moves no cell the player or the tests read.
+- **The list:** 54 of the 63 entries — two resets to black at line 1 (so a frame the handler
+  could not finish, the first after `enable()`, never carries its last bar into the next), 38
+  border stripes, 7 background stripes, 5 wobble (4 + the reset) and the 2 that restore black at
+  line 254. The stripes sit on the wobble's lines (29 + 6k lands on 59 and 65): two entries on one
+  line cost 25 cycles, two on neighbouring lines across a bad line made the handler fall behind
+  (the first version, with stripes on 58 and 64, tore).
+- **end()** disables the interrupt, clears the list and writes `$D020`/`$D021`/`$D016` back by
+  hand, because the handler leaves the last value it wrote in the register.
+- **Cost** (`8bs build c64 --program slot5x5 --size`, 2026-10-04): 11,804 B of program and 114 B
+  of RAM with the stub, 13,151 / 121 with the twin: +1,347 B, +7 B. Most of it is the raster
+  list's handler and install routine (about 400 B) and the per-frame rewrite loop.
+- **Against the reel composer.** The composer is assembly in the main loop and the handler is an
+  interrupt (it saves A and X and touches no zero page but its own `jmp`), so the glyph bytes are
+  not torn by the bars; the interrupt only costs the composer cycles. All 16 C64 tests of
+  `pnpm run test:machines` (the exact reel windows, the numbers, the bonus and retrigger rounds
+  with the free-spin counter read during the round) pass with the effect running.
+- **Test.** `test/fx.machines.test.mjs`' `c64` row checks the border column (plain at frame 60,
+  barred and moving at 1000 and 1004, plain and exactly as before at 8000) and the free rectangle
+  (plain, 3+ colours during, plain again). Leaving `end()`'s cleanup out fails it.
+
