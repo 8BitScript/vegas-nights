@@ -32,6 +32,16 @@ export namespace spin {
         waits[reel] = reel;
     }
 
+    // Put `reel` at `stop` with `row` pixels already scrolled into that symbol and no spin
+    // under way: a reel held at any pixel offset, for the offset probe that checks the
+    // composers (src/labs/slot5x5/offsets.8bs). Nothing in a game calls it.
+    function pin(reel: utinyint, stop: utinyint, row: utinyint): void {
+        stops[reel] = stop;
+        rows[reel] = row;
+        remaining[reel] = 0;
+        waits[reel] = reel;
+    }
+
     function stop(reel: utinyint): utinyint {
         return stops[reel];
     }

@@ -1,0 +1,33 @@
+// Test support, not a game: the five reels held still at a chosen pixel offset, drawn once.
+// `ROW` is how far into its symbol the first reel's window starts (0-7); each further reel is
+// 8 more, wrapping at a symbol's height (16 on the machines that redefine characters, 24 on
+// the others), so one capture covers every cell-row band at the same offset within a cell
+// row. `STOP` is the stop the first reel shows, the others 5, 10, 15 and 20 further on.
+// test/composer-offsets.test.mjs runs this once for each offset and compares every reel with
+// the picture the tile data and the strip say it must be.
+//   8bs run c64 --program slot5x5-offset --define ROW=2 --define STOP=3
+import { screen } from "@8bitscript/screen";
+import { layout } from "@shared/layout.8bs";
+import { STOP_MASK } from "@generated/grid5x5.8bs";
+import { spin } from "./spin.8bs";
+import { view } from "./view.8bs";
+
+const ROW: utinyint = #define("ROW", 0);
+const STOP: utinyint = #define("STOP", 3);
+
+export function main(): void {
+    screen.blank();
+    layout.centre(view.WIDTH);
+    view.begin();
+    for (let reel: utinyint = 0; reel < 5; reel++) {
+        let row: utinyint = ROW + reel * 8;
+        while (row >= spin.size()) {
+            row = row - spin.size();
+        }
+        spin.pin(reel, (STOP + reel * 5) & STOP_MASK, row);
+        view.draw(reel);
+    }
+    while (true) {
+        waitFrame();
+    }
+}

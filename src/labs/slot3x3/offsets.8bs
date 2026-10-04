@@ -1,0 +1,35 @@
+// Test support, not a game: the three reels held still at a chosen pixel offset into their
+// symbols, drawn once. `ROW` is how far into its symbol the first reel's window starts
+// (0-7); the second reel is 8 further and the third 16 (wrapping at a symbol's height, which
+// is 16 on the web), so one capture covers every cell-row band of a symbol at the same offset
+// within a cell row. `STOP` is the stop the
+// first reel shows, the others 5 and 10 further on, so the symbols differ.
+// test/composer-offsets.test.mjs runs this once for each offset and compares every pixel
+// of every reel with the picture the tile data and the strip say it must be.
+//   8bs run c64 --program slot3x3-offset --define ROW=2 --define STOP=3
+import { screen } from "@8bitscript/screen";
+import { layout } from "@shared/layout.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { STOP_MASK } from "@generated/classic3x3.8bs";
+import { SYMBOL_CELLS_H } from "@generated/tiles/classic.8bs";
+import { view } from "./view.8bs";
+
+const ROW: utinyint = #define("ROW", 0);
+const STOP: utinyint = #define("STOP", 3);
+
+export function main(): void {
+    screen.blank();
+    layout.centre(13);
+    view.begin();
+    for (let reel: utinyint = 0; reel < 3; reel++) {
+        let row: utinyint = ROW + reel * 8;
+        while (row >= SYMBOL_CELLS_H * 8) {
+            row = row - SYMBOL_CELLS_H * 8;
+        }
+        reelscroll.pin(reel, (STOP + reel * 5) & STOP_MASK, row);
+        view.draw(reel);
+    }
+    while (true) {
+        waitFrame();
+    }
+}

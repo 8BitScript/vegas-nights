@@ -31,12 +31,16 @@ export default {
     'slot5x5-retrigger': { entry: 'src/labs/slot5x5/retrigger.8bs' },
     'slot5x5-jackpot': { entry: 'src/labs/slot5x5/jackpot.8bs' },
     'slot5x5-ruler': { entry: 'src/labs/slot5x5/ruler.8bs' },
+    // The 5x5's reels held at one pixel offset (--define ROW=0..7, STOP=n): what the composer-offset test draws.
+    'slot5x5-offset': { entry: 'src/labs/slot5x5/offsets.8bs' },
     // Test support, not games: a ruler that prints two letters a known number
     // of cells apart (so a screenshot's cell size can be measured), and a
     // sheet of every symbol and digit exactly as the game draws them.
     'slot3x3-probe': { entry: 'src/labs/slot3x3/probe.8bs' },
     'slot3x3-ruler': { entry: 'src/labs/slot3x3/ruler.8bs' },
     'slot3x3-glyphs': { entry: 'src/labs/slot3x3/glyphs.8bs' },
+    // The reels held at one pixel offset (--define ROW=0..7, STOP=n): what the composer-offset test draws.
+    'slot3x3-offset': { entry: 'src/labs/slot3x3/offsets.8bs' },
   },
   // The machine the labs are designed on: every fact they test is true on
   // it, and `8bs build --release` reports what each other build is short of

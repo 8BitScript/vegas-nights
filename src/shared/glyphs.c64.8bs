@@ -82,7 +82,10 @@ export namespace glyphs {
     // bytes (8 - within) from the symbol cell it starts in, then `rest` (within)
     // from the one below — the cell under it in the same symbol, or the first of
     // the next symbol — for each of the three glyphs, whose sources are 8 bytes
-    // apart. The whole thing is ~6000 cycles; the same loop in compiled script was
+    // apart. The second copy runs with Y from `run` to 7, so `second` is set to the
+    // start of that cell less `run`: Y = run then reads its first byte. (It once
+    // subtracted `rest`, which is right only at 0 and 4 pixels into a cell row;
+    // test/composer-offsets.test.mjs draws every offset.) The whole thing is ~6000 cycles; the same loop in compiled script was
     // ~17000 and, before the copy was assembly, ~70000.
     function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
         let first: usmallint = 0;
@@ -196,17 +199,17 @@ export namespace glyphs {
             adc #$C0
             sta second+1
         5:
-            sec
-            lda second
-            sbc rest
-            sta second
-            lda second+1
-            sbc #0
-            sta second+1
             lda #8
             sec
             sbc rest
             sta run
+            sec
+            lda second
+            sbc run
+            sta second
+            lda second+1
+            sbc #0
+            sta second+1
             ldx #3
         6:
             ldy #0
