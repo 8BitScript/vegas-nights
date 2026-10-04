@@ -1,0 +1,4 @@
+// The web redraws in the runtime: every reel, every frame.
+export namespace feel {
+    const WAIT: utinyint = 0;
+}

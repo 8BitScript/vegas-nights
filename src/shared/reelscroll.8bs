@@ -15,6 +15,8 @@
 // apart and step every third frame, one at a time.
 //
 // Up to five reels, so the 5x5 uses the same file.
+import { feel } from "@shared/feel.8bs";
+
 let stops: array<utinyint, 5>;
 let rows: array<utinyint, 5>;
 let remaining: array<usmallint, 5>;
@@ -24,7 +26,6 @@ let gaps: array<utinyint, 5>;
 export namespace reelscroll {
     // Pixels of a symbol, and the frames between redraws of one reel.
     const SYMBOL: utinyint = 24;
-    const FRAMES: utinyint = 3;
 
     function place(reel: utinyint, stop: utinyint): void {
         stops[reel] = stop;
@@ -74,6 +75,13 @@ export namespace reelscroll {
 
     // Call once a frame. Returns the pixels the reel moved down (0 if it did
     // not move this frame); the caller redraws the reel when it is not 0.
+    //
+    // The schedule, by pixels still to go, is a blur far out and finer and finer
+    // in: 24 pixels a redraw while more than eight symbols remain, 12 until four
+    // remain, 8, then 4 within one symbol and 2 for the last eight pixels — each
+    // boundary a multiple of the step before it, so the last step lands exactly
+    // on the stop. Between redraws a reel waits feel.WAIT frames (the machine's
+    // measured redraw budget), one more in the last two steps so it settles.
     function step(reel: utinyint, count: utinyint): utinyint {
         if (remaining[reel] == 0) {
             return 0;
@@ -84,7 +92,10 @@ export namespace reelscroll {
         }
         let left: usmallint = remaining[reel];
         let pixels: utinyint = 24;
-        let wait: utinyint = 2;
+        let wait: utinyint = feel.WAIT;
+        if (left <= 192) {
+            pixels = 12;
+        }
         if (left <= 96) {
             pixels = 8;
         }
@@ -93,10 +104,7 @@ export namespace reelscroll {
         }
         if (left <= 8) {
             pixels = 2;
-            wait = 3;
-        }
-        if (left <= 4) {
-            wait = 4;
+            wait = feel.WAIT + 1;
         }
         // slide the window up the strip by `pixels`
         let at: utinyint = rows[reel];

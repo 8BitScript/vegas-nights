@@ -147,23 +147,18 @@ export namespace view {
         let strip: usmallint = reel;
         strip = strip * STOPS;
         glyphs.open();
-        // The reel's first glyph; each cell row of three glyphs is 24 bytes on.
-        let dest: usmallint = 0;
-        if (!glyphs.PORT) {
-            dest = glyphs.address(glyphs.FIRST + reel * 27);
-        }
-        for (let down: utinyint = 0; down < 9; down++) {
-            // The symbol under the top of this cell row and the one after it, as
-            // byte offsets into the tileset, and where in the symbol the window's
-            // next eight rows start.
-            let nextStop: utinyint = (stop + 1) & STOP_MASK;
-            let here: usmallint = STRIPS[strip + stop];
-            let after: usmallint = STRIPS[strip + nextStop];
-            here = (here << 6) + (here << 3);
-            after = (after << 6) + (after << 3);
-            let cellRow: utinyint = row >> 3;
-            let within: utinyint = row & 7;
-            if (glyphs.PORT) {
+        if (glyphs.PORT) {
+            for (let down: utinyint = 0; down < 9; down++) {
+                // The symbol under the top of this cell row and the one after it, as
+                // byte offsets into the tileset, and where in the symbol the window's
+                // next eight rows start.
+                let nextStop: utinyint = (stop + 1) & STOP_MASK;
+                let here: usmallint = STRIPS[strip + stop];
+                let after: usmallint = STRIPS[strip + nextStop];
+                here = (here << 6) + (here << 3);
+                after = (after << 6) + (after << 3);
+                let cellRow: utinyint = row >> 3;
+                let within: utinyint = row & 7;
                 for (let across: utinyint = 0; across < 3; across++) {
                     let code: utinyint = glyphs.FIRST + reel * 27 + down * 3 + across;
                     glyphs.seek(code);
@@ -178,21 +173,16 @@ export namespace view {
                         }
                     }
                 }
-            } else {
-                // Memory-mapped glyphs: the three glyphs of the row in one call.
-                let second: usmallint = after;
-                if (cellRow < 2) {
-                    second = here + (cellRow + 1) * 24;
+                // on to the next cell row
+                row = row + 8;
+                if (row >= 24) {
+                    row = row - 24;
+                    stop = nextStop;
                 }
-                glyphs.composeRow(glyphs.TILE_RAM + here + cellRow * 24 + within, glyphs.TILE_RAM + second, dest, 8 - within, within);
-                dest = dest + 24;
             }
-            // on to the next cell row
-            row = row + 8;
-            if (row >= 24) {
-                row = row - 24;
-                stop = nextStop;
-            }
+        } else {
+            // Memory-mapped glyphs: the whole reel in one assembly call.
+            glyphs.drawReel(glyphs.STRIP_RAM + strip, stop, row, glyphs.address(glyphs.FIRST + reel * 27), STOP_MASK);
         }
         glyphs.close();
     }
@@ -263,6 +253,11 @@ export namespace view {
                 total = total * SYMBOL_BYTES;
                 for (let i: usmallint = 0; i < total; i++) {
                     glyphs.stage(i, SYMBOL_BITMAP[i]);
+                }
+                let stops: usmallint = REELS;
+                stops = stops * STOPS;
+                for (let i: usmallint = 0; i < stops; i++) {
+                    glyphs.stageStrip(i, STRIPS[i]);
                 }
             }
             view.defineFrame();

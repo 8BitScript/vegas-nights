@@ -80,23 +80,17 @@ export function cellKey(png, geo, col, row) {
 export function reference(glyphPng, geo, symbolCount) {
   const symbols = new Map();
   for (let k = 0; k < symbolCount; k += 1) {
-    const key = [0, 1, 2].map((i) => cellKey(glyphPng, geo, i, 2 + k)).join('|');
+    const key = [0, 1, 2].map((i) => cellKey(glyphPng, geo, 1 + i, 2 + k)).join('|');
     if (symbols.has(key)) throw new Error(`symbols ${symbols.get(key)} and ${k} look identical on this machine`);
     symbols.set(key, k);
   }
   const digits = new Map();
   for (let d = 0; d < 10; d += 1) {
-    const key = cellKey(glyphPng, geo, d, 10);
+    const key = cellKey(glyphPng, geo, 1 + d, 10);
     if (digits.has(key)) throw new Error(`digits ${digits.get(key)} and ${d} look identical`);
     digits.set(key, d);
   }
   return { symbols, digits };
-}
-
-/** The symbol drawn in block cells (col .. col+2, row), or null if it matches none. */
-export function readSymbol(png, geo, ref, col, row) {
-  const key = [0, 1, 2].map((i) => cellKey(png, geo, col + i, row)).join('|');
-  return ref.symbols.has(key) ? ref.symbols.get(key) : null;
 }
 
 /** The `width`-digit number printed from block cell (col, row), or null. */
@@ -111,15 +105,4 @@ export function readNumber(png, geo, ref, col, row, width) {
 }
 
 // Where the game puts things (src/labs/slot3x3/game.8bs).
-export const LAYOUT = { reelStride: 4, topRow: 5, creditRow: 10, betRow: 11, winRow: 12, numberCol: 7, numberWidth: 5 };
-
-/** The nine symbols on the reels, as rows[row][reel]. */
-export function readWindow(png, geo, ref, reels = 3, rows = 3) {
-  const out = [];
-  for (let row = 0; row < rows; row += 1) {
-    const cells = [];
-    for (let reel = 0; reel < reels; reel += 1) cells.push(readSymbol(png, geo, ref, reel * LAYOUT.reelStride, LAYOUT.topRow + row));
-    out.push(cells);
-  }
-  return out;
-}
+export const LAYOUT = { creditRow: 15, betRow: 16, winRow: 17, numberCol: 8, numberWidth: 5 };

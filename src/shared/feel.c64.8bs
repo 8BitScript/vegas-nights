@@ -1,0 +1,5 @@
+// The C64 redraws a reel in ~0.6 of a frame (assembly row composer), so three
+// reels fit in two frames: a reel moves every second frame.
+export namespace feel {
+    const WAIT: utinyint = 1;
+}

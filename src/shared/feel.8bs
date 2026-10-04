@@ -1,0 +1,9 @@
+// How fast a machine can let a reel move: the frames it waits between one
+// redraw of a reel and the next. Measured, not guessed (README, "What a redraw
+// costs"): a redraw takes ~0.6 of a frame on the C64, ~0.7 on the PET, ~0.9 on
+// the VIC-20 and ~0.25 on the X16, and three reels redraw per cycle, so this is
+// what keeps a spin from outrunning the machine. The base answer is the cautious
+// one; a machine that can do better has a twin (feel.c64.8bs, ...).
+export namespace feel {
+    const WAIT: utinyint = 2;
+}

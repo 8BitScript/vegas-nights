@@ -6,6 +6,19 @@ import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/** Parse any generated .8bs file (path relative to src/generated) into its consts and arrays. */
+export function loadFile(rel) {
+  const text = readFileSync(join(ROOT, 'src', 'generated', rel), 'utf8');
+  const consts = {};
+  const arrays = {};
+  for (const m of text.matchAll(/^export const (\w+): \w+ = (\d+);/gm)) consts[m[1]] = Number(m[2]);
+  for (const m of text.matchAll(/^export const (\w+): array<\w+, (\d+)> = \[([^\]]*)\];/gm)) {
+    arrays[m[1]] = m[3].split(',').map((v) => Number(v.trim()));
+    if (arrays[m[1]].length !== Number(m[2])) throw new Error(`${m[1]}: declared ${m[2]} elements, found ${arrays[m[1]].length}`);
+  }
+  return { text, consts, arrays };
+}
+
 export function loadTable(game = 'classic3x3') {
   const text = readFileSync(join(ROOT, 'src', 'generated', `${game}.8bs`), 'utf8');
   const consts = {};

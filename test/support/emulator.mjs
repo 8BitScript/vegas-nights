@@ -5,7 +5,8 @@ import { mkdirSync, existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { ROOT } from './table.mjs';
 
-export const MACHINES = ['pet', 'vic20', 'c64', 'cx16', 'web'];
+// MACHINES=c64,web narrows a run to those machines.
+export const MACHINES = (process.env.MACHINES ?? 'pet,vic20,c64,cx16,web').split(',');
 
 // Which emulator each machine needs on PATH (web needs none).
 const BINARY = { pet: 'xpet', vic20: 'xvic', c64: 'x64sc', cx16: 'x16emu', web: null };
