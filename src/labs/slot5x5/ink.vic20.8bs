@@ -1,0 +1,10 @@
+// The VIC-20: a colour nybble a cell at Video.COLOR, three bits of it ink. The colours
+// are the cosmic tileset's own, in the VIC-20's 0-7 numbers.
+import { Video } from "@8bitscript/vic20/geometry";
+import { SYMBOL_COLOR } from "@generated/tiles/cosmic.8bs";
+
+export namespace ink {
+    function cell(at: usmallint, symbol: utinyint, index: utinyint): void {
+        memory.write(Video.COLOR + at, SYMBOL_COLOR[symbol * 9 + index] & 7);
+    }
+}

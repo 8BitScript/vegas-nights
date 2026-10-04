@@ -1,0 +1,13 @@
+// The web's blocks: codes 128-143 are the sixteen 2x2 patterns in the very order the
+// composer's number runs (top-left<<3 | top-right<<2 | bottom-left<<1 | bottom-right),
+// so a cell's code is 128 + that number. The frame is solid blocks (143), told apart
+// by colour.
+export namespace quadcode {
+    function block(n: utinyint): utinyint {
+        return 128 + n;
+    }
+
+    function frame(cell: utinyint): utinyint {
+        return 143;
+    }
+}

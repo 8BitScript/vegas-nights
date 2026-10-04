@@ -1,0 +1,17 @@
+// The screen code of a quadrant-block cell, and of a frame cell, on a machine whose
+// character ROM holds the blocks: read from the tile pipeline's table (taken from the
+// real PET, C64 and VIC-20 character ROMs, which agree). quadcode.web.8bs is the web's.
+import { QUAD_CODE, FRAME_CODE } from "@generated/tiles/cosmic.pet.8bs";
+
+export namespace quadcode {
+    // The cell whose top-left, top-right, bottom-left, bottom-right quarters are the
+    // bits of `n` (top-left highest).
+    function block(n: utinyint): utinyint {
+        return QUAD_CODE[n];
+    }
+
+    // Frame cell `cell` (FRAME_TL, FRAME_T, …).
+    function frame(cell: utinyint): utinyint {
+        return FRAME_CODE[cell];
+    }
+}

@@ -22,6 +22,15 @@ export default {
     'slot3x3-lines': { entry: 'src/labs/slot3x3/lines.8bs' },
     'slot3x3-cherries': { entry: 'src/labs/slot3x3/cherries.8bs' },
     'slot3x3-jackpot': { entry: 'src/labs/slot3x3/jackpot.8bs' },
+    // The 5x5: five reels, five rows, ways pays, a free-spin bonus round and four progressive
+    // jackpot meters. The entries after it play from fixed seeds for the screenshot tests.
+    slot5x5: { entry: 'src/labs/slot5x5/main.8bs' },
+    'slot5x5-lose': { entry: 'src/labs/slot5x5/lose.8bs' },
+    'slot5x5-win': { entry: 'src/labs/slot5x5/win.8bs' },
+    'slot5x5-bonus': { entry: 'src/labs/slot5x5/bonus.8bs' },
+    'slot5x5-retrigger': { entry: 'src/labs/slot5x5/retrigger.8bs' },
+    'slot5x5-jackpot': { entry: 'src/labs/slot5x5/jackpot.8bs' },
+    'slot5x5-ruler': { entry: 'src/labs/slot5x5/ruler.8bs' },
     // Test support, not games: a ruler that prints two letters a known number
     // of cells apart (so a screenshot's cell size can be measured), and a
     // sheet of every symbol and digit exactly as the game draws them.

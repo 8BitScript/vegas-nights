@@ -1,0 +1,37 @@
+// The reels on the vic20: the quadrant composer (quad.8bs), in four-pixel steps.
+// The game calls only this interface; see view.8bs for what each function means.
+import { quad } from "./quad.8bs";
+
+export namespace view {
+    const WIDTH: utinyint = 21;
+    const PANEL: utinyint = 17;
+    const TITLE: bool = false;
+
+    function begin(): void {
+        quad.begin();
+    }
+
+    function draw(reel: utinyint): void {
+        quad.draw(reel);
+    }
+
+    function drawAll(): void {
+        quad.drawAll();
+    }
+
+    function moved(reel: utinyint, pixels: utinyint): void {
+        quad.moved(reel, pixels);
+    }
+
+    function flashRows(reel: utinyint, mask: utinyint, on: bool): void {
+        quad.flashRows(reel, mask, on);
+    }
+
+    function pulse(phase: utinyint): void {
+        quad.pulse(phase);
+    }
+
+    function unpulse(): void {
+        quad.unpulse();
+    }
+}

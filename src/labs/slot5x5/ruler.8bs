@@ -1,0 +1,17 @@
+// slot5x5-ruler: two solid blocks a known number of cells apart, so a screenshot's cell size
+// and the block's position can be measured. The same centring as the game uses.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+import { view } from "./view.8bs";
+
+export function main(): void {
+    screen.blank();
+    layout.centre(view.WIDTH);
+    text.setReverse(true);
+    text.print(layout.cell(0, 1), " ");
+    text.print(layout.cell(10, 15), " ");
+    while (true) {
+        waitFrame();
+    }
+}

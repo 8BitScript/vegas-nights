@@ -51,6 +51,14 @@ export namespace glyphs {
     function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
     }
 
+    // The pre-composed strip buffer (the 5x5): byte `index` set to `value`, and
+    // `count` bytes of it from `source` copied into the glyphs from `code` on.
+    function putStrip(index: usmallint, value: utinyint): void {
+    }
+
+    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
+    }
+
     function open(): void {
     }
 

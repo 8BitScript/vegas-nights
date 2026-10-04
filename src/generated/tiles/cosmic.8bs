@@ -2,14 +2,14 @@
 // Regenerate with: node tools/tiles/bin/tiles.mjs build cosmic
 // Theme: Cosmic   machine: c64   mode: pixels (1 bpp, one ink colour per 8x8 cell, bit 7 = leftmost pixel)
 // Game: grid5x5   symbols: STAR MOON SUN COMET ORB RING BLANK WILD SCAT
-// 9 symbols of 3x3 cells = 24x24 pixels   data 855 bytes in the program image   art c9ccc459ab2c
+// 9 symbols of 2x2 cells = 16x16 pixels   data 450 bytes in the program image   art 50ae138f5b04
 
 export const TILE_MODE: utinyint = 1; // 0 = quadrant screen codes (PET), 1 = pixel bitmaps with a colour per cell
 export const ART_SYMBOLS: utinyint = 9; // symbols with art; equals SYMBOL_COUNT in the game's generated odds file
-export const SYMBOL_CELLS_W: utinyint = 3; // character cells across one symbol
-export const SYMBOL_CELLS_H: utinyint = 3; // character cells down one symbol
-export const SYMBOL_CELLS: utinyint = 9;
-export const SYMBOL_BYTES: usmallint = 72; // bytes of SYMBOL_BITMAP per symbol (cells x 8 pixel rows)
+export const SYMBOL_CELLS_W: utinyint = 2; // character cells across one symbol
+export const SYMBOL_CELLS_H: utinyint = 2; // character cells down one symbol
+export const SYMBOL_CELLS: utinyint = 4;
+export const SYMBOL_BYTES: usmallint = 32; // bytes of SYMBOL_BITMAP per symbol (cells x 8 pixel rows)
 export const BIT0_IS_LEFT: bool = false; // false: bit 7 is the leftmost pixel of a row (C64, VIC-20, X16); true: bit 0 is (the web's glyph table)
 export const BACKGROUND_COLOR: utinyint = 0; // the paper colour the art was made against: screen.setColors / the background register
 export const ART_STAR: utinyint = 0; // symbol index, in the engine's order
@@ -23,58 +23,32 @@ export const ART_WILD: utinyint = 7; // symbol index, in the engine's order
 export const ART_SCAT: utinyint = 8; // symbol index, in the engine's order
 
 // [symbol * SYMBOL_BYTES + cell * 8 + pixelRow], cell = cellRow * SYMBOL_CELLS_W + cellCol, bit 7 = leftmost pixel
-export const SYMBOL_BITMAP: array<utinyint, 648> = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 24, 24, 60, 60,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 31, 15, 7, 1, 0, 1,
-    36, 255, 255, 255, 255, 255, 255, 255, 0, 252, 248, 240, 224, 128, 0, 128,
-    1, 1, 3, 3, 2, 0, 0, 0, 255, 255, 195, 129, 0, 0, 0, 0,
-    128, 128, 192, 192, 64, 0, 0, 0, 0, 0, 0, 1, 7, 15, 14, 30,
-    0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    30, 62, 62, 62, 63, 63, 63, 31, 0, 0, 0, 0, 0, 0, 128, 192,
-    0, 0, 0, 0, 0, 0, 0, 0, 31, 15, 15, 7, 1, 0, 0, 0,
-    224, 240, 255, 255, 255, 126, 0, 0, 32, 112, 240, 224, 128, 0, 0, 0,
-    0, 0, 0, 0, 8, 6, 7, 3, 0, 0, 24, 24, 24, 60, 189, 255,
-    0, 0, 0, 0, 16, 96, 224, 192, 3, 1, 7, 63, 63, 7, 1, 3,
-    255, 159, 159, 255, 255, 255, 255, 255, 192, 128, 224, 252, 252, 224, 128, 192,
-    3, 7, 6, 8, 0, 0, 0, 0, 255, 189, 60, 24, 24, 24, 0, 0,
-    192, 224, 96, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 3, 7, 14, 12, 14, 15, 0, 0, 240, 248, 252, 124, 252, 252,
-    0, 0, 0, 0, 0, 0, 1, 3, 15, 15, 15, 31, 62, 124, 248, 240,
-    252, 252, 248, 240, 0, 0, 0, 0, 7, 15, 31, 15, 6, 0, 0, 0,
-    224, 192, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 1, 7, 14, 13, 25, 0, 0, 126, 255, 255, 63, 223, 207,
-    0, 0, 0, 128, 224, 240, 240, 248, 25, 61, 62, 63, 63, 63, 63, 31,
-    207, 223, 63, 255, 255, 255, 255, 255, 248, 252, 252, 252, 252, 252, 252, 248,
-    31, 15, 15, 7, 1, 0, 0, 0, 255, 255, 255, 255, 255, 126, 0, 0,
-    248, 240, 240, 224, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 126, 255, 0, 0, 0, 0, 0, 0, 0, 0,
-    3, 31, 63, 127, 31, 15, 1, 0, 255, 255, 255, 255, 255, 255, 255, 0,
-    192, 248, 252, 254, 248, 240, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    255, 126, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    24, 24, 24, 255, 255, 24, 24, 24, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 112, 112, 120, 120, 56,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 30, 62, 62, 30, 28,
-    60, 60, 28, 30, 30, 14, 15, 15, 24, 60, 60, 126, 126, 255, 255, 231,
-    60, 60, 56, 120, 120, 112, 240, 240, 7, 7, 7, 7, 3, 1, 0, 0,
-    231, 195, 195, 129, 129, 0, 0, 0, 224, 224, 224, 224, 192, 128, 0, 0,
-    0, 0, 0, 0, 0, 1, 3, 7, 0, 0, 24, 60, 231, 195, 153, 60,
-    0, 0, 0, 0, 0, 128, 192, 224, 12, 24, 49, 25, 12, 6, 2, 3,
-    126, 126, 255, 255, 255, 255, 126, 60, 48, 24, 140, 152, 48, 96, 64, 192,
-    1, 0, 0, 0, 0, 0, 0, 0, 153, 195, 102, 36, 60, 24, 0, 0,
-    128, 0, 0, 0, 0, 0, 0, 0
+export const SYMBOL_BITMAP: array<utinyint, 288> = [
+    0, 0, 0, 1, 1, 2, 63, 31, 0, 0, 0, 128, 128, 64, 252, 248,
+    15, 7, 7, 7, 14, 8, 0, 0, 240, 224, 224, 224, 112, 16, 0, 0,
+    0, 0, 12, 24, 56, 56, 56, 120, 0, 0, 0, 0, 0, 0, 0, 0,
+    120, 60, 62, 63, 31, 15, 1, 0, 0, 0, 0, 24, 248, 240, 128, 0,
+    0, 0, 1, 17, 15, 15, 13, 63, 0, 0, 128, 136, 240, 240, 240, 252,
+    63, 15, 15, 15, 17, 1, 0, 0, 252, 240, 240, 240, 136, 128, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 124, 222, 254, 254, 252, 248,
+    1, 7, 15, 30, 60, 24, 0, 0, 192, 128, 0, 0, 0, 0, 0, 0,
+    0, 1, 15, 25, 54, 62, 53, 127, 0, 128, 240, 248, 252, 252, 252, 254,
+    127, 63, 63, 63, 31, 15, 1, 0, 254, 252, 252, 252, 248, 240, 128, 0,
+    0, 0, 0, 0, 3, 15, 63, 127, 0, 0, 0, 0, 192, 240, 252, 254,
+    63, 15, 0, 3, 0, 0, 0, 0, 252, 240, 0, 192, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 128,
+    1, 0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 96, 96, 96, 113, 49, 51, 0, 0, 14, 14, 14, 142, 140, 204,
+    59, 31, 30, 30, 30, 12, 0, 0, 220, 248, 120, 120, 120, 48, 0, 0,
+    0, 1, 3, 6, 13, 27, 32, 47, 0, 128, 192, 96, 176, 216, 4, 244,
+    23, 11, 13, 4, 2, 1, 0, 0, 232, 208, 176, 32, 64, 128, 0, 0
 ];
 
 // [symbol * SYMBOL_CELLS + cell]: c64's own colour number for that cell's ink
-export const SYMBOL_COLOR: array<utinyint, 81> = [
-    1, 7, 1, 7, 7, 7, 7, 7, 7, 15, 15, 1, 15, 15, 1, 15,
-    15, 7, 8, 7, 8, 7, 7, 7, 8, 7, 8, 1, 1, 1, 3, 3,
-    1, 3, 3, 1, 14, 14, 14, 14, 14, 14, 14, 14, 14, 1, 10, 1,
-    4, 10, 4, 1, 10, 1, 1, 1, 1, 1, 6, 1, 1, 1, 1, 13,
-    1, 13, 13, 13, 13, 13, 13, 13, 2, 2, 2, 2, 2, 2, 2, 2,
-    2
+export const SYMBOL_COLOR: array<utinyint, 36> = [
+    7, 7, 7, 7, 15, 1, 15, 15, 7, 7, 7, 7, 1, 1, 3, 3,
+    14, 14, 14, 14, 10, 10, 10, 10, 6, 6, 6, 6, 13, 13, 13, 13,
+    2, 2, 2, 2
 ];
 
 export const FRAME_CELLS: utinyint = 14; // frame, bevel, divider and panel cells

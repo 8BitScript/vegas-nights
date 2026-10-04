@@ -1,0 +1,177 @@
+// Exact credits to 999,999,999: a handful of numbers ("registers"), each three
+// decimal limbs of 0..999 — units, thousands, millions.
+//
+// The 6502 backends in @8bitscript 0.24.0 do not lower 32-bit values, and the 5x5's
+// numbers outgrow 16 bits: the GRAND jackpot's seed alone is 1,000,000 credits, a
+// free-spin win at the top bet runs to six figures, and a balance that saturated at
+// 65,535 would quietly pay less than the odds table promises. Three limbs need only
+// 16-bit arithmetic, are exact, and print as three adjacent three-digit fields.
+//
+// bank.8bs does the same for the 3x3 with two fixed limbs; this is the general form
+// (named registers, a third limb) for a machine with a balance, a win, a bonus
+// session total and four jackpot meters to keep.
+let limbs: array<usmallint, 30>;
+
+export namespace purse {
+    const BALANCE: utinyint = 0;   // the player's credits
+    const WIN: utinyint = 1;       // what the spin on screen paid
+    const SESSION: utinyint = 2;   // the running total of a free-spin session
+    const MINI: utinyint = 3;      // the four jackpot meters, in this order
+    const MINOR: utinyint = 4;
+    const MAJOR: utinyint = 5;
+    const GRAND: utinyint = 6;
+    const SCRATCH: utinyint = 7;   // working space: the base win of one spin
+    const SPIN: utinyint = 8;      // what one spin paid, multiplied out
+    const REGISTERS: utinyint = 9;
+
+    function clear(reg: utinyint): void {
+        let at: utinyint = reg * 3;
+        limbs[at] = 0;
+        limbs[at + 1] = 0;
+        limbs[at + 2] = 0;
+    }
+
+    // reg = millions, thousands, units (each 0..999)
+    function set(reg: utinyint, millions: usmallint, thousands: usmallint, units: usmallint): void {
+        let at: utinyint = reg * 3;
+        limbs[at] = units;
+        limbs[at + 1] = thousands;
+        limbs[at + 2] = millions;
+    }
+
+    function copy(dst: utinyint, src: utinyint): void {
+        let a: utinyint = dst * 3;
+        let b: utinyint = src * 3;
+        limbs[a] = limbs[b];
+        limbs[a + 1] = limbs[b + 1];
+        limbs[a + 2] = limbs[b + 2];
+    }
+
+    function units(reg: utinyint): usmallint {
+        let at: utinyint = reg * 3;
+        return limbs[at];
+    }
+
+    function thousands(reg: utinyint): usmallint {
+        let at: utinyint = reg * 3;
+        return limbs[at + 1];
+    }
+
+    function millions(reg: utinyint): usmallint {
+        let at: utinyint = reg * 3;
+        return limbs[at + 2];
+    }
+
+    function isZero(reg: utinyint): bool {
+        let at: utinyint = reg * 3;
+        if (limbs[at] != 0) {
+            return false;
+        }
+        if (limbs[at + 1] != 0) {
+            return false;
+        }
+        return limbs[at + 2] == 0;
+    }
+
+    // reg + amount (0..65535), held at 999,999,999.
+    function addSmall(reg: utinyint, amount: usmallint): void {
+        let at: utinyint = reg * 3;
+        let rest: usmallint = amount;
+        let carry: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            carry = carry + 1;
+        }
+        let low: usmallint = limbs[at] + rest;
+        if (low >= 1000) {
+            low = low - 1000;
+            carry = carry + 1;
+        }
+        limbs[at] = low;
+        let mid: usmallint = limbs[at + 1] + carry;
+        carry = 0;
+        if (mid >= 1000) {
+            mid = mid - 1000;
+            carry = 1;
+        }
+        limbs[at + 1] = mid;
+        let high: usmallint = limbs[at + 2] + carry;
+        if (high > 999) {
+            high = 999;
+            limbs[at] = 999;
+            limbs[at + 1] = 999;
+        }
+        limbs[at + 2] = high;
+    }
+
+    // dst + src, held at 999,999,999.
+    function addReg(dst: utinyint, src: utinyint): void {
+        let a: utinyint = dst * 3;
+        let b: utinyint = src * 3;
+        let low: usmallint = limbs[a] + limbs[b];
+        let carry: usmallint = 0;
+        if (low >= 1000) {
+            low = low - 1000;
+            carry = 1;
+        }
+        limbs[a] = low;
+        let mid: usmallint = limbs[a + 1] + limbs[b + 1] + carry;
+        carry = 0;
+        if (mid >= 1000) {
+            mid = mid - 1000;
+            carry = 1;
+        }
+        limbs[a + 1] = mid;
+        let high: usmallint = limbs[a + 2] + limbs[b + 2] + carry;
+        if (high > 999) {
+            high = 999;
+            limbs[a] = 999;
+            limbs[a + 1] = 999;
+        }
+        limbs[a + 2] = high;
+    }
+
+    // Is reg at least `amount` (0..65535) credits?
+    function canPay(reg: utinyint, amount: usmallint): bool {
+        let at: utinyint = reg * 3;
+        if (limbs[at + 2] != 0) {
+            return true;
+        }
+        let rest: usmallint = amount;
+        let k: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            k = k + 1;
+        }
+        if (limbs[at + 1] > k) {
+            return true;
+        }
+        if (limbs[at + 1] < k) {
+            return false;
+        }
+        return limbs[at] >= rest;
+    }
+
+    // reg - amount; the caller has checked canPay.
+    function take(reg: utinyint, amount: usmallint): void {
+        let at: utinyint = reg * 3;
+        let rest: usmallint = amount;
+        let k: usmallint = 0;
+        while (rest >= 1000) {
+            rest = rest - 1000;
+            k = k + 1;
+        }
+        if (limbs[at] >= rest) {
+            limbs[at] = limbs[at] - rest;
+        } else {
+            limbs[at] = limbs[at] + 1000 - rest;
+            k = k + 1;
+        }
+        if (limbs[at + 1] >= k) {
+            limbs[at + 1] = limbs[at + 1] - k;
+        } else {
+            limbs[at + 1] = limbs[at + 1] + 1000 - k;
+            limbs[at + 2] = limbs[at + 2] - 1;
+        }
+    }
+}
