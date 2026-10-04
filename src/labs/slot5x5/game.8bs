@@ -1,0 +1,590 @@
+// slot5x5 — a 5-reel, 5-row slot machine paid by "ways" (3,125 on a full grid), with a
+// free-spin bonus round and four progressive jackpot meters.
+//
+// Everything about the odds comes from src/generated/grid5x5.8bs, emitted by
+// tools/slotmath: the reel strips, the paytable, the scatter table and the free-spin
+// awards. This file only plays them, in the draw order tools/slotmath documents: a base
+// spin takes one random byte per reel (& STOP_MASK — 32 stops, so exactly uniform) and
+// then two bytes, little-endian, for the jackpot draw; a free spin takes the reels only.
+// The reels then scroll to their stops, and the win is read off the symbols they came to
+// rest on — the same symbols the player is looking at. How a reel is drawn lives in
+// view.8bs; this file never touches a pixel.
+//
+// The rules (docs/par/grid5x5.md has the proof): a symbol pays on its longest run of
+// adjacent reels from the first that each show it (or a wild) anywhere in the window, and
+// the pay is multiplied by the number of ways — the product of how many cells match on
+// each reel of the run. Three or more scatters anywhere pay and start the bonus round:
+// 8, 12 or 20 free spins at triple wins, with scatters inside the round awarding more (a
+// retrigger), up to 50 in all. MINI, MINOR, MAJOR and GRAND are "mystery" jackpots: one
+// 16-bit draw on every base spin, split into disjoint ranges, independent of the reels;
+// each is a meter that grows with every bet and resets to its seed when it is won.
+//
+// States: IDLE (waiting for confirm) -> SPINNING (reels scrolling, stopping one after
+// another) -> PAYING (the winning cells flash) -> IDLE, or, when the bonus round is
+// running, -> WAITING (the next free spin) -> SPINNING …
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { input } from "@8bitscript/input";
+import { random } from "@8bitscript/random";
+import { purse } from "@shared/purse.8bs";
+import { layout } from "@shared/layout.8bs";
+import { sound } from "@shared/sound.8bs";
+import { spin } from "./spin.8bs";
+import { view } from "./view.8bs";
+import {
+    REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS,
+    PAY_WIDTH, PAY_SYMBOLS, WILD_SYMBOL, SCATTER_SYMBOL,
+    FREE_SPIN_MULTIPLIER, FREE_SPIN_CAP, FREE_SPIN_RETRIGGER,
+    JACKPOT_COUNT, JACKPOT_DRAW_MASK,
+    STRIPS, BET_LEVELS, PAYS, SCATTER_PAYS, FREE_SPIN_AWARD,
+    JACKPOT_CONTRIB_Q8, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO
+} from "@generated/grid5x5.8bs";
+
+// The seed a person at the keyboard plays from; a headless run names its own, so a
+// screenshot reproduces the same spins on every machine (the test computes the same
+// draws in JavaScript).
+export const DEFAULT_SEED: usmallint = 2026;
+
+// The jackpot seeds in credits at the base bet — JACKPOT_SEED in the generated file,
+// which is 32-bit and so unreadable to the 6502 backends; test/odds5.test.mjs holds
+// these to it.
+const SEED_MILLIONS: array<usmallint, 4> = [0, 0, 0, 1];
+const SEED_THOUSANDS: array<usmallint, 4> = [10, 50, 250, 0];
+
+// The credits the player starts with, and is re-staked to when broke: 100 base bets.
+const START_THOUSANDS: usmallint = 100;
+
+const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
+
+// Cells from the block's left edge on each panel row (rows count from view.PANEL).
+const CREDIT_ROW: utinyint = 0;
+const BET_ROW: utinyint = 1;
+const WIN_ROW: utinyint = 2;
+const MESSAGE_ROW: utinyint = 3;
+const JACKPOT_ROW: utinyint = 4;
+
+let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying, 3 waiting for the next free spin
+let betIndex: utinyint = 0;
+let multiplier: utinyint = 1;
+let targets: array<utinyint, 5>;
+let grid: array<utinyint, 25>;       // grid[reel * 5 + row]: the symbol on screen
+let rowMask: array<utinyint, 5>;     // per reel, the symbol rows that took part in a win
+let scatters: utinyint = 0;
+let jackpotHit: utinyint = 255;      // which jackpot this spin won (255 = none)
+let inBonus: bool = false;
+let fsLeft: utinyint = 0;
+let fsGranted: utinyint = 0;
+let autoLeft: utinyint = 0;
+let idleFrames: utinyint = 0;
+let flashLeft: utinyint = 0;
+let flashWait: utinyint = 0;
+let pauseLeft: utinyint = 0;
+let pulsePhase: utinyint = 0;
+let pulseWait: utinyint = 0;
+let freeSpin: bool = false;          // the spin on the reels is a free one
+
+// ---- the panels ------------------------------------------------------------------
+
+function cellAt(col: utinyint, row: utinyint): usmallint {
+    return layout.cell(col, view.PANEL + row);
+}
+
+function printReg(col: utinyint, row: utinyint, reg: utinyint): void {
+    text.printNumber(cellAt(col, row), purse.millions(reg), 3);
+    text.printNumber(cellAt(col + 3, row), purse.thousands(reg), 3);
+    text.printNumber(cellAt(col + 6, row), purse.units(reg), 3);
+}
+
+function drawCredit(): void {
+    text.print(cellAt(0, CREDIT_ROW), "CREDIT");
+    printReg(7, CREDIT_ROW, purse.BALANCE);
+}
+
+function drawBet(): void {
+    text.print(cellAt(0, BET_ROW), "BET");
+    let bet: usmallint = BET_CREDITS;
+    for (let i: utinyint = 1; i < multiplier; i++) {
+        bet = bet + BET_CREDITS;
+    }
+    text.printNumber(cellAt(4, BET_ROW), bet, 4);
+}
+
+function drawFree(): void {
+    if (inBonus) {
+        text.print(cellAt(10, BET_ROW), "FS");
+        text.printNumber(cellAt(13, BET_ROW), fsLeft, 2);
+        text.print(cellAt(16, BET_ROW), "X3");
+    } else {
+        text.print(cellAt(10, BET_ROW), "         ");
+    }
+}
+
+function drawWin(reg: utinyint): void {
+    text.print(cellAt(0, WIN_ROW), "WIN");
+    printReg(4, WIN_ROW, reg);
+}
+
+function clearMessage(): void {
+    text.print(cellAt(0, MESSAGE_ROW), "                     ");
+}
+
+function message(which: utinyint): void {
+    clearMessage();
+    let at: usmallint = cellAt(0, MESSAGE_ROW);
+    if (which == 1) {
+        text.print(at, "SPINNING");
+    } else if (which == 2) {
+        text.print(at, "WIN");
+    } else if (which == 3) {
+        text.print(at, "JACKPOT!");
+    } else if (which == 4) {
+        text.print(at, "NO WIN");
+    } else if (which == 5) {
+        text.print(at, "NEED CREDIT");
+    } else if (which == 6) {
+        text.print(at, "FREE SPINS!");
+    } else if (which == 7) {
+        text.print(at, "BONUS TOTAL");
+    } else if (which == 8) {
+        text.print(at, "FREE SPIN");
+    } else {
+        text.print(at, "PRESS CONFIRM");
+    }
+}
+
+// One jackpot meter: its two-letter name, then seven digits.
+function drawMeter(col: utinyint, row: utinyint, reg: utinyint): void {
+    text.printNumber(cellAt(col, row), purse.millions(reg), 1);
+    text.printNumber(cellAt(col + 1, row), purse.thousands(reg), 3);
+    text.printNumber(cellAt(col + 4, row), purse.units(reg), 3);
+}
+
+function drawJackpots(): void {
+    text.print(cellAt(0, JACKPOT_ROW), "MI");
+    drawMeter(3, JACKPOT_ROW, purse.MINI);
+    text.print(cellAt(11, JACKPOT_ROW), "MN");
+    drawMeter(14, JACKPOT_ROW, purse.MINOR);
+    text.print(cellAt(0, JACKPOT_ROW + 1), "MJ");
+    drawMeter(3, JACKPOT_ROW + 1, purse.MAJOR);
+    text.print(cellAt(11, JACKPOT_ROW + 1), "GR");
+    drawMeter(14, JACKPOT_ROW + 1, purse.GRAND);
+}
+
+function drawStatic(): void {
+    if (view.TITLE) {
+        text.print(layout.cell(0, 0), "VEGAS NIGHTS");
+        text.print(layout.cell(0, 1), "COSMIC 5X5");
+    }
+}
+
+// The bonus round's banner, where the machine has a row above the frame for one.
+function banner(on: bool): void {
+    if (view.TITLE) {
+        if (on) {
+            text.print(layout.cell(0, 1), "-- FREE SPINS --");
+        } else {
+            text.print(layout.cell(0, 1), "COSMIC 5X5      ");
+        }
+    }
+}
+
+// ---- play ------------------------------------------------------------------------
+
+function setBet(index: utinyint): void {
+    betIndex = index;
+    multiplier = BET_LEVELS[index];
+    drawBet();
+}
+
+function resetMeter(j: utinyint): void {
+    purse.set(purse.MINI + j, SEED_MILLIONS[j], SEED_THOUSANDS[j], 0);
+}
+
+// Start the reels toward their drawn stops. A base spin also takes the jackpot draw.
+function startSpin(free: bool): void {
+    freeSpin = free;
+    pulseWait = 0;
+    if (free) {
+        fsLeft = fsLeft - 1;
+        message(8);
+        drawFree();
+    } else {
+        // Charge the bet, and feed the meters: each grows by its contribution for every
+        // base bet, so a bigger bet feeds it more.
+        for (let i: utinyint = 0; i < multiplier; i++) {
+            purse.take(purse.BALANCE, BET_CREDITS);
+            for (let j: utinyint = 0; j < JACKPOT_COUNT; j++) {
+                purse.addSmall(purse.MINI + j, JACKPOT_CONTRIB_Q8[j] >> 8);
+            }
+        }
+        purse.clear(purse.WIN);
+        message(1);
+    }
+    // The draw plan, in the order tools/slotmath documents: one byte per reel.
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let byte: utinyint = random.next();
+        targets[reel] = byte & STOP_MASK;
+        // Each reel runs at least six more symbols than the one before.
+        let minimum: usmallint = reel;
+        minimum = minimum + 1;
+        if (spin.size() == 16) {
+            minimum = minimum * 96;
+        } else {
+            minimum = minimum * 144;
+        }
+        spin.start(reel, targets[reel], minimum, STOPS);
+    }
+    jackpotHit = 255;
+    if (!free) {
+        let low: utinyint = random.next();
+        let high: utinyint = random.next();
+        let draw: usmallint = high;
+        draw = draw << 8;
+        draw = draw | low;
+        draw = draw & JACKPOT_DRAW_MASK;
+        for (let j: utinyint = 0; j < JACKPOT_COUNT; j++) {
+            if (draw >= JACKPOT_RANGE_FROM[j]) {
+                if (draw < JACKPOT_RANGE_TO[j]) {
+                    if (multiplier >= JACKPOT_MIN_BET[j]) {
+                        jackpotHit = j;
+                    }
+                }
+            }
+        }
+        drawCredit();
+        drawWin(purse.WIN);
+        drawJackpots();
+    }
+    state = 1;
+}
+
+// Read the screen: fill grid, rowMask and scatters, and leave the spin's base win, in
+// credits at the base bet (ways pays plus the scatter pay), in purse.SCRATCH.
+function evaluate(): void {
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let stop: utinyint = spin.stop(reel);
+        rowMask[reel] = 0;
+        for (let row: utinyint = 0; row < ROWS; row++) {
+            grid[reel * 5 + row] = STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
+        }
+    }
+    purse.clear(purse.SCRATCH);
+    for (let p: utinyint = 0; p < PAY_SYMBOLS; p++) {
+        // The longest run of reels from the first that show `p` (or a wild), and the
+        // ways: how many cells match on each reel, multiplied.
+        let ways: usmallint = 1;
+        let run: utinyint = 0;
+        let alive: bool = true;
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            if (alive) {
+                let count: utinyint = 0;
+                for (let row: utinyint = 0; row < ROWS; row++) {
+                    let symbol: utinyint = grid[reel * 5 + row];
+                    if (symbol == p) {
+                        count = count + 1;
+                    } else if (symbol == WILD_SYMBOL) {
+                        count = count + 1;
+                    }
+                }
+                if (count == 0) {
+                    alive = false;
+                } else {
+                    // ways * count, by addition: the 6502 backends have no 16-bit multiply
+                    let sum: usmallint = 0;
+                    for (let i: utinyint = 0; i < count; i++) {
+                        sum = sum + ways;
+                    }
+                    ways = sum;
+                    run = run + 1;
+                }
+            }
+        }
+        let pay: usmallint = PAYS[p * PAY_WIDTH + run];
+        if (pay != 0) {
+            for (let i: usmallint = 0; i < ways; i++) {
+                purse.addSmall(purse.SCRATCH, pay);
+            }
+            for (let reel: utinyint = 0; reel < run; reel++) {
+                for (let row: utinyint = 0; row < ROWS; row++) {
+                    let symbol: utinyint = grid[reel * 5 + row];
+                    if (symbol == p) {
+                        rowMask[reel] = rowMask[reel] | BIT[row];
+                    } else if (symbol == WILD_SYMBOL) {
+                        rowMask[reel] = rowMask[reel] | BIT[row];
+                    }
+                }
+            }
+        }
+    }
+    // The scatters, anywhere on the grid.
+    scatters = 0;
+    for (let i: utinyint = 0; i < 25; i++) {
+        if (grid[i] == SCATTER_SYMBOL) {
+            scatters = scatters + 1;
+        }
+    }
+    purse.addSmall(purse.SCRATCH, SCATTER_PAYS[scatters]);
+    if (FREE_SPIN_AWARD[scatters] != 0) {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            for (let row: utinyint = 0; row < ROWS; row++) {
+                if (grid[reel * 5 + row] == SCATTER_SYMBOL) {
+                    rowMask[reel] = rowMask[reel] | BIT[row];
+                }
+            }
+        }
+    }
+}
+
+// The reels are at rest: pay.
+function settle(): void {
+    evaluate();
+    // The win is the base win times the bet — and times three in a free spin — in
+    // credits that are exact (the purse holds nine digits).
+    let factor: utinyint = multiplier;
+    if (freeSpin) {
+        factor = multiplier * FREE_SPIN_MULTIPLIER;
+    }
+    if (freeSpin) {
+        purse.clear(purse.SPIN);
+    } else {
+        purse.clear(purse.WIN);
+    }
+    let into: utinyint = purse.WIN;
+    if (freeSpin) {
+        into = purse.SPIN;
+    }
+    for (let i: utinyint = 0; i < factor; i++) {
+        purse.addReg(into, purse.SCRATCH);
+    }
+    if (jackpotHit != 255) {
+        purse.addReg(into, purse.MINI + jackpotHit);
+        resetMeter(jackpotHit);
+    }
+    if (freeSpin) {
+        purse.copy(purse.WIN, purse.SPIN);
+        purse.addReg(purse.SESSION, purse.SPIN);
+    }
+    purse.addReg(purse.BALANCE, purse.WIN);
+    // The bonus round: a base spin with three scatters starts it; inside it, scatters
+    // award more, up to the cap.
+    let award: utinyint = FREE_SPIN_AWARD[scatters];
+    let started: bool = false;
+    if (award != 0) {
+        if (!inBonus) {
+            inBonus = true;
+            started = true;
+            fsLeft = award;
+            fsGranted = award;
+            purse.clear(purse.SESSION);
+            banner(true);
+        } else if (FREE_SPIN_RETRIGGER != 0) {
+            let extra: utinyint = award;
+            if (fsGranted + extra > FREE_SPIN_CAP) {
+                extra = FREE_SPIN_CAP - fsGranted;
+            }
+            fsLeft = fsLeft + extra;
+            fsGranted = fsGranted + extra;
+        }
+    }
+    drawCredit();
+    drawWin(purse.WIN);
+    drawJackpots();
+    drawFree();
+    flashLeft = 0;
+    if (jackpotHit != 255) {
+        message(3);
+        sound.bonus();
+    } else if (started) {
+        message(6);
+        sound.bonus();
+    } else if (!purse.isZero(purse.WIN)) {
+        message(2);
+        sound.win();
+    } else if (!inBonus) {
+        message(4);
+    }
+    if (!purse.isZero(purse.WIN) || scatters >= 3) {
+        flashLeft = 8;
+        flashWait = 0;
+        state = 2;
+    } else {
+        finishSpin();
+    }
+}
+
+// After the win has been shown: the next free spin, the end of the round, or idle.
+function finishSpin(): void {
+    if (inBonus) {
+        if (fsLeft != 0) {
+            pauseLeft = 40;
+            state = 3;
+        } else {
+            // the round is over: show its total
+            inBonus = false;
+            banner(false);
+            message(7);
+            drawFree();
+            drawWin(purse.SESSION);
+            view.unpulse();
+            pauseLeft = 150;
+            state = 4;
+        }
+    } else {
+        state = 0;
+        idleFrames = 0;
+    }
+}
+
+function frameSpinning(): void {
+    let any: bool = false;
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let moved: utinyint = spin.step(reel, STOPS);
+        if (moved != 0) {
+            view.moved(reel, moved);
+            sound.tick();
+            if (!spin.moving(reel)) {
+                sound.stop();
+            }
+        }
+        if (spin.moving(reel)) {
+            any = true;
+        }
+    }
+    if (!any) {
+        settle();
+    }
+}
+
+function lightRows(on: bool): void {
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        if (rowMask[reel] != 0) {
+            view.flashRows(reel, rowMask[reel], on);
+        }
+    }
+}
+
+function framePaying(): void {
+    if (flashWait != 0) {
+        flashWait = flashWait - 1;
+        return;
+    }
+    if (flashLeft == 0) {
+        finishSpin();
+        return;
+    }
+    flashLeft = flashLeft - 1;
+    flashWait = 7;
+    lightRows((flashLeft & 1) != 0);
+}
+
+function frameBonusPulse(): void {
+    if (inBonus) {
+        if (pulseWait == 0) {
+            pulsePhase = pulsePhase + 1;
+            view.pulse(pulsePhase);
+            pulseWait = 6;
+        } else {
+            pulseWait = pulseWait - 1;
+        }
+    }
+}
+
+function frameIdle(): void {
+    if (idleFrames < 255) {
+        idleFrames = idleFrames + 1;
+    }
+    let go: bool = false;
+    if (input.confirm()) {
+        go = true;
+    }
+    if (autoLeft != 0) {
+        if (idleFrames > 20) {
+            go = true;
+        }
+    }
+    if (input.up()) {
+        if (betIndex + 1 < 4) {
+            setBet(betIndex + 1);
+        }
+    }
+    if (input.down()) {
+        if (betIndex != 0) {
+            setBet(betIndex - 1);
+        }
+    }
+    if (go) {
+        let cost: usmallint = BET_CREDITS;
+        for (let i: utinyint = 1; i < multiplier; i++) {
+            cost = cost + BET_CREDITS;
+        }
+        if (!purse.canPay(purse.BALANCE, cost)) {
+            // Out of credit: the lab reloads rather than ending the session.
+            purse.set(purse.BALANCE, 0, START_THOUSANDS, 0);
+            drawCredit();
+            message(5);
+            idleFrames = 0;
+        } else {
+            if (autoLeft != 0) {
+                autoLeft = autoLeft - 1;
+            }
+            startSpin(false);
+        }
+    }
+}
+
+// Play forever from `seed`. `autoSpins` is the number of base spins the machine takes by
+// itself right after it starts (0 for a person at the keyboard): headless screenshots
+// cannot press a key. Free spins always run by themselves.
+export function play(autoSpins: utinyint, seed: usmallint): void {
+    screen.blank();
+    layout.centre(view.WIDTH);
+    random.seed(seed);
+    input.begin();
+    purse.set(purse.BALANCE, 0, START_THOUSANDS, 0);
+    purse.clear(purse.WIN);
+    purse.clear(purse.SESSION);
+    for (let j: utinyint = 0; j < JACKPOT_COUNT; j++) {
+        resetMeter(j);
+    }
+    autoLeft = autoSpins;
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        spin.place(reel, 0);
+    }
+    view.begin();
+    drawStatic();
+    view.drawAll();
+    setBet(0);
+    drawCredit();
+    drawWin(purse.WIN);
+    drawJackpots();
+    drawFree();
+    message(0);
+
+    while (true) {
+        waitFrame();
+        input.poll();
+        frameBonusPulse();
+        if (state == 1) {
+            frameSpinning();
+        } else if (state == 2) {
+            framePaying();
+        } else if (state == 3) {
+            if (pauseLeft != 0) {
+                pauseLeft = pauseLeft - 1;
+            } else {
+                startSpin(true);
+            }
+        } else if (state == 4) {
+            if (pauseLeft != 0) {
+                pauseLeft = pauseLeft - 1;
+            } else {
+                drawWin(purse.WIN);
+                message(0);
+                state = 0;
+                idleFrames = 0;
+            }
+        } else {
+            frameIdle();
+        }
+    }
+}

@@ -1,0 +1,21 @@
+// The web: a character code and a colour a cell, written straight to the host's
+// grid (text.putChar / text.putColor). The reels the quadrant composer builds use the
+// host font's 2x2 block glyphs at codes 128-143, indexed top-left<<3 | top-right<<2 |
+// bottom-left<<1 | bottom-right — the same number the composer works out for a cell,
+// so a cell's screen code is 128 + that number (labs/slot5x5/quadcode.web.8bs).
+import { text } from "@8bitscript/text";
+
+export namespace cells {
+    const COLORED: bool = true;
+
+    function put(at: usmallint, code: utinyint): void {
+        text.putChar(at, code);
+    }
+
+    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
+    }
+
+    function tint(at: usmallint, color: utinyint): void {
+        text.putColor(at, color);
+    }
+}

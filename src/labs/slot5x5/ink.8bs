@@ -1,0 +1,7 @@
+// Colouring a reel cell of the quadrant composer, on the machines whose cells have a
+// colour of their own. Here, none: the PET draws in one ink. ink.vic20.8bs is the VIC-20's.
+export namespace ink {
+    // Colour the cell at `at` as symbol cell `cell` (0-8) of `symbol` is coloured.
+    function cell(at: usmallint, symbol: utinyint, index: utinyint): void {
+    }
+}

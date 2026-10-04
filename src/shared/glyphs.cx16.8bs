@@ -9,6 +9,10 @@
 // this game never prints); the reels and the frame take 128-222.
 import { setVramAddress } from "@8bitscript/cx16";
 
+// The 5x5's pre-composed strips (see glyphs.c64.8bs): in RAM, copied to the tiles
+// through VERA's data port.
+let stripBuf: array<utinyint, 5920>;
+
 export namespace glyphs {
     const AVAILABLE: bool = true;
     const FIRST: utinyint = 128;
@@ -17,6 +21,8 @@ export namespace glyphs {
     const PORT_ADDRESS: usmallint = 0x9F23; // VERA DATA0
     const TILE_RAM: usmallint = 0;
     const STRIP_RAM: usmallint = 0;
+    // Recolouring a reel cell by cell in compiled code is fast enough at 8 MHz.
+    const COLOR_STRIP: bool = false;
 
     function begin(): void {
     }
@@ -44,6 +50,24 @@ export namespace glyphs {
     }
 
     function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+    }
+
+    function putStrip(index: usmallint, value: utinyint): void {
+        stripBuf[index] = value;
+    }
+
+    // `count` bytes from the strip buffer at `source` into the tiles from `code` on.
+    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
+        glyphs.seek(code);
+        for (let i: utinyint = 0; i < count; i++) {
+            memory.write(0x9F23, stripBuf[source + i]);
+        }
+    }
+
+    function putColorStrip(index: usmallint, value: utinyint): void {
+    }
+
+    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
     }
 
     function open(): void {

@@ -37,7 +37,7 @@
     "build:c64": "8bs build --target c64",
     "build:cx16": "8bs build --target cx16",
     "build:web": "8bs build --target web",
-    "check": "8bs check src/lobby/main.8bs src/labs/hello-reels/main.8bs src/labs/slot3x3/main.8bs src/shared/reels.8bs src/labs/sound-test/main.8bs src/shared/sfx.8bs",
+    "check": "8bs check src/lobby/main.8bs src/labs/hello-reels/main.8bs src/labs/slot3x3/main.8bs src/labs/slot5x5/main.8bs src/shared/reels.8bs src/labs/sound-test/main.8bs src/shared/sfx.8bs",
     "tiles:art": "node tools/tiles/bin/tiles.mjs art",
     "tiles:build": "node tools/tiles/bin/tiles.mjs build",
     "tiles:check": "node tools/tiles/bin/tiles.mjs check",
@@ -56,8 +56,15 @@
     "start:slot3x3:cx16": "8bs run cx16 --program slot3x3",
     "start:slot3x3:web": "8bs run web --program slot3x3",
     "shot:slot3x3": "node scripts/shot.mjs slot3x3",
-    "test": "node --test test/odds.test.mjs",
-    "test:machines": "node --test test/machines.test.mjs"
+    "start:slot5x5": "8bs run c64 --program slot5x5",
+    "start:slot5x5:pet": "8bs run pet --program slot5x5",
+    "start:slot5x5:vic20": "8bs run vic20 --program slot5x5",
+    "start:slot5x5:c64": "8bs run c64 --program slot5x5",
+    "start:slot5x5:cx16": "8bs run cx16 --program slot5x5",
+    "start:slot5x5:web": "8bs run web --program slot5x5",
+    "shot:slot5x5": "node scripts/shot.mjs slot5x5",
+    "test": "node --test test/odds.test.mjs test/odds5.test.mjs",
+    "test:machines": "node --test test/machines.test.mjs test/slot5x5.machines.test.mjs"
   },
   "devDependencies": {
     "@8bitscript/cli": "0.24.0"

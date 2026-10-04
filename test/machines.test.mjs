@@ -25,6 +25,7 @@ import { play } from './support/reference.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng, LAYOUT } from './support/screen.mjs';
 import { adapterFor, inkReader, precompute, matches } from './support/adapters.mjs';
+import { bestChain } from './support/chain.mjs';
 
 const table = loadTable();
 const c = table.consts;
@@ -46,27 +47,6 @@ const SETTLE_SCALE = { c64: 1, vic20: 2, pet: 1.4, cx16: 1, web: 1 };
 const SAMPLES = { c64: 10, vic20: 10, pet: 10, cx16: 6, web: 10 };
 
 const log = (...a) => console.log('   ', ...a);
-
-/** The longest chain of captures whose candidate positions only ever move down the strip. */
-function bestChain(shots, positions, perFrame) {
-  const nodes = [];
-  for (const shot of shots) {
-    for (const p of shot.cands) {
-      let best = { frame: shot.frame, p, len: 1, prev: null };
-      for (const n of nodes) {
-        if (n.frame >= shot.frame) continue;
-        const limit = perFrame * (shot.frame - n.frame);
-        if (((n.p - p + positions) % positions) <= limit && n.len + 1 > best.len) best = { frame: shot.frame, p, len: n.len + 1, prev: n };
-      }
-      nodes.push(best);
-    }
-  }
-  let top = null;
-  for (const n of nodes) if (top === null || n.len > top.len || (n.len === top.len && n.frame > top.frame)) top = n;
-  const chain = [];
-  for (let n = top; n; n = n.prev) chain.unshift({ frame: n.frame, p: n.p });
-  return chain;
-}
 
 for (const machine of MACHINES) {
   describe(machine, { skip: unavailable(machine) ?? false }, () => {

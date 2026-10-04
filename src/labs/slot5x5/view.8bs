@@ -1,0 +1,338 @@
+// The 5x5's reels as the player sees them, on the machines that redefine
+// characters (C64, X16) — and, as a plain fallback, everywhere else that has no
+// quadrant composer of its own (the web).
+//
+// A reel is a block of two cells by ten, every cell showing its own glyph code for the
+// whole run; a frame of scrolling rewrites only those glyphs' BYTES. The window is
+// five 16x16 symbols tall (80 pixel rows = ten cell rows), and its bytes are not
+// composed cell by cell as the 3x3 does: at start-up every reel's two glyph columns
+// are laid out as a whole strip of bytes (32 stops x 16 rows = 512 bytes a column, with
+// the first 80 repeated after it), so any reel position is ten glyphs' worth of
+// CONSECUTIVE bytes — a reel redraw is two straight copies, in assembly on the C64.
+// The cost moved to start-up (about 5,000 byte moves) and 5,920 bytes of RAM, which the
+// two machines that use it have to spare.
+//
+// The data — strips, bitmaps, colours, how big a symbol is — is imported by name.
+import { text, TextColor } from "@8bitscript/text";
+import { glyphs } from "@shared/glyphs.8bs";
+import { layout } from "@shared/layout.8bs";
+import { spin } from "./spin.8bs";
+import { REELS, ROWS, STOPS, STOP_MASK, STRIPS } from "@generated/grid5x5.8bs";
+import {
+    ART_SYMBOLS, SYMBOL_BITMAP, SYMBOL_COLOR,
+    FRAME_CELLS, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
+    FRAME_DIV, FRAME_DIVT, FRAME_DIVB,
+    FRAME_BITMAP, FRAME_COLOR
+} from "@generated/tiles/cosmic.8bs";
+
+// The fallback's symbols, one letter each: STAR MOON SUN COMET ORB RING BLANK WILD SCATTER.
+const LETTER: array<utinyint, 9> = [83, 77, 85, 75, 79, 82, 46, 87, 88];
+
+// The colours of a reel's cells depend only on which cell row of the strip is on top;
+// remember it and skip the pass when it has not moved.
+let inkKey: array<utinyint, 5>;
+
+// The colours the frame cycles through in a bonus round.
+const PULSE: array<utinyint, 4> = [7, 2, 1, 4];
+
+// 1 << n, as a table: the 6502 backends take no run-time shift amount.
+const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
+
+export namespace view {
+    // The block, in cells: a frame cell, then five two-cell reels with a divider between,
+    // then a frame cell. 16 wide; the window's ten rows start at row TOP.
+    const WIDTH: utinyint = 16;
+    const TOP: utinyint = 3;
+    // The first row under the frame, where the panels start.
+    const PANEL: utinyint = 14;
+    // Whether the screen has room for the title above the frame.
+    const TITLE: bool = true;
+    // Rows of the window, and glyphs a reel uses: ten rows of two.
+    const WINDOW_ROWS: utinyint = 10;
+    // The glyph codes after the 100 the reels use belong to the frame.
+    const FRAME_CODE: utinyint = 100;
+    // Bytes a column of one reel takes in the strip buffer: 512 pixel rows + the 80 repeated.
+    const COLUMN_BYTES: usmallint = 592;
+
+    // ---- the fallback: one letter a symbol -----------------------------------
+
+    function drawText(reel: utinyint): void {
+        let stop: utinyint = spin.stop(reel);
+        for (let row: utinyint = 0; row < ROWS; row++) {
+            let symbol: utinyint = STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
+            let at: usmallint = layout.cell(1 + reel * 3, view.TOP + row * 2);
+            text.putChar(at, LETTER[symbol]);
+            text.putChar(at + 1, LETTER[symbol]);
+            text.putColor(at, TextColor.WHITE);
+            text.putColor(at + 1, TextColor.WHITE);
+            text.putChar(at + text.COLUMNS, 32);
+            text.putChar(at + text.COLUMNS + 1, 32);
+        }
+    }
+
+    // ---- the strip buffer ------------------------------------------------------
+
+    // The colour of each cell row of each glyph column of each reel, 64 rows (32 stops x 2) and
+    // the first ten again, so ten consecutive rows never wrap.
+    function buildColors(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            for (let across: utinyint = 0; across < 2; across++) {
+                let base: usmallint = reel * 2 + across;
+                base = base * 74;
+                for (let m: utinyint = 0; m < 74; m++) {
+                    let n: utinyint = m & 63;
+                    let symbol: utinyint = STRIPS[reel * STOPS + (n >> 1)];
+                    glyphs.putColorStrip(base + m, SYMBOL_COLOR[(symbol << 2) + ((n & 1) << 1) + across]);
+                }
+            }
+        }
+    }
+
+    // Lay every reel's two glyph columns out as whole strips of bytes: 32 stops of 16
+    // rows, then the first five stops again (80 rows) so a window never wraps.
+    function buildStrips(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            for (let across: utinyint = 0; across < 2; across++) {
+                let base: usmallint = reel * 2 + across;
+                base = base * 592;
+                for (let stop: utinyint = 0; stop < 37; stop++) {
+                    let symbol: usmallint = STRIPS[reel * STOPS + (stop & STOP_MASK)];
+                    let source: usmallint = (symbol << 5) + (across << 3);
+                    let at: usmallint = stop;
+                    at = (at << 4) + base;
+                    for (let down: utinyint = 0; down < 2; down++) {
+                        for (let y: utinyint = 0; y < 8; y++) {
+                            glyphs.putStrip(at + y, SYMBOL_BITMAP[source + y]);
+                        }
+                        // the next cell row of the symbol is two cells (16 bytes) on
+                        source = source + 16;
+                        at = at + 8;
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- the frame ---------------------------------------------------------------
+
+    function defineFrame(): void {
+        glyphs.open();
+        for (let cell: utinyint = 0; cell < FRAME_CELLS; cell++) {
+            let code: utinyint = glyphs.FIRST + view.FRAME_CODE + cell;
+            let to: usmallint = glyphs.address(code);
+            if (glyphs.PORT) {
+                glyphs.seek(code);
+            }
+            for (let i: utinyint = 0; i < 8; i++) {
+                if (glyphs.PORT) {
+                    memory.write(glyphs.PORT_ADDRESS, FRAME_BITMAP[cell * 8 + i]);
+                } else {
+                    memory.write(to + i, FRAME_BITMAP[cell * 8 + i]);
+                }
+            }
+        }
+        glyphs.close();
+    }
+
+    function putFrame(col: utinyint, row: utinyint, cell: utinyint): void {
+        let at: usmallint = layout.cell(col, row);
+        text.putChar(at, glyphs.FIRST + view.FRAME_CODE + cell);
+        text.putColor(at, FRAME_COLOR[cell]);
+    }
+
+    function drawFrame(): void {
+        for (let col: utinyint = 0; col < 16; col++) {
+            let top: utinyint = FRAME_T;
+            let low: utinyint = FRAME_B;
+            if (col == 0) {
+                top = FRAME_TL;
+                low = FRAME_BL;
+            } else if (col == 15) {
+                top = FRAME_TR;
+                low = FRAME_BR;
+            } else if (col == 3 || col == 6 || col == 9 || col == 12) {
+                top = FRAME_DIVT;
+                low = FRAME_DIVB;
+            }
+            view.putFrame(col, view.TOP - 1, top);
+            view.putFrame(col, view.TOP + 10, low);
+        }
+        for (let row: utinyint = 0; row < 10; row++) {
+            view.putFrame(0, view.TOP + row, FRAME_L);
+            view.putFrame(15, view.TOP + row, FRAME_R);
+            view.putFrame(3, view.TOP + row, FRAME_DIV);
+            view.putFrame(6, view.TOP + row, FRAME_DIV);
+            view.putFrame(9, view.TOP + row, FRAME_DIV);
+            view.putFrame(12, view.TOP + row, FRAME_DIV);
+        }
+    }
+
+    // Tell the screen which glyph each cell of every reel shows, once.
+    function mapCells(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            for (let across: utinyint = 0; across < 2; across++) {
+                for (let down: utinyint = 0; down < 10; down++) {
+                    let code: utinyint = glyphs.FIRST + reel * 20 + across * 10 + down;
+                    text.putChar(layout.cell(1 + reel * 3 + across, view.TOP + down), code);
+                }
+            }
+        }
+    }
+
+    // ---- the composer ------------------------------------------------------------
+
+    // Redraw reel `reel` at its current pixel offset: two straight copies.
+    function drawBytes(reel: utinyint): void {
+        let at: usmallint = spin.stop(reel);
+        at = (at << 4) + spin.row(reel);
+        let base: usmallint = reel * 2;
+        base = base * 592;
+        glyphs.open();
+        glyphs.copyOut(glyphs.FIRST + reel * 20, base + at, 80);
+        glyphs.copyOut(glyphs.FIRST + reel * 20 + 10, base + 592 + at, 80);
+        glyphs.close();
+    }
+
+    // …then the colour of every cell: the ink of whichever symbol cell supplies most
+    // of its eight rows. After the glyph bytes, not during: on the C64 the colour RAM
+    // and the character RAM share addresses, and the I/O area decides which one a
+    // write reaches.
+    function drawColors(reel: utinyint): void {
+        let stop: utinyint = spin.stop(reel);
+        let row: utinyint = spin.row(reel);
+        let m0: utinyint = (stop << 1) + (row >> 3);
+        if ((row & 7) > 4) {
+            m0 = m0 + 1;
+        }
+        m0 = m0 & 63;
+        if (inkKey[reel] == m0) {
+            return;
+        }
+        inkKey[reel] = m0;
+        if (glyphs.COLOR_STRIP) {
+            // two straight copies down the screen column, from the pre-laid-out colours
+            let at: usmallint = reel * 2;
+            at = at * 74 + m0;
+            glyphs.copyColors(layout.cell(1 + reel * 3, view.TOP), at, 10);
+            glyphs.copyColors(layout.cell(2 + reel * 3, view.TOP), at + 74, 10);
+            return;
+        }
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        let at: usmallint = layout.cell(1 + reel * 3, view.TOP);
+        for (let down: utinyint = 0; down < 10; down++) {
+            let m: utinyint = (m0 + down) & 63;
+            let symbol: utinyint = STRIPS[strip + (m >> 1)];
+            let index: utinyint = (symbol << 2) + ((m & 1) << 1);
+            text.putColor(at, SYMBOL_COLOR[index]);
+            text.putColor(at + 1, SYMBOL_COLOR[index + 1]);
+            at = at + text.COLUMNS;
+        }
+    }
+
+    function drawGlyphs(reel: utinyint): void {
+        view.drawBytes(reel);
+        view.drawColors(reel);
+    }
+
+    // ---- what the game calls -----------------------------------------------------
+
+    // Once, after the screen is blank: the strips, the glyphs, the frame, the cell map.
+    function begin(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            inkKey[reel] = 255;
+        }
+        if (glyphs.AVAILABLE) {
+            glyphs.begin();
+            view.buildStrips();
+            if (glyphs.COLOR_STRIP) {
+                view.buildColors();
+            }
+            view.defineFrame();
+            view.mapCells();
+            view.drawFrame();
+        } else {
+            text.print(layout.cell(1, view.TOP - 1), "--------------");
+            text.print(layout.cell(1, view.TOP + 10), "--------------");
+        }
+    }
+
+    // Redraw `reel` at its current position.
+    function draw(reel: utinyint): void {
+        if (glyphs.AVAILABLE) {
+            view.drawGlyphs(reel);
+        } else {
+            view.drawText(reel);
+        }
+    }
+
+    function drawAll(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            view.draw(reel);
+        }
+    }
+
+    // A reel moved `pixels` down. The composer redraws on every move; the fallback
+    // only when a whole symbol went by.
+    function moved(reel: utinyint, pixels: utinyint): void {
+        if (glyphs.AVAILABLE) {
+            view.drawGlyphs(reel);
+        } else {
+            view.drawText(reel);
+        }
+    }
+
+    // Light the cells of `reel` whose symbol-row bits are set in `mask` (bit 0 = the top
+    // symbol), or put the reel back as it was. The reels are at rest when this is called.
+    function flashRows(reel: utinyint, mask: utinyint, on: bool): void {
+        if (glyphs.AVAILABLE) {
+            if (on) {
+                for (let row: utinyint = 0; row < ROWS; row++) {
+                    if ((mask & BIT[row]) != 0) {
+                        for (let down: utinyint = 0; down < 2; down++) {
+                            let at: usmallint = layout.cell(1 + reel * 3, view.TOP + row * 2 + down);
+                            text.putColor(at, TextColor.WHITE);
+                            text.putColor(at + 1, TextColor.WHITE);
+                        }
+                    }
+                }
+            } else {
+                inkKey[reel] = 255;
+                view.drawColors(reel);
+            }
+        } else if (on) {
+            for (let row: utinyint = 0; row < ROWS; row++) {
+                if ((mask & BIT[row]) != 0) {
+                    let at: usmallint = layout.cell(1 + reel * 3, view.TOP + row * 2);
+                    text.putChar(at, 35);
+                    text.putChar(at + 1, 35);
+                }
+            }
+        } else {
+            view.drawText(reel);
+        }
+    }
+
+    // The bonus round's frame: every frame cell in colour `phase` of the cycle.
+    function pulse(phase: utinyint): void {
+        if (!glyphs.AVAILABLE) {
+            return;
+        }
+        let color: utinyint = PULSE[phase & 3];
+        for (let col: utinyint = 0; col < 16; col++) {
+            text.putColor(layout.cell(col, view.TOP - 1), color);
+            text.putColor(layout.cell(col, view.TOP + 10), color);
+        }
+        for (let row: utinyint = 0; row < 10; row++) {
+            text.putColor(layout.cell(0, view.TOP + row), color);
+            text.putColor(layout.cell(15, view.TOP + row), color);
+        }
+    }
+
+    // Put the frame back to its own colours.
+    function unpulse(): void {
+        if (glyphs.AVAILABLE) {
+            view.drawFrame();
+        }
+    }
+}
