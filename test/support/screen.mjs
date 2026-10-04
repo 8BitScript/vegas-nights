@@ -66,7 +66,7 @@ export function cellKey(png, geo, col, row) {
   const y = Math.round(geo.y0 + (row - 1) * geo.pitchY);
   const w = Math.round(geo.pitchX);
   const h = Math.round(geo.pitchY);
-  const hash = createHash('sha1');
+  const hash = createHash('sha256');
   const bytes = Buffer.alloc(w * h * 3);
   let n = 0;
   for (let yy = y; yy < y + h; yy += 1) for (let xx = x; xx < x + w; xx += 1) {
