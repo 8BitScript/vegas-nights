@@ -1,0 +1,45 @@
+// The C64's glyph layer: the character set the VIC-II draws text from is a copy
+// in RAM under the I/O area ($D000, @8bitscript/c64/charset), writable one byte
+// at a time while the I/O area is banked out. A reel draw writes hundreds of
+// bytes, so it brackets them with ONE open()/close() instead of paying the bank
+// switch per glyph the way charset.define does.
+//
+// Codes 128-255 are the upper-case set's reverse-video copies, which a program
+// that never prints reverse text is free to use; the reels take them.
+import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
+import { Video } from "@8bitscript/c64/video";
+
+export namespace glyphs {
+    const AVAILABLE: bool = true;
+    const FIRST: utinyint = 128;
+    const CODES: utinyint = 127;
+    const PORT: bool = false;
+    const PORT_ADDRESS: usmallint = 0;
+
+    // The ROM-to-RAM character copy and the video mode must exist before the
+    // first glyph write; setupVideo() does both and is cheap when done.
+    function begin(): void {
+        setupVideo();
+    }
+
+    // @8bitscript/text keeps the mixed-case set selected ($D018 = MEMORY_POINTER_LOWERCASE:
+    // the second half of the character copy, +$0800), so that is the set whose
+    // glyphs the screen shows. (charset.define writes the other half; its header
+    // says the text package uses that one, which no longer matches text.8bs.)
+    function address(code: utinyint): usmallint {
+        let offset: usmallint = code;
+        offset = offset * 8;
+        return Video.CHARSET + 2048 + offset;
+    }
+
+    function seek(code: utinyint): void {
+    }
+
+    function open(): void {
+        bankIoOut();
+    }
+
+    function close(): void {
+        bankIoIn();
+    }
+}

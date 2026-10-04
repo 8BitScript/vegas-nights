@@ -1,0 +1,17 @@
+import { screen } from "@8bitscript/screen";
+import { layout } from "@shared/layout.8bs";
+import { glyphs } from "@shared/glyphs.8bs";
+import { view } from "./view.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+export function main(): void {
+    screen.blank();
+    layout.centre(13);
+    for (let reel: utinyint = 0; reel < 3; reel++) {
+        reelscroll.place(reel, 0);
+    }
+    view.begin();
+    view.draw(0);
+    while (true) {
+        waitFrame();
+    }
+}

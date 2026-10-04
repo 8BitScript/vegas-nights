@@ -23,6 +23,7 @@ export default {
     // Test support, not games: a ruler that prints two letters a known number
     // of cells apart (so a screenshot's cell size can be measured), and a
     // sheet of every symbol and digit exactly as the game draws them.
+    probe: { entry: 'src/labs/slot3x3/_probe.8bs' },
     'slot3x3-ruler': { entry: 'src/labs/slot3x3/ruler.8bs' },
     'slot3x3-glyphs': { entry: 'src/labs/slot3x3/glyphs.8bs' },
   },

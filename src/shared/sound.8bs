@@ -1,0 +1,24 @@
+// The sound hooks: the game calls these at the moments that should be heard, and
+// until a machine's audio is wired in they do nothing (and cost nothing — an
+// empty function a program calls folds to no code).
+//
+//   tick   a reel moved one step
+//   stop   a reel came to rest
+//   win    a spin paid
+//   bonus  a jackpot or bonus
+//
+// The audio package is being verified per machine separately; when that lands, a
+// twin of this file (sound.c64.8bs, ...) fills these in.
+export namespace sound {
+    function tick(): void {
+    }
+
+    function stop(): void {
+    }
+
+    function win(): void {
+    }
+
+    function bonus(): void {
+    }
+}

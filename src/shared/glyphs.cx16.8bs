@@ -1,0 +1,43 @@
+// The X16's glyph layer: the text layer draws from a 1bpp 8x8 tileset in VRAM
+// (the KERNAL's ISO-8859-15 font at $1F000 today — a ROM build constant, so it
+// is read back from L1_TILEBASE), one tile per character code, eight bytes a
+// tile. The CPU reaches VRAM only through VERA's data port, which steps along
+// by itself: `seek` points it at a tile, and the composer then writes the
+// tile's eight bytes (and the next tile's, in code order) to DATA0.
+//
+// Codes 128-255 are the ISO set's upper half (accented letters and symbols
+// this game never prints); the reels and the frame take 128-222.
+import { setVramAddress } from "@8bitscript/cx16";
+
+export namespace glyphs {
+    const AVAILABLE: bool = true;
+    const FIRST: utinyint = 128;
+    const CODES: utinyint = 127;
+    const PORT: bool = true;
+    const PORT_ADDRESS: usmallint = 0x9F23; // VERA DATA0
+
+    function begin(): void {
+    }
+
+    function address(code: utinyint): usmallint {
+        return 0;
+    }
+
+    // Point DATA0 at the first byte of tile `code`, stepping by 1.
+    // L1_TILEBASE ($9F36): bits 7:2 are the tileset address bits 16:11.
+    function seek(code: utinyint): void {
+        let base: utinyint = memory.read(0x9F36) >> 2;
+        let low: usmallint = base & 31;
+        low = low * 2048;
+        let offset: usmallint = code;
+        offset = offset * 8;
+        low = low + offset;
+        setVramAddress(base >> 5, low, 1);
+    }
+
+    function open(): void {
+    }
+
+    function close(): void {
+    }
+}
