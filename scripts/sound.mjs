@@ -64,7 +64,7 @@ const MACHINES = {
 };
 
 function build(machine) {
-  const run = spawnSync('node', [CLI, 'build', ...MACHINES[machine].build, '--program', 'sound-test', '--checkout', CHECKOUT], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI, 'build', ...MACHINES[machine].build, '--program', 'sound-test', '--checkout', CHECKOUT], { encoding: 'utf8' });
   if (run.status !== 0) throw new Error(`build failed:\n${run.stderr}${run.stdout}`);
 }
 
