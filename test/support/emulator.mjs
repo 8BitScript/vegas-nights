@@ -18,10 +18,13 @@ const CLI = CHECKOUT
   ? join(CHECKOUT, 'packages', 'cli', 'bin', '8bs.mjs')
   : join(ROOT, 'node_modules', '@8bitscript', 'cli', 'bin', '8bs.mjs');
 
-export const MACHINES = (process.env.MACHINES ?? 'pet,vic20,c64,cx16,web').split(',');
+// `c64web` is the C64 built through the wasm backend (`8bs run c64 --web`) and painted by the
+// page's own compositor: the same program as `c64`, run with no emulator. It needs an 8BitScript
+// that has a C64 wasm port (EIGHTBS_CHECKOUT, or a release that has one).
+export const MACHINES = (process.env.MACHINES ?? 'pet,vic20,c64,cx16,web,c64web').split(',');
 
 // Which emulator each machine needs on PATH (web needs none).
-const BINARY = { pet: 'xpet', vic20: 'xvic', c64: 'x64sc', cx16: 'x16emu', web: null };
+const BINARY = { pet: 'xpet', vic20: 'xvic', c64: 'x64sc', cx16: 'x16emu', web: null, c64web: null };
 
 // Where the emulators are installed (Homebrew on Apple silicon and Intel, the system
 // bin directories): fixed locations, not a search of $PATH. The CLI finds the emulator
@@ -31,6 +34,12 @@ const EMULATOR_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/usr/
 /** Why `machine` cannot be tested here, or null if it can. */
 export function unavailable(machine) {
   const bin = BINARY[machine];
+  if (machine === 'c64web') {
+    const twin = CHECKOUT
+      ? join(CHECKOUT, 'packages', 'c64', 'src', 'input.c64.web.8bs')
+      : join(ROOT, 'node_modules', '@8bitscript', 'c64', 'src', 'input.c64.web.8bs');
+    if (!existsSync(twin)) return 'c64web: the pinned 8BitScript cannot build the C64 through wasm; set EIGHTBS_CHECKOUT to an 8BitScript checkout that can';
+  }
   if (machine === 'web' && !CHECKOUT && !existsSync(join(ROOT, 'node_modules', '@8bitscript', 'web', 'src', 'charset.8bs'))) {
     return 'web: the pinned 8BitScript has no redefinable glyph table; set EIGHTBS_CHECKOUT to an 8BitScript checkout that does';
   }
@@ -46,7 +55,10 @@ export function capture(machine, program, name, frames) {
   const dir = join(ROOT, 'shots', 'tests');
   mkdirSync(dir, { recursive: true });
   const out = join(dir, `${name}-${machine}.png`);
-  const args = [CLI, 'run', machine, '--program', program, '--screenshot', out];
+  // c64web is the C64's wasm build: the target is c64, with --web.
+  const args = machine === 'c64web'
+    ? [CLI, 'run', 'c64', '--web', '--program', program, '--screenshot', out]
+    : [CLI, 'run', machine, '--program', program, '--screenshot', out];
   if (CHECKOUT) args.push('--checkout', CHECKOUT);
   if (frames !== undefined) args.push('--frames', String(frames));
   return new Promise((resolve, reject) => {

@@ -16,7 +16,7 @@ const table = loadTable();
 const c = table.consts;
 const strip = table.arrays.STRIPS;
 
-export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'pixel' };
+export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'pixel', c64web: 'pixel' };
 
 /** A background-aware reader of logical pixels of a screenshot. */
 export function inkReader(png) {

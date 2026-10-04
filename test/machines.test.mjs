@@ -40,11 +40,11 @@ const PROGRAMS = {
 
 // A frame well before the first spin starts (the VICE machines spend ~215 frames
 // booting; the spin starts 20 frames after the program does), per machine.
-const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5 };
+const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
 // How much longer than the C64's a spin takes to come to rest (a reel redraw costs a
 // VIC-20 more of its frame, and its hops are smaller and less frequent).
-const SETTLE_SCALE = { c64: 1, vic20: 2, pet: 1.4, cx16: 1, web: 1 };
-const SAMPLES = { c64: 10, vic20: 10, pet: 10, cx16: 6, web: 10 };
+const SETTLE_SCALE = { c64: 1, vic20: 2, pet: 1.4, cx16: 1, web: 1, c64web: 1 };
+const SAMPLES = { c64: 10, vic20: 10, pet: 10, cx16: 6, web: 10, c64web: 10 };
 
 const log = (...a) => console.log('   ', ...a);
 

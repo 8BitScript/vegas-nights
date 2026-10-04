@@ -35,6 +35,9 @@ import { loadPng } from './support/screen.mjs';
 // round is over.
 const FX = {
   web: { frames: [1000, 1006], before: 5, after: 7400, column: 2 },
+  // The C64 built through wasm: the same bars in the side borders (a picture-line list cannot reach the border
+  // above and below the 200 lines), and the background bars in the five empty text rows.
+  c64web: { frames: [1000, 1004], before: 5, after: 7400, column: 2, free: { x0: 48, x1: 336, y0: 192, y1: 218 } },
   // The C64's bars scroll one 6-line stripe every other frame; its VICE capture has a 32-pixel border.
   // free: a rectangle of the picture nothing is drawn in, which the background bars use.
   c64: { frames: [1000, 1004], before: 60, after: 8000, column: 4, free: { x0: 48, x1: 336, y0: 192, y1: 218 } },

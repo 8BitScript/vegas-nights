@@ -35,17 +35,17 @@ const a = table.arrays;
 
 // Frames to let a machine run: one base spin settles (the VICE machines spend ~215 frames
 // booting; the spin starts 20 frames after the program does), and a whole bonus round ends.
-const SPIN = { c64: 2400, vic20: 4000, pet: 3200, cx16: 2400, web: 2400 };
+const SPIN = { c64: 2400, vic20: 4000, pet: 3200, cx16: 2400, web: 2400, c64web: 2400 };
 // …and a whole bonus round: the base spin and its flash, then each free spin.
-const ROUND = { c64: [1700, 700], vic20: [3000, 1500], pet: [2400, 1100], cx16: [900, 400], web: [1700, 700] };
+const ROUND = { c64: [1700, 700], vic20: [3000, 1500], pet: [2400, 1100], cx16: [900, 400], web: [1700, 700], c64web: [1700, 700] };
 const roundFrames = (machine, granted) => ROUND[machine][0] + ROUND[machine][1] * granted;
 // The most a reel moves in one frame, in pixels: a reel hops 12 pixels every second frame on the
 // C64, 8 every frame on the X16, 12 every third frame (a quadrant row is 4) on the others.
-const MAX_PX_PER_FRAME = { c64: 12, cx16: 8, pet: 12, vic20: 12, web: 12 };
+const MAX_PX_PER_FRAME = { c64: 12, cx16: 8, pet: 12, vic20: 12, web: 12, c64web: 12 };
 // A frame well before the first spin starts.
-const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5 };
-const KIND = { pet: 'quad', vic20: 'quad', web: 'quad', c64: 'pixel', cx16: 'pixel' };
-const SAMPLES = { c64: 10, vic20: 8, pet: 8, cx16: 6, web: 10 };
+const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
+const KIND = { pet: 'quad', vic20: 'quad', web: 'quad', c64: 'pixel', cx16: 'pixel', c64web: 'pixel' };
+const SAMPLES = { c64: 10, vic20: 8, pet: 8, cx16: 6, web: 10, c64web: 10 };
 
 // Where the game puts things (src/labs/slot5x5/game.8bs, view.8bs, view.pet.8bs).
 const PANEL = (machine) => (KIND[machine] === 'pixel' ? 14 : 17);

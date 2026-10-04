@@ -1,0 +1,173 @@
+// glyphs.c64.8bs's own `.web` twin — 8BitScript's internal `web` tag resolves
+// this in place of glyphs.c64.8bs when the project builds for the C64 through
+// the wasm backend (`8bs build --target c64 --web`, `8bs run c64 --web`).
+//
+// The native file composes a reel window in assembly because ~6000 cycles of
+// hand-written copy beat ~17000 of compiled script on a 1 MHz 6502. A wasm
+// build has no such budget and cannot lower an asm6502 block at all, so the
+// same composer is written here as plain loops over the same buffers at the
+// same addresses — the interface, the tile and strip layout and the glyph
+// codes are glyphs.c64.8bs's exactly, and the reel view above this file
+// cannot tell the two apart. What the C64 wasm build does with the glyphs it
+// writes is the page's job: it draws every cell from the character RAM
+// (8BitScript's packages/c64/AGENTS.md, "The wasm build"). The I/O-banking
+// open()/close() are no-ops there, so they are kept as calls and cost
+// nothing worth a second variant of the view.
+//
+// A note for whoever reads the assembly next to this: when a reel is between two cell rows
+// (`row` not a multiple of 8) the lower part of the window here comes from the START of the
+// next cell row. Read as written, the assembly points its second source at `next row start -
+// within` rather than `next row start - (8 - within)`, which agrees with this only when the
+// offset is 0 or 4. That is a reading of the code, not something run on the machine -- the
+// native tests sample reels at rest and during a spin without finding it -- so treat it as a
+// lead to check under x64sc, not a finding.
+import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
+import { Video } from "@8bitscript/c64/video";
+
+// The tileset's address, as a module constant the composer's loops read (a
+// namespace member cannot be named bare inside its own functions).
+const TILE_START: usmallint = 0xC000;
+
+// The same fixed buffers glyphs.c64.8bs uses (the tileset, the strips, the
+// pre-composed 5x5 strips and their colours). None of them may overlap the
+// character RAM the wasm build keeps at $A000-$AFFF — the backend refuses a
+// build where one does.
+@address(0xC000)
+let tileBytes: array<utinyint, 1024>;
+
+@address(0xC400)
+let stripBytes: array<utinyint, 320>;
+
+@address(0x8000)
+let stripBuf: array<utinyint, 5920>;
+
+@address(0x9800)
+let colorBuf: array<utinyint, 740>;
+
+export namespace glyphs {
+    const AVAILABLE: bool = true;
+    const COLOR_STRIP: bool = true;
+    const FIRST: utinyint = 128;
+    const CODES: utinyint = 127;
+    const PORT: bool = false;
+    const PORT_ADDRESS: usmallint = 0;
+    const TILE_RAM: usmallint = 0xC000;
+    const STRIP_RAM: usmallint = 0xC400;
+
+    function begin(): void {
+        setupVideo();
+    }
+
+    // The mixed-case set ($D018 = MEMORY_POINTER_LOWERCASE) is the second half
+    // of the character RAM: +$0800.
+    function address(code: utinyint): usmallint {
+        let offset: usmallint = code;
+        offset = offset * 8;
+        return Video.CHARSET + 2048 + offset;
+    }
+
+    function seek(code: utinyint): void {
+    }
+
+    function stage(index: usmallint, value: utinyint): void {
+        tileBytes[index] = value;
+    }
+
+    function stageStrip(index: usmallint, value: utinyint): void {
+        stripBytes[index] = value;
+    }
+
+    // A whole reel window in one call: nine cell rows of three glyphs, composed
+    // from the staged tileset according to the staged strip (`strip` is the
+    // address of this reel's stops, one symbol number a stop) at the pixel
+    // offset given by `stop` (the symbol on the window's top row) and `row` (the
+    // pixel row within it, 0-23). `dest` is the first of the reel's 27
+    // consecutive glyphs' bytes; `mask` is the number of stops minus one.
+    //
+    // A symbol is 72 bytes of tile: three cell rows of three glyphs, eight
+    // bytes a glyph. Each cell row of the window takes eight pixel rows of the
+    // strip from where it is: `run` bytes (8 - within) from the symbol cell it
+    // starts in, then `within` from the start of the cell below it — the next
+    // cell row of the same symbol, or the first of the next symbol.
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+        let symbol: usmallint = 0;
+        let here: usmallint = 0;
+        let below: usmallint = 0;
+        let band: utinyint = 0;
+        let within: utinyint = 0;
+        let run: utinyint = 0;
+        let out: usmallint = dest;
+        let rowOffset: utinyint = row;
+        let stopNow: utinyint = stop;
+        for (let left: utinyint = 0; left < 9; left++) {
+            symbol = memory.read(strip + stopNow);
+            within = rowOffset & 7;
+            band = rowOffset >> 3;
+            run = 8 - within;
+            here = symbol * 72;
+            here = here + TILE_START;
+            // The cell row this window row starts in, and the one under it.
+            let current: usmallint = here + band * 24;
+            if (band < 2) {
+                below = current + 24;
+            } else {
+                symbol = memory.read(strip + ((stopNow + 1) & mask));
+                below = symbol * 72;
+                below = below + TILE_START;
+            }
+            for (let glyph: utinyint = 0; glyph < 3; glyph++) {
+                let shift: usmallint = glyph;
+                shift = shift * 8;
+                for (let y: utinyint = 0; y < run; y++) {
+                    memory.write(out + y, memory.read(current + shift + within + y));
+                }
+                for (let y: utinyint = 0; y < within; y++) {
+                    memory.write(out + run + y, memory.read(below + shift + y));
+                }
+                out = out + 8;
+            }
+            rowOffset = rowOffset + 8;
+            if (rowOffset >= 24) {
+                rowOffset = rowOffset - 24;
+                stopNow = (stopNow + 1) & mask;
+            }
+        }
+    }
+
+    function putStrip(index: usmallint, value: utinyint): void {
+        stripBuf[index] = value;
+    }
+
+    // `count` bytes (at most 255) from the strip buffer at `source` into the
+    // glyphs starting at `code`: a straight copy.
+    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
+        let dest: usmallint = glyphs.address(code);
+        let src: usmallint = 0x8000 + source;
+        for (let i: utinyint = 0; i < count; i++) {
+            memory.write(dest + i, memory.read(src + i));
+        }
+    }
+
+    function putColorStrip(index: usmallint, value: utinyint): void {
+        colorBuf[index] = value;
+    }
+
+    // `count` colours from the colour buffer at `source` into colour RAM, one a
+    // text row (40 cells) apart, down from text cell `cell`.
+    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
+        let dest: usmallint = 0xD800 + cell;
+        let src: usmallint = 0x9800 + source;
+        for (let i: utinyint = 0; i < count; i++) {
+            memory.write(dest, memory.read(src + i));
+            dest = dest + 40;
+        }
+    }
+
+    function open(): void {
+        bankIoOut();
+    }
+
+    function close(): void {
+        bankIoIn();
+    }
+}

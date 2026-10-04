@@ -47,6 +47,26 @@ The PET is built as the 32K 4032 and the VIC-20 with the 8K expansion (see
 `8bitscript.config.8bs`): the stock 4K PET 2001 and the unexpanded VIC-20 are
 below what a lab needs.
 
+### The C64 in the browser (wasm)
+
+`8bs run c64 --web --program slot3x3` runs the C64 build in the editor's WASM tab
+or an external browser instead of VICE, and `8bs run c64 --web --program slot5x5
+--screenshot out.png` captures what that page draws, headlessly, with no emulator.
+It is a model of the machine (text mode, no sprites or sound — `8bs targets --json`
+lists the limits), and everything the slots use is in it: the redefined characters
+the reels are composed from, the colour RAM, the border and background registers, the
+portable raster list the bonus round's copper bars use, and the portable input.
+Two files here exist only for it, because the C64's own are machine code the wasm
+backend never lowers: `src/shared/glyphs.c64.web.8bs` composes a reel window in plain
+loops (the assembly in `glyphs.c64.8bs` is ~6000 cycles of hand-written copy a wasm
+build has no use for) and `src/shared/fx.c64.web.8bs` builds the bonus bars through
+`@8bitscript/raster` instead of the C64's address-form list. The bars run down the side
+borders and the empty rows under the panel; the machine's also run through the border
+above and below the 200 picture lines, which a picture-line list cannot name.
+`pnpm run test:c64web` runs the same exact-window tests the real machines get against
+this build (it needs 8BitScript's `trunk` until a release has the C64 wasm port:
+`EIGHTBS_CHECKOUT=/path/to/8bitscript`), and CI runs it.
+
 ## Layout
 
 ```
@@ -564,7 +584,11 @@ is short of the baseline in the facts a program tests.
 
 `.github/workflows/ci.yml` calls 8BitScript's reusable compile workflow, which
 runs `8bs build --release` — every program on every machine — with the CLI
-version pinned in `package.json`.
+version pinned in `package.json`. A second job, `c64web`, runs the on-screen tests
+(`pnpm run test:c64web`) against the C64 built through wasm: exact reel windows, credit,
+win and jackpot meters for the 3x3 and the 5x5, the free-spin rounds, the bonus bars.
+They need no emulator, which is why they can run on a runner at all; the same tests
+against the real machines (`pnpm run test:machines`) need VICE and x16emu.
 
 ## License
 
