@@ -24,7 +24,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadFile, loadTable } from './support/table.mjs';
 import { play } from './support/reference5.mjs';
-import { MACHINES, available, capture } from './support/emulator.mjs';
+import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng } from './support/screen.mjs';
 import { inkReader } from './support/adapters.mjs';
 
@@ -152,7 +152,10 @@ function bestChain(shots, positions, perFrame) {
 }
 
 for (const machine of MACHINES) {
-  describe(machine, { skip: available(machine) ? false : `${machine}: emulator not installed` }, () => {
+  // The web's 5x5 draws with the host font's block glyphs and needs no redefinable glyph table, so
+  // it is not held back by the check that skips the 3x3's web reels on a release without one.
+  const why = machine === 'web' ? null : unavailable(machine);
+  describe(machine, { skip: why ?? false }, () => {
     let geo;
     let ref;
     let adapter;

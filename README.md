@@ -348,7 +348,7 @@ of five symbols, 2 or 3 cells a symbol) in constants; everything that does not n
 | X16 | the same, through VERA's data port, the colours written cell by cell (it is fast enough) | 8 pixels | 17,173 B / 176 B |
 | PET | the reel is built from the 16 quadrant blocks in the character ROM (a symbol is 6x6 of them, a reel 15 cells by 3), no colour | 12 pixels | 9,077 B / 95 B |
 | VIC-20 | the same, with a colour for every cell | 12 pixels | 9,686 B / 96 B |
-| web | the same quadrant composer on the host font's 2x2 blocks (codes 128-143, in the very order the composer works out), in colour | 12 pixels | 1,160 B const / 161 B |
+| web | the same quadrant composer on the host font's 2x2 blocks (codes 128-143, in the very order the composer works out), in colour | 8 pixels | 1,160 B const / 161 B |
 
 Why 16x16 and not the 3x3's 24x24 on the glyph machines: five reels of 24x24 symbols are 225 glyphs
 against the 127 codes free on the C64 and X16; the 16x16 art (two cells a symbol) needs 100 for the reels and 14 for
@@ -419,7 +419,7 @@ Numbers are from `pnpm run test:machines` on a Mac, NTSC, CLI 0.24.0.
 | X16 | yes | 17,173 / 176 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 3.5 px a frame | composed glyphs through VERA, pixel art, colour |
 | PET (4032, 32K) | yes | 9,077 / 95 B | exact, block for block | exact credit | 12-pixel hops, about 3.4 px a frame | quadrant blocks, no colour |
 | VIC-20 (8K) | yes | 9,686 / 96 B | exact, block for block | exact credit | 12-pixel hops, about 1 px a frame | quadrant blocks, coloured |
-| web | yes | 1,160 B const / 161 B | exact, block for block | exact credit | 12-pixel hops, about 8 px a frame | quadrant blocks on the host font, coloured |
+| web | yes | 1,160 B const / 161 B | exact, block for block | exact credit | 8-pixel hops every frame, about 8 px a frame | quadrant blocks on the host font, coloured |
 
 Every cell above passed in one full run of `test/slot5x5.machines.test.mjs` on each machine against the code in this change
 (7 tests a machine). "About N px a frame" is the mean step between screenshots taken five frames apart while a spin runs
