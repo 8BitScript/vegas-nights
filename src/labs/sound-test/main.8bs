@@ -1,0 +1,101 @@
+// sound-test — plays each of the slot machines' sounds when you press a key,
+// so the sound subsystem can be heard (or measured) on every machine before a
+// slot machine depends on it.
+//
+// Up and down choose the effect, confirm plays it. It also plays all five once,
+// a second after it starts, because a headless run cannot press anything:
+// scripts/sound.mjs records that run's audio and checks each effect's notes.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { input } from "@8bitscript/input";
+import { sfx } from "@shared/sfx.8bs";
+
+const ROW: usmallint = text.COLUMNS;
+const EFFECTS: utinyint = 5;
+
+// The first menu row; the entries are two rows apart.
+const FIRST_ROW: utinyint = 6;
+
+let chosen: utinyint = 0;
+let drawn: utinyint = 255;
+
+function markCell(effect: utinyint): usmallint {
+    let cell: usmallint = FIRST_ROW + effect + effect;
+    return cell * ROW + 1;
+}
+
+// Move the marker: erase the old one and draw the new, two cells and not the
+// whole list. A sound counts frames in calls of sfx.update(), so a loop that
+// takes longer than a frame to draw stretches it (a VIC-20 redrawing five
+// rows did, by a frame).
+function mark(): void {
+    if (drawn != 255) {
+        text.print(markCell(drawn), " ");
+    }
+    text.print(markCell(chosen), "-");
+    drawn = chosen;
+}
+
+function play(): void {
+    if (chosen == 0) {
+        sfx.tick();
+    } else if (chosen == 1) {
+        sfx.stop();
+    } else if (chosen == 2) {
+        sfx.win();
+    } else if (chosen == 3) {
+        sfx.big();
+    } else {
+        sfx.bonus();
+    }
+}
+
+export function main(): void {
+    screen.blank();
+    input.begin();
+
+    text.print(2 * ROW + 1, "SOUND TEST");
+    text.print(4 * ROW + 1, "UP DOWN CONFIRM");
+    text.print((FIRST_ROW + 0) * ROW + 3, "TICK");
+    text.print((FIRST_ROW + 2) * ROW + 3, "STOP");
+    text.print((FIRST_ROW + 4) * ROW + 3, "WIN");
+    text.print((FIRST_ROW + 6) * ROW + 3, "BIG WIN");
+    text.print((FIRST_ROW + 8) * ROW + 3, "BONUS");
+    mark();
+
+    // Each effect once at the start, 40 frames apart, so a recording of a
+    // run that presses nothing hears all five. Then the keys take over.
+    let demo: utinyint = 0;
+    let wait: utinyint = 60;
+
+    while (true) {
+        waitFrame();
+        sfx.update();
+        input.poll();
+        if (demo < EFFECTS && !sfx.busy()) {
+            if (wait == 0) {
+                // Sound first, then the slow drawing: a step is counted in
+                // calls of sfx.update(), so the first one is as long as the
+                // frame's remainder after this call.
+                chosen = demo;
+                play();
+                mark();
+                demo = demo + 1;
+                wait = 40;
+            } else {
+                wait = wait - 1;
+            }
+        }
+        if (input.up() && chosen > 0) {
+            chosen = chosen - 1;
+            mark();
+        }
+        if (input.down() && chosen + 1 < EFFECTS) {
+            chosen = chosen + 1;
+            mark();
+        }
+        if (input.confirm()) {
+            play();
+        }
+    }
+}
