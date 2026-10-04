@@ -1,0 +1,140 @@
+// The bonus round on the C64: copper bars. The VIC-II has no palette to cycle, so the bars
+// are what the demo scene always made of it: a raster list (@8bitscript/c64/raster, an IRQ
+// that writes a register at the end of chosen lines) built once in begin() and rewritten,
+// value bytes only, every second frame.
+//
+//   * Border bars: the border register ($D020) takes a new colour every 6 raster lines, from
+//     line 29 (the top of the visible border) to line 251, 38 stripes in all, from a 32-step
+//     table of four bars (blue/cyan/white, red/orange/yellow, green/white, purple/pink) that
+//     scrolls down the screen one stripe every other frame. Both side borders and the top
+//     and bottom borders show them.
+//   * Background bars: the same table half a turn out of step, scrolling the other way, in
+//     the five text rows nothing is drawn in (20-24, raster lines 210-249). Every line above
+//     them the background is the plain black it always is, so no digit, reel or frame cell
+//     ever sits on a bar.
+//   * A wobble: text row 1 -- the `-- FREE SPINS --` banner (raster lines 58-65) -- is
+//     shifted 0-6 pixels by $D016's fine scroll, one entry every two lines (the pitch the
+//     handler keeps up with: ./AGENTS.md of @8bitscript/c64, "The wobble band"), following a
+//     sine that advances every other frame. It is reset to 0 before row 2, where the reels'
+//     frame starts, so no cell the player reads or the tests read is ever moved.
+//
+// The list is fx's own: the slots call no graphics.update(), no sprite layer, no second list.
+// The reel composer is assembly in the main loop and the handler is an interrupt: the IRQ
+// saves A and X and touches no zero page, so the composer's output does not tear; it only
+// loses the cycles the handler takes (about 50 entries x ~55 cycles a frame).
+//
+// 54 of the list's 63 entries: 2 resets to black at line 1, 38 border stripes, 7 background
+// stripes, 5 wobble (4 + the reset), and the 2 that put border and background back to black
+// at line 254 (the pass ends at 255). end() disables the interrupt and writes the registers
+// back by hand.
+//
+// Bytes (8bs build c64 --program slot5x5 --size): 11,804 -> 13,151 of program, 114 -> 121 of
+// RAM; see docs/fx.md.
+import { raster, Register } from "@8bitscript/c64/raster";
+import { screen } from "@8bitscript/c64/screen";
+import { scroll } from "@8bitscript/c64/scroll";
+
+// Four bars of eight stripes, in C64 colour numbers.
+const BAR: array<utinyint, 32> = [
+    0, 6, 14, 3, 1, 3, 14, 6,
+    0, 2, 8, 10, 7, 10, 8, 2,
+    0, 5, 13, 3, 1, 3, 13, 5,
+    0, 4, 10, 15, 1, 15, 10, 4,
+];
+
+// A 32-step sine, 0..6: the banner's horizontal offset in pixels.
+const SWAY: array<utinyint, 32> = [
+    3, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 5, 5, 5, 4, 4,
+    3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2,
+];
+
+// Byte offsets (index x 4) of the four wobble entries in the list: they sit at raster lines
+// 57, 59, 61 and 63 -- indexes 7, 8, 10, 11 (index 9 is stripe 5, which shares line 59), after
+// the two black resets at line 1.
+const WOBBLE: array<utinyint, 4> = [28, 32, 40, 44];
+
+const STRIPES: utinyint = 38;     // border stripes: lines 29, 35, ... 251
+const FIRST: utinyint = 29;       // the first stripe's line (odd, so stripes 5 and 6 share a line with a wobble entry)
+const PITCH: utinyint = 6;        // lines to a stripe
+const BACKGROUND_FROM: utinyint = 31;   // the first stripe with a background entry too (line 214)
+const NORMAL: utinyint = 8;       // $D016 with 40 columns on and no scroll
+const HEAD: utinyint = 2;         // the list's first two entries: border and background back to black at line 1
+
+// The byte offset of border stripe `k` in the list. Entries are in ascending line order, and
+// entries on one line are cheap (25 cycles apart) where entries on neighbouring lines are not
+// -- the handler falls behind across a bad line -- so the stripes sit on the wobble's lines:
+// (counting after the HEAD resets at line 1) wobble 57 (index 5), wobble 59 (6) then stripe 5
+// (7), wobble 61 (8), wobble 63 (9), stripe 6 (10) then the wobble's reset (11), both at 65;
+// and from stripe 31 every stripe is followed by its background entry on the same line.
+function borderEntry(k: utinyint): utinyint {
+    let index: utinyint = k + HEAD;
+    if (k >= 7) {
+        index = index + 5;
+    } else if (k == 6) {
+        index = index + 4;
+    } else if (k == 5) {
+        index = index + 2;
+    }
+    if (k >= BACKGROUND_FROM) {
+        index = index + (k - BACKGROUND_FROM);
+    }
+    return index * 4;
+}
+
+export namespace fx {
+    const RASTER: bool = #fact(video.raster);
+
+    function begin(): void {
+        raster.clear();
+        // Every frame starts from black: a frame the handler could not finish (the first one,
+        // when enable() lands mid-pass) would otherwise carry its last bar into the next.
+        raster.at(1, Register.BORDER, 0);
+        raster.at(1, Register.BACKGROUND, 0);
+        for (let k: utinyint = 0; k < STRIPES; k++) {
+            if (k == 5) {
+                raster.at(57, Register.CONTROL_2, NORMAL);
+                raster.at(59, Register.CONTROL_2, NORMAL);
+            }
+            let line: utinyint = FIRST + k * PITCH;
+            raster.at(line, Register.BORDER, BAR[k & 31]);
+            if (k >= BACKGROUND_FROM) {
+                raster.at(line, Register.BACKGROUND, BAR[(k + 16) & 31]);
+            }
+            if (k == 5) {
+                raster.at(61, Register.CONTROL_2, NORMAL);
+                raster.at(63, Register.CONTROL_2, NORMAL);
+            }
+            if (k == 6) {
+                raster.at(65, Register.CONTROL_2, NORMAL);
+            }
+        }
+        raster.at(254, Register.BORDER, 0);
+        raster.at(254, Register.BACKGROUND, 0);
+        raster.enable();
+    }
+
+    function frame(tick: utinyint): void {
+        if ((tick & 1) == 0) {
+            let phase: utinyint = (tick >> 1) & 31;
+            for (let k: utinyint = 0; k < STRIPES; k++) {
+                let at: utinyint = (k + 32 - phase) & 31;
+                let entry: utinyint = borderEntry(k);
+                raster.setValue(entry, BAR[at]);
+                if (k >= BACKGROUND_FROM) {
+                    raster.setValue(entry + 4, BAR[(k + 16 + phase) & 31]);
+                }
+            }
+            for (let i: utinyint = 0; i < 4; i++) {
+                raster.setValue(WOBBLE[i], NORMAL + SWAY[(phase * 2 + i * 5) & 31]);
+            }
+        }
+    }
+
+    function end(): void {
+        raster.disable();
+        raster.clear();
+        raster.commit();
+        screen.setColors(0, 0);
+        scroll.setX(0);
+    }
+}
