@@ -1,0 +1,179 @@
+// The reels from the quadrant blocks every Commodore character ROM holds: a
+// character cell is a 2x2 picture, so the screen is 80x50 "pixels". Used by the
+// PET (whose ROM is fixed, so there are no glyphs to redefine) and the VIC-20
+// (whose RAM has no room reserved for a character set yet). A symbol is 6x6 of
+// them (src/generated/tiles/classic.pet.8bs), a reel window 18 rows, and a reel
+// scrolls one such row — four real pixels — at a time.
+//
+// Each display cell is built from two consecutive rows of the window: the pair of
+// bits of the upper row and the pair of the lower row, together a number 0-15,
+// index the table of quadrant screen codes. The screen map is rewritten (27 cells
+// a reel); there is nothing to compose into, and no colour.
+//
+// A machine's quad.<machine>.8bs wraps this with the interface the game calls;
+// `cells` puts the raw screen codes (and, where there is colour, an ink) down.
+import { text } from "@8bitscript/text";
+import { cells } from "@shared/cells.8bs";
+import { layout } from "@shared/layout.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { REELS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
+import {
+    SYMBOL_PIXELS, QUAD_CODE, FRAME_CODE,
+    FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
+    FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R
+} from "@generated/tiles/classic.pet.8bs";
+
+// Per reel: the pseudo-pixel row last drawn (so a 2-pixel step that does not
+// reach the next row costs nothing), and which of its three symbol rows are
+// shown inverted (the win flash).
+let drawnRow: array<utinyint, 5>;
+let inverted: array<utinyint, 5>;
+
+// 1 << n, as a table: the 6502 backends take no run-time shift amount.
+const BIT: array<utinyint, 3> = [1, 2, 4];
+
+export namespace quad {
+    const TOP: utinyint = 4;
+
+
+    function drawFrame(): void {
+        for (let col: utinyint = 0; col < 13; col++) {
+            let top: utinyint = FRAME_T;
+            let low: utinyint = FRAME_B;
+            if (col == 0) {
+                top = FRAME_TL;
+                low = FRAME_BL;
+            } else if (col == 12) {
+                top = FRAME_TR;
+                low = FRAME_BR;
+            } else if (col == 4 || col == 8) {
+                top = FRAME_DIVT;
+                low = FRAME_DIVB;
+            }
+            let above: usmallint = layout.cell(col, 3);
+            let below: usmallint = layout.cell(col, 13);
+            cells.put(above, FRAME_CODE[top]);
+            cells.put(below, FRAME_CODE[low]);
+            cells.tint(above, 7);
+            cells.tint(below, 7);
+        }
+        for (let row: utinyint = 4; row < 13; row++) {
+            let left: utinyint = FRAME_L;
+            let right: utinyint = FRAME_R;
+            if (row == 8) {
+                left = FRAME_ARROW_L;
+                right = FRAME_ARROW_R;
+            }
+            let side: usmallint = layout.cell(0, row);
+            cells.put(side, FRAME_CODE[left]);
+            cells.put(side + 12, FRAME_CODE[right]);
+            cells.put(side + 4, FRAME_CODE[FRAME_DIV]);
+            cells.put(side + 8, FRAME_CODE[FRAME_DIV]);
+            cells.tint(side, 7);
+            cells.tint(side + 12, 7);
+            cells.tint(side + 4, 2);
+            cells.tint(side + 8, 2);
+        }
+    }
+
+    // Draw `reel` at its current position: nine cell rows of three cells.
+    function drawReel(reel: utinyint): void {
+        let stop: utinyint = reelscroll.stop(reel);
+        // The window's top row within its symbol: six rows of 4 pixels each.
+        let line: utinyint = reelscroll.row(reel) >> 2;
+        drawnRow[reel] = line;
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
+        let at: usmallint = layout.cell(1 + reel * 4, quad.TOP);
+        let band: utinyint = 0;  // which symbol row (0-2) this cell row belongs to
+        let third: utinyint = 0;
+        for (let down: utinyint = 0; down < 9; down++) {
+            // The two rows of the window this cell row is made of.
+            let upperSymbol: utinyint = STRIPS[strip + stop];
+            let upper: utinyint = SYMBOL_PIXELS[upperSymbol * 6 + line];
+            let nextLine: utinyint = line + 1;
+            let nextStop: utinyint = stop;
+            if (nextLine == 6) {
+                nextLine = 0;
+                nextStop = (stop + 1) & STOP_MASK;
+            }
+            let lowerSymbol: usmallint = STRIPS[strip + nextStop];
+            let lower: utinyint = SYMBOL_PIXELS[lowerSymbol * 6 + nextLine];
+            let flip: utinyint = 0;
+            if ((inverted[reel] & BIT[band]) != 0) {
+                flip = 15;
+            }
+            // The three cells of the row: the pair of pixels each takes from the
+            // upper and the lower window row (bit 7 is the leftmost pixel).
+            let left: utinyint = (((upper >> 6) & 3) << 2) | ((lower >> 6) & 3);
+            let middle: utinyint = (((upper >> 4) & 3) << 2) | ((lower >> 4) & 3);
+            let right: utinyint = (((upper >> 2) & 3) << 2) | ((lower >> 2) & 3);
+            cells.put(at, QUAD_CODE[left ^ flip]);
+            cells.put(at + 1, QUAD_CODE[middle ^ flip]);
+            cells.put(at + 2, QUAD_CODE[right ^ flip]);
+            if (cells.COLORED) {
+                // Each cell takes the colour of the symbol cell its upper row is in.
+                let symbolIndex: utinyint = upperSymbol;
+                let base: utinyint = (line >> 1) * 3;
+                cells.ink(at, symbolIndex, base);
+                cells.ink(at + 1, symbolIndex, base + 1);
+                cells.ink(at + 2, symbolIndex, base + 2);
+            }
+            at = at + text.COLUMNS;
+            // three cell rows to a symbol row
+            third = third + 1;
+            if (third == 3) {
+                third = 0;
+                band = band + 1;
+            }
+            // two rows on
+            line = nextLine + 1;
+            stop = nextStop;
+            if (line == 6) {
+                line = 0;
+                stop = (stop + 1) & STOP_MASK;
+            }
+        }
+    }
+
+    // ---- what the game calls ---------------------------------------------
+
+    function begin(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            inverted[reel] = 0;
+            drawnRow[reel] = 255;
+        }
+        quad.drawFrame();
+    }
+
+    function draw(reel: utinyint): void {
+        quad.drawReel(reel);
+    }
+
+    function drawAll(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            quad.drawReel(reel);
+        }
+    }
+
+    // A reel moved `pixels` down; redraw once it has moved a whole pseudo-pixel row.
+    function moved(reel: utinyint, pixels: utinyint): void {
+        if (drawnRow[reel] != (reelscroll.row(reel) >> 2)) {
+            quad.drawReel(reel);
+        }
+    }
+
+    // Light payline `line` by inverting the symbols on it, or put them back.
+    function flashLine(line: utinyint, on: bool): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            let bit: utinyint = BIT[LINES[line * REELS + reel]];
+            if (on) {
+                inverted[reel] = inverted[reel] | bit;
+            } else {
+                inverted[reel] = inverted[reel] & (255 - bit);
+            }
+            quad.drawReel(reel);
+        }
+    }
+}

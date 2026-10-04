@@ -1,0 +1,14 @@
+// The PET: 40 (or 80) columns of screen codes at $8000, no colour.
+export namespace cells {
+    const COLORED: bool = false;
+
+    function put(at: usmallint, code: utinyint): void {
+        memory.write(0x8000 + at, code);
+    }
+
+    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
+    }
+
+    function tint(at: usmallint, color: utinyint): void {
+    }
+}

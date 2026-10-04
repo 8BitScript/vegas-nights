@@ -1,0 +1,21 @@
+// The VIC-20: screen codes at Video.SCREEN (which moves with the RAM fitted) and
+// a colour nybble a cell at Video.COLOR, three bits of it ink. The colours are the
+// tileset's own (the VIC-20 twin of the tiles file holds the 0-7 values).
+import { Video } from "@8bitscript/vic20/geometry";
+import { SYMBOL_COLOR } from "@generated/tiles/classic.8bs";
+
+export namespace cells {
+    const COLORED: bool = true;
+
+    function put(at: usmallint, code: utinyint): void {
+        memory.write(Video.SCREEN + at, code);
+    }
+
+    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
+        memory.write(Video.COLOR + at, SYMBOL_COLOR[symbol * 9 + cell] & 7);
+    }
+
+    function tint(at: usmallint, color: utinyint): void {
+        memory.write(Video.COLOR + at, color & 7);
+    }
+}

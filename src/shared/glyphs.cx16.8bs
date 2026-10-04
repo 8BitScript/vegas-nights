@@ -15,6 +15,7 @@ export namespace glyphs {
     const CODES: utinyint = 127;
     const PORT: bool = true;
     const PORT_ADDRESS: usmallint = 0x9F23; // VERA DATA0
+    const TILE_RAM: usmallint = 0;
 
     function begin(): void {
     }
@@ -33,6 +34,12 @@ export namespace glyphs {
         offset = offset * 8;
         low = low + offset;
         setVramAddress(base >> 5, low, 1);
+    }
+
+    function stage(index: usmallint, value: utinyint): void {
+    }
+
+    function composeRow(first: usmallint, second: usmallint, dest: usmallint, run: utinyint, rest: utinyint): void {
     }
 
     function open(): void {

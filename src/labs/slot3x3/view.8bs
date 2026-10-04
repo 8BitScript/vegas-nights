@@ -20,7 +20,7 @@ import { layout } from "@shared/layout.8bs";
 import { reelscroll } from "@shared/reelscroll.8bs";
 import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
 import {
-    SYMBOL_BITMAP, SYMBOL_COLOR,
+    ART_SYMBOLS, SYMBOL_BYTES, SYMBOL_BITMAP, SYMBOL_COLOR,
     FRAME_CELLS, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
     FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R,
     FRAME_BITMAP, FRAME_COLOR
@@ -30,6 +30,10 @@ import {
 const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
 const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
 const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
+
+// The colours of a reel's cells depend only on which stop is on top and which
+// source cell row dominates; remember them and skip the pass when neither moved.
+let inkKey: array<utinyint, 5>;
 
 export namespace view {
     // The block, in cells: a frame cell, then three-cell reels with a divider
@@ -143,6 +147,11 @@ export namespace view {
         let strip: usmallint = reel;
         strip = strip * STOPS;
         glyphs.open();
+        // The reel's first glyph; each cell row of three glyphs is 24 bytes on.
+        let dest: usmallint = 0;
+        if (!glyphs.PORT) {
+            dest = glyphs.address(glyphs.FIRST + reel * 27);
+        }
         for (let down: utinyint = 0; down < 9; down++) {
             // The symbol under the top of this cell row and the one after it, as
             // byte offsets into the tileset, and where in the symbol the window's
@@ -154,22 +163,29 @@ export namespace view {
             after = (after << 6) + (after << 3);
             let cellRow: utinyint = row >> 3;
             let within: utinyint = row & 7;
-            for (let across: utinyint = 0; across < 3; across++) {
-                let code: utinyint = glyphs.FIRST + reel * 27 + down * 3 + across;
-                let to: usmallint = glyphs.address(code);
-                if (glyphs.PORT) {
+            if (glyphs.PORT) {
+                for (let across: utinyint = 0; across < 3; across++) {
+                    let code: utinyint = glyphs.FIRST + reel * 27 + down * 3 + across;
                     glyphs.seek(code);
-                }
-                // The first run is the rest of the symbol cell the window starts in…
-                view.copyRun(to, here + (cellRow * 3 + across) * 8 + within, 8 - within);
-                // …and the second, the top of the next cell down (or the next symbol).
-                if (within != 0) {
-                    if (cellRow < 2) {
-                        view.copyRun(to + 8 - within, here + ((cellRow + 1) * 3 + across) * 8, within);
-                    } else {
-                        view.copyRun(to + 8 - within, after + across * 8, within);
+                    // The first run is the rest of the symbol cell the window starts in…
+                    view.copyRun(0, here + (cellRow * 3 + across) * 8 + within, 8 - within);
+                    // …and the second, the top of the next cell down (or the next symbol).
+                    if (within != 0) {
+                        if (cellRow < 2) {
+                            view.copyRun(0, here + ((cellRow + 1) * 3 + across) * 8, within);
+                        } else {
+                            view.copyRun(0, after + across * 8, within);
+                        }
                     }
                 }
+            } else {
+                // Memory-mapped glyphs: the three glyphs of the row in one call.
+                let second: usmallint = after;
+                if (cellRow < 2) {
+                    second = here + (cellRow + 1) * 24;
+                }
+                glyphs.composeRow(glyphs.TILE_RAM + here + cellRow * 24 + within, glyphs.TILE_RAM + second, dest, 8 - within, within);
+                dest = dest + 24;
             }
             // on to the next cell row
             row = row + 8;
@@ -181,25 +197,44 @@ export namespace view {
         glyphs.close();
     }
 
-    // …then the colour of every cell, which is the colour of the symbol cell
-    // under the middle of it. (After the glyph bytes, not during: on the C64 the
-    // colour RAM and the character RAM share addresses, and the I/O area decides.)
+    // …then the colour of every cell: the ink of whichever symbol cell supplies
+    // most of its eight rows (so a cell mostly showing the next symbol is that
+    // symbol's colour, and a colour never pops for a sliver). After the glyph
+    // bytes, not during: on the C64 the colour RAM and the character RAM share
+    // addresses, and the I/O area decides which one a write reaches.
     function drawColors(reel: utinyint): void {
         let stop: utinyint = reelscroll.stop(reel);
         let row: utinyint = reelscroll.row(reel);
+        let band: utinyint = row >> 3;
+        if ((row & 7) > 4) {
+            band = band + 1;
+        }
+        let key: utinyint = stop * 4 + band;
+        if (inkKey[reel] == key) {
+            return;
+        }
+        inkKey[reel] = key;
         let strip: usmallint = reel;
         strip = strip * STOPS;
+        // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
+        let at: usmallint = layout.cell(1 + reel * 4, view.TOP);
         for (let down: utinyint = 0; down < 9; down++) {
             let symbol: utinyint = STRIPS[strip + stop];
-            let middle: utinyint = row + 4;
-            if (middle >= 24) {
-                middle = middle - 24;
-                symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
+            let inkRow: utinyint = row >> 3;
+            if ((row & 7) > 4) {
+                // mostly the cell below: the next cell row, or the next symbol's first
+                if (inkRow < 2) {
+                    inkRow = inkRow + 1;
+                } else {
+                    inkRow = 0;
+                    symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
+                }
             }
-            let inkRow: utinyint = middle >> 3;
-            for (let across: utinyint = 0; across < 3; across++) {
-                text.putColor(layout.cell(1 + reel * 4 + across, view.TOP + down), SYMBOL_COLOR[symbol * 9 + inkRow * 3 + across]);
-            }
+            let index: utinyint = symbol * 9 + inkRow * 3;
+            text.putColor(at, SYMBOL_COLOR[index]);
+            text.putColor(at + 1, SYMBOL_COLOR[index + 1]);
+            text.putColor(at + 2, SYMBOL_COLOR[index + 2]);
+            at = at + text.COLUMNS;
             row = row + 8;
             if (row >= 24) {
                 row = row - 24;
@@ -217,8 +252,19 @@ export namespace view {
 
     // Once, after the screen is blank: glyphs, the frame, the cell map.
     function begin(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            inkKey[reel] = 255;
+        }
         if (glyphs.AVAILABLE) {
             glyphs.begin();
+            if (!glyphs.PORT) {
+                // The assembly row-composer reads the tileset from RAM it can name.
+                let total: usmallint = ART_SYMBOLS;
+                total = total * SYMBOL_BYTES;
+                for (let i: usmallint = 0; i < total; i++) {
+                    glyphs.stage(i, SYMBOL_BITMAP[i]);
+                }
+            }
             view.defineFrame();
             view.mapCells();
             view.drawFrame();
@@ -265,6 +311,7 @@ export namespace view {
                         }
                     }
                 } else {
+                    inkKey[reel] = 255;
                     view.drawGlyphs(reel);
                 }
             } else if (on) {

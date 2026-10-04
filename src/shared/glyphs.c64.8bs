@@ -9,12 +9,21 @@
 import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
 import { Video } from "@8bitscript/c64/video";
 
+// Where the tileset is staged for the assembly composer: $C000-$CFFF is plain RAM
+// on the C64, outside the video bank's screen, sprite shapes and character copy
+// and above any program this size. (A const array is not reachable from an
+// asm6502 block, and the compiler lowers no array parameters, so the bytes are
+// copied once to an address the block can name.)
+@address(0xC000)
+let tileBytes: array<utinyint, 1024>;
+
 export namespace glyphs {
     const AVAILABLE: bool = true;
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
     const PORT: bool = false;
     const PORT_ADDRESS: usmallint = 0;
+    const TILE_RAM: usmallint = 0xC000;
 
     // The ROM-to-RAM character copy and the video mode must exist before the
     // first glyph write; setupVideo() does both and is cheap when done.
@@ -33,6 +42,68 @@ export namespace glyphs {
     }
 
     function seek(code: utinyint): void {
+    }
+
+    function stage(index: usmallint, value: utinyint): void {
+        tileBytes[index] = value;
+    }
+
+    // Three glyphs side by side (24 bytes at `dest`): per glyph, `run` bytes from
+    // the staged tileset at `first`, then `rest` bytes from `second` — a window
+    // straddling two source cells (the next cell down, or the next symbol). The
+    // sources step 8 bytes (the next cell across) per glyph, the destination 8.
+    // ~16 cycles a byte against ~450 for the same copy in compiled script.
+    function composeRow(first: usmallint, second: usmallint, dest: usmallint, run: utinyint, rest: utinyint): void {
+        asm6502 {
+            sec
+            lda second
+            sbc run
+            sta second
+            lda second+1
+            sbc #0
+            sta second+1
+            ldx #3
+        1:
+            ldy #0
+        2:
+            lda (first),y
+            sta (dest),y
+            iny
+            cpy run
+            bne 2b
+            lda rest
+            beq 4f
+        3:
+            lda (second),y
+            sta (dest),y
+            iny
+            cpy #8
+            bne 3b
+        4:
+            clc
+            lda first
+            adc #8
+            sta first
+            bcc 5f
+            inc first+1
+        5:
+            clc
+            lda second
+            adc #8
+            sta second
+            bcc 6f
+            inc second+1
+        6:
+            clc
+            lda dest
+            adc #8
+            sta dest
+            bcc 7f
+            inc dest+1
+        7:
+            dex
+            bne 1b
+        }
     }
 
     function open(): void {
