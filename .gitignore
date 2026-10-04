@@ -23,6 +23,9 @@ dist/
 # Scratch screenshots from `pnpm run shot:*`
 /shots/
 
+# CI checks the 8bitscript toolchain out here
+/.toolchain/
+
 # Per-developer sonarlint state
 .sonarlint/
 

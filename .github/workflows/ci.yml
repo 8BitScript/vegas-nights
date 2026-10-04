@@ -6,13 +6,62 @@ on:
     branches: [trunk]
 
 jobs:
+  # INTERIM — builds with the 8BitScript toolchain from its `trunk`, not the pinned release.
+  #
+  # The labs use things merged to 8bitscript's trunk after 0.24.0 (audio.tone, the unbiased
+  # random.range, the graphics contract's operations, the c64 charset fix, the pnpm
+  # package resolver fix). Until the owner merges the Version Packages PR and those ship,
+  # the pinned cli cannot build them. This job checks out 8BitScript/8bitscript at trunk
+  # and runs ITS cli (`--checkout` / EIGHTBITSCRIPT_CHECKOUT make the project resolve
+  # @8bitscript/* from that tree; the project's package.json stays on the published
+  # versions, as packages/cli/src/checkout.mjs prescribes).
+  #
+  # TO GO BACK TO THE RELEASED TOOLCHAIN (after the next 8bitscript release and a bump of the
+  # pins in package.json): delete this job and restore the reusable workflow call:
+  #
+  #   compile:
+  #     uses: 8BitScript/8bitscript/.github/workflows/compile.yml@2405573e32f9e3c3d5212c93ddb986d4e32f3c60 # @8bitscript/* release-age exclude
+  #     with:
+  #       cli-version: <the released version>
   compile:
-    uses: 8BitScript/8bitscript/.github/workflows/compile.yml@2405573e32f9e3c3d5212c93ddb986d4e32f3c60 # @8bitscript/* release-age exclude
-    with:
-      # No `targets`: builds every artifact 8bitscript.config.8bs declares for
-      # a release (`8bs build --release`): each program for each of the five
-      # machines, so CI catches a lab that stops fitting before a release does.
-      cli-version: 0.24.0
+    name: compile (8bitscript trunk)
+    runs-on: ubuntu-latest
+    env:
+      EIGHTBITSCRIPT_CHECKOUT: ${{ github.workspace }}/.toolchain/8bitscript
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: 8BitScript/8bitscript
+          ref: trunk
+          path: .toolchain/8bitscript
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: Install the toolchain checkout
+        run: pnpm --dir .toolchain/8bitscript install --frozen-lockfile
+      - name: Install the project
+        run: pnpm install --frozen-lockfile --config.minimum-release-age-exclude=@8bitscript/*
+      - name: Show the toolchain in use
+        run: |
+          node .toolchain/8bitscript/packages/cli/bin/8bs.mjs --version
+          git -C .toolchain/8bitscript log -1 --format='8bitscript trunk @ %h %s'
+      - name: Check
+        # The same file list `pnpm run check` uses, with the trunk cli.
+        run: |
+          set -euo pipefail
+          files="$(node -p "require('./package.json').scripts.check.replace(/^8bs check /, '')")"
+          node .toolchain/8bitscript/packages/cli/bin/8bs.mjs check $files
+      - name: Build every artifact the config declares for a release
+        # Each program for each of the five machines (`8bs build --release`), so CI
+        # catches a lab that stops fitting before a release does.
+        run: node .toolchain/8bitscript/packages/cli/bin/8bs.mjs build --release
+      - uses: actions/upload-artifact@v5
+        with:
+          name: 8bs-dist
+          path: dist/**
 
   # The art pipeline (tools/tiles): unit tests, and the committed tables must be
   # what the pipeline writes now. The emulator tests skip here (no VICE/x16emu on the
