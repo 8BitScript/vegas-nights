@@ -84,8 +84,8 @@ const SPEC = {
 
 // Only the two machines this sketches; the name builds file paths, so it is checked against a list
 // rather than used as typed.
-const SKETCHED = new Set(['c64', 'cx16']);
-const m = SKETCHED.has(process.argv[2]) ? process.argv[2] : undefined;
+// (The name is chosen between two literals, so nothing typed on the command line reaches a path.)
+const m = process.argv[2] === 'c64' ? 'c64' : process.argv[2] === 'cx16' ? 'cx16' : undefined;
 if (m === undefined) {
   console.error('usage: node scripts/motion-plan.mjs c64|cx16');
   process.exit(2);
