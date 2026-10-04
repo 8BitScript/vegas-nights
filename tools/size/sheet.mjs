@@ -1,7 +1,7 @@
 // The comparison sheets of docs/reel-size.md: one per game, a row a machine, today beside what is proposed, every
 // screen drawn at the same height so how much of it the reels fill can be judged by eye.
 //   node tools/size/sheet.mjs   ->  docs/reel-size/sheet-3x3.png, sheet-5x5.png   (needs rsvg-convert)
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -9,6 +9,9 @@ import { decodePng, encodePng } from '../tiles/src/png.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DOC = join(ROOT, 'docs', 'reel-size');
+// rsvg-convert from a fixed install location, not whatever $PATH names (Homebrew on Apple silicon and Intel, the system bin).
+const RSVG = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'].map((dir) => join(dir, 'rsvg-convert')).find((file) => existsSync(file));
+if (!RSVG) throw new Error('sheet: rsvg-convert not found (brew install librsvg)');
 const H = 230;                 // every screen is drawn this tall
 const COL_W = 400, LABEL_W = 96, GAP = 12, ROW_H = H + 74, TOP = 84;
 
@@ -61,7 +64,7 @@ ${subtitle.split('|').map((line, n) => `<text x="16" y="${50 + n * 15}" fill="#9
   svg += `</svg>`;
   const svgFile = join(DOC, `${name}.svg`);
   writeFileSync(svgFile, svg);
-  execFileSync('rsvg-convert', ['-o', join(DOC, `${name}.png`), svgFile]);
+  execFileSync(RSVG, ['-o', join(DOC, `${name}.png`), svgFile]);
   unlinkSync(svgFile); // the SVG embeds every screen as a data URI: an intermediate, not a deliverable
   console.log(`${name}.png  ${width}x${height}`);
 }
