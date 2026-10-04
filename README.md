@@ -320,6 +320,24 @@ Credits are exact to 999,999,999: [`src/shared/purse.8bs`](src/shared/purse.8bs)
 decimal limbs of three digits, because the 6502 backends do not lower 32-bit values and the GRAND
 seed alone is 1,000,000.
 
+### The bonus round's full-screen look (`fx`)
+
+While the free spins run, the game calls three hooks (`fx.begin()`, `fx.frame(tick)`, `fx.end()`) that a
+machine can fill in with something that happens to the whole picture rather than to the reels. The
+portable file [`src/shared/fx.8bs`](src/shared/fx.8bs) does nothing and costs nothing (the four
+6502 builds are byte for byte the size they were), and a machine that can do better replaces it with
+its own `fx.<machine>.8bs`. Today only the web has one: copper bars in the border and in the rows
+under the panel, scrolling down the screen, with the panel and reels left on black.
+
+![the web's bonus round: bars in the border, a few frames apart](docs/fx/web-bonus-a.png)
+![the same, twenty frames later](docs/fx/web-bonus-b.png)
+
+[`docs/fx.md`](docs/fx.md) is the brief for writing the others (C64, X16, VIC-20, PET): the surface,
+what the game promises, what each machine's raster layer gives, and how to prove an effect on screen.
+`test/fx.test.mjs` (in CI) holds every twin to the same four members; `test/fx.machines.test.mjs`
+(`pnpm run test:machines`) checks the border is plain before the round, barred and moving during it,
+and plain again after.
+
 ### How the 5x5 is put together
 
 ```

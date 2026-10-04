@@ -29,6 +29,7 @@ import { random } from "@8bitscript/random";
 import { purse } from "@shared/purse.8bs";
 import { layout } from "@shared/layout.8bs";
 import { sound } from "@shared/sound.8bs";
+import { fx } from "@shared/fx.8bs";
 import { spin } from "./spin.8bs";
 import { view } from "./view.8bs";
 import {
@@ -80,6 +81,7 @@ let flashLeft: utinyint = 0;
 let flashWait: utinyint = 0;
 let pauseLeft: utinyint = 0;
 let pulsePhase: utinyint = 0;
+let fxTick: utinyint = 0;            // frames since the bonus round began, for fx.frame
 let pulseWait: utinyint = 0;
 let freeSpin: bool = false;          // the spin on the reels is a free one
 
@@ -377,6 +379,10 @@ function settle(): void {
             fsGranted = award;
             purse.clear(purse.SESSION);
             banner(true);
+            fx.begin();
+            if (fx.RASTER) {
+                fxTick = 0;
+            }
         } else if (FREE_SPIN_RETRIGGER != 0) {
             let extra: utinyint = award;
             if (fsGranted + extra > FREE_SPIN_CAP) {
@@ -422,6 +428,7 @@ function finishSpin(): void {
             // the round is over: show its total
             inBonus = false;
             banner(false);
+            fx.end();
             message(7);
             drawFree();
             drawWin(purse.SESSION);
@@ -485,6 +492,17 @@ function frameBonusPulse(): void {
             pulseWait = 6;
         } else {
             pulseWait = pulseWait - 1;
+        }
+    }
+}
+
+// The bonus round's full-screen look (fx.8bs), once a frame while the round runs. On a
+// machine whose fx twin is the portable stub, RASTER is false and this folds away.
+function frameFx(): void {
+    if (fx.RASTER) {
+        if (inBonus) {
+            fxTick = fxTick + 1;
+            fx.frame(fxTick);
         }
     }
 }
@@ -564,6 +582,7 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
         waitFrame();
         input.poll();
         frameBonusPulse();
+        frameFx();
         if (state == 1) {
             frameSpinning();
         } else if (state == 2) {
