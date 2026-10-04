@@ -1,0 +1,13 @@
+// The PET: screen codes at $8000, no colour.
+export namespace scr {
+    const SCREEN: usmallint = 0x8000;
+    const COLOR: usmallint = 0;
+
+    function code(at: usmallint): utinyint {
+        return memory.read(0x8000 + at);
+    }
+
+    function ink(at: usmallint): utinyint {
+        return 0;
+    }
+}

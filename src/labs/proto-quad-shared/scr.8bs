@@ -1,0 +1,15 @@
+// Reading a cell back, and where the screen and colour memory are, so a reel can scroll by moving cells
+// instead of recomposing them (design prototype, docs/reel-size.md). This base file is "not here";
+// scr.pet.8bs and scr.vic20.8bs answer.
+export namespace scr {
+    const SCREEN: usmallint = 0;
+    const COLOR: usmallint = 0;
+
+    function code(at: usmallint): utinyint {
+        return 0;
+    }
+
+    function ink(at: usmallint): utinyint {
+        return 0;
+    }
+}
