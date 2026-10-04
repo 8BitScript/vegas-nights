@@ -1,0 +1,374 @@
+// slot3x3 — a 3-reel, 3-row slot machine with three paylines (the middle row
+// and both diagonals), drawn as text on every machine this release builds for.
+//
+// Everything about the odds comes from src/generated/classic3x3.8bs, emitted
+// by tools/slotmath: the reel strips, the paylines, the paytable and the
+// fixed-odds jackpot. This file only plays them. A reel stop is one random
+// byte & STOP_MASK (64 stops, so exactly uniform), drawn the moment a spin
+// starts; the reels then scroll to their stops, and the win is read off the
+// cells the player is looking at.
+//
+// States: IDLE (waiting for confirm) -> SPINNING (reels scrolling, stopping
+// one after another) -> PAYING (the winning lines flash) -> IDLE.
+import { screen } from "@8bitscript/screen";
+import { text, TextColor } from "@8bitscript/text";
+import { input } from "@8bitscript/input";
+import { random } from "@8bitscript/random";
+import { bank } from "@shared/bank.8bs";
+import { scroll } from "@shared/scroll.8bs";
+import { layout } from "@shared/layout.8bs";
+import {
+    REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS, SYMBOL_COUNT,
+    SYM_SEVEN, SYM_BAR3, SYM_BAR2, SYM_BAR1, SYM_CHERRY, SYM_BLANK,
+    LINE_COUNT, PAY_WIDTH, JACKPOT_DRAW_MASK,
+    STRIPS, BET_LEVELS, LINES, PAYS,
+    JACKPOT_SEED, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO
+} from "@generated/classic3x3.8bs";
+
+// A fixed seed, so a screenshot taken with --screenshot reproduces the same
+// spins on every machine (the test computes the same draws in JavaScript).
+const SEED: usmallint = 2026;
+const START_CREDITS: usmallint = 2000;
+
+// Layout, in cells from the block's left edge. Three symbols of three
+// columns, one blank column between reels.
+const BLOCK_WIDTH: utinyint = 11;
+const REEL_STRIDE: utinyint = 4;
+const TOP_ROW: utinyint = 5;     // text row of the first reel row
+const BORDER_ROW: utinyint = 4;
+const CREDIT_ROW: utinyint = 10;
+const BET_ROW: utinyint = 11;
+const WIN_ROW: utinyint = 12;
+const MESSAGE_ROW: utinyint = 14;
+const HINT_ROW: utinyint = 16;
+
+// How the symbols look: three characters each (ASCII, the machine's own
+// font does the rest). Indexed by the SYM_* numbers in the generated table.
+const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
+const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
+const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
+
+let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying
+let betIndex: utinyint = 0;
+let multiplier: utinyint = 1;
+let targets: array<utinyint, 3>;
+let jackpotHit: bool = false;
+let lineWin: array<utinyint, 3>;
+let totalWin: usmallint = 0;
+let autoLeft: utinyint = 0;
+let spinsPlayed: utinyint = 0;
+let idleFrames: utinyint = 0;
+let flashLeft: utinyint = 0;
+let flashWait: utinyint = 0;
+
+function colorOf(symbol: utinyint): utinyint {
+    if (symbol == SYM_SEVEN) {
+        return TextColor.RED;
+    } else if (symbol == SYM_BAR3) {
+        return TextColor.CYAN;
+    } else if (symbol == SYM_BAR2) {
+        return TextColor.GREEN;
+    } else if (symbol == SYM_BAR1) {
+        return TextColor.BLUE;
+    } else if (symbol == SYM_CHERRY) {
+        return TextColor.YELLOW;
+    }
+    return TextColor.WHITE;
+}
+
+// The symbol a reel shows on `row` when its top row is stop `position`.
+function symbolAt(reel: utinyint, position: utinyint, row: utinyint): utinyint {
+    let stop: utinyint = (position + row) & STOP_MASK;
+    return STRIPS[reel * STOPS + stop];
+}
+
+function drawSymbol(at: usmallint, symbol: utinyint): void {
+    text.putChar(at, GLYPH_LEFT[symbol]);
+    text.putChar(at + 1, GLYPH_MID[symbol]);
+    text.putChar(at + 2, GLYPH_RIGHT[symbol]);
+    let color: utinyint = colorOf(symbol);
+    text.putColor(at, color);
+    text.putColor(at + 1, color);
+    text.putColor(at + 2, color);
+}
+
+function drawReel(reel: utinyint): void {
+    let position: utinyint = scroll.position(reel);
+    for (let row: utinyint = 0; row < ROWS; row++) {
+        drawSymbol(layout.cell(reel * REEL_STRIDE, TOP_ROW + row), symbolAt(reel, position, row));
+    }
+}
+
+function drawReels(): void {
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        drawReel(reel);
+    }
+}
+
+function clearRow(row: utinyint): void {
+    text.print(layout.cell(0, row), "                      ");
+}
+
+function drawCredit(): void {
+    text.print(layout.cell(0, CREDIT_ROW), "CREDIT");
+    text.printNumber(layout.cell(7, CREDIT_ROW), bank.credits(), 5);
+}
+
+function drawBet(): void {
+    text.print(layout.cell(0, BET_ROW), "BET");
+    text.printNumber(layout.cell(7, BET_ROW), BET_CREDITS * multiplier, 5);
+}
+
+function drawWin(): void {
+    text.print(layout.cell(0, WIN_ROW), "WIN");
+    text.printNumber(layout.cell(7, WIN_ROW), totalWin, 5);
+}
+
+function message(row: utinyint, which: utinyint): void {
+    clearRow(row);
+    let at: usmallint = layout.cell(0, row);
+    if (which == 1) {
+        text.print(at, "SPINNING");
+    } else if (which == 2) {
+        text.print(at, "WIN");
+    } else if (which == 3) {
+        text.print(at, "JACKPOT!");
+    } else if (which == 4) {
+        text.print(at, "NO WIN");
+    } else if (which == 5) {
+        text.print(at, "NEED CREDIT");
+    } else {
+        text.print(at, "PRESS CONFIRM");
+    }
+}
+
+function drawStatic(): void {
+    text.print(layout.cell(0, 1), "VEGAS NIGHTS");
+    text.print(layout.cell(0, 2), "SLOT 3X3");
+    text.print(layout.cell(0, BORDER_ROW), "-----------");
+    text.print(layout.cell(0, TOP_ROW + ROWS), "-----------");
+    text.print(layout.cell(0, HINT_ROW), "UP DOWN: BET");
+}
+
+// ---- play ----------------------------------------------------------------
+
+function setBet(index: utinyint): void {
+    betIndex = index;
+    multiplier = BET_LEVELS[index];
+    drawBet();
+}
+
+// One saturating `amount` x `times`.
+function scaled(amount: usmallint, times: utinyint): usmallint {
+    let total: usmallint = 0;
+    for (let i: utinyint = 0; i < times; i++) {
+        total = bank.sum(total, amount);
+    }
+    return total;
+}
+
+function startSpin(): void {
+    bank.take(BET_CREDITS * multiplier);
+    totalWin = 0;
+    // The draw plan, in the order tools/slotmath documents: one byte per
+    // reel (& STOP_MASK), then two for the jackpot (little-endian).
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let byte: utinyint = random.next();
+        targets[reel] = byte & STOP_MASK;
+        scroll.start(reel, targets[reel], 16 + reel * 12, STOP_MASK);
+    }
+    let low: utinyint = random.next();
+    let high: utinyint = random.next();
+    let draw: usmallint = high;
+    draw = draw << 8;
+    draw = draw | low;
+    draw = draw & JACKPOT_DRAW_MASK;
+    jackpotHit = false;
+    if (draw >= JACKPOT_RANGE_FROM[0]) {
+        if (draw < JACKPOT_RANGE_TO[0]) {
+            if (multiplier >= JACKPOT_MIN_BET[0]) {
+                jackpotHit = true;
+            }
+        }
+    }
+    drawCredit();
+    drawWin();
+    message(MESSAGE_ROW, 1);
+    state = 1;
+}
+
+// The pay of one line, in credits at the base bet: the longest run of one
+// symbol from the first reel, looked up in the paytable.
+function linePay(line: utinyint): usmallint {
+    let first: utinyint = symbolAt(0, scroll.position(0), LINES[line * REELS]);
+    let second: utinyint = symbolAt(1, scroll.position(1), LINES[line * REELS + 1]);
+    let third: utinyint = symbolAt(2, scroll.position(2), LINES[line * REELS + 2]);
+    let run: utinyint = 1;
+    if (second == first) {
+        run = 2;
+        if (third == first) {
+            run = 3;
+        }
+    }
+    return PAYS[first * PAY_WIDTH + run];
+}
+
+function settle(): void {
+    let base: usmallint = 0;
+    for (let line: utinyint = 0; line < LINE_COUNT; line++) {
+        let pay: usmallint = linePay(line);
+        lineWin[line] = 0;
+        if (pay != 0) {
+            lineWin[line] = 1;
+            base = bank.sum(base, pay);
+        }
+    }
+    totalWin = scaled(base, multiplier);
+    if (jackpotHit) {
+        // Hoisted: the 6502 backends cannot lay out bank.sum(x, scaled(...))
+        // when scaled itself calls bank.sum.
+        let prize: usmallint = scaled(JACKPOT_SEED[0], multiplier);
+        totalWin = bank.sum(totalWin, prize);
+    }
+    bank.add(totalWin);
+    drawCredit();
+    drawWin();
+    if (jackpotHit) {
+        message(MESSAGE_ROW, 3);
+    } else if (totalWin != 0) {
+        message(MESSAGE_ROW, 2);
+    } else {
+        message(MESSAGE_ROW, 4);
+    }
+    spinsPlayed = spinsPlayed + 1;
+    flashLeft = 0;
+    if (totalWin != 0) {
+        flashLeft = 8;
+        flashWait = 0;
+        state = 2;
+    } else {
+        state = 0;
+        idleFrames = 0;
+    }
+}
+
+// The cells on a winning line, shown or blanked (blinking is the one
+// highlight every machine has, colour or not).
+function showLines(on: bool): void {
+    for (let line: utinyint = 0; line < LINE_COUNT; line++) {
+        if (lineWin[line] != 0) {
+            for (let reel: utinyint = 0; reel < REELS; reel++) {
+                let row: utinyint = LINES[line * REELS + reel];
+                let at: usmallint = layout.cell(reel * REEL_STRIDE, TOP_ROW + row);
+                if (on) {
+                    drawSymbol(at, symbolAt(reel, scroll.position(reel), row));
+                } else {
+                    drawSymbol(at, SYM_BLANK);
+                }
+            }
+        }
+    }
+}
+
+function frameSpinning(): void {
+    let any: bool = false;
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        if (scroll.step(reel, STOP_MASK)) {
+            drawReel(reel);
+        }
+        if (scroll.moving(reel)) {
+            any = true;
+        }
+    }
+    if (!any) {
+        settle();
+    }
+}
+
+function framePaying(): void {
+    if (flashWait != 0) {
+        flashWait = flashWait - 1;
+        return;
+    }
+    if (flashLeft == 0) {
+        state = 0;
+        idleFrames = 0;
+        return;
+    }
+    flashLeft = flashLeft - 1;
+    flashWait = 7;
+    showLines((flashLeft & 1) == 0);
+}
+
+function frameIdle(): void {
+    if (idleFrames < 255) {
+        idleFrames = idleFrames + 1;
+    }
+    let cost: usmallint = BET_CREDITS * multiplier;
+    let go: bool = false;
+    if (input.confirm()) {
+        go = true;
+    }
+    if (autoLeft != 0) {
+        if (idleFrames > 20) {
+            go = true;
+        }
+    }
+    if (input.up()) {
+        if (betIndex + 1 < 4) {
+            setBet(betIndex + 1);
+        }
+    }
+    if (input.down()) {
+        if (betIndex != 0) {
+            setBet(betIndex - 1);
+        }
+    }
+    if (go) {
+        if (!bank.canPay(cost)) {
+            // Out of credit: the lab reloads rather than ending the session.
+            bank.set(START_CREDITS);
+            drawCredit();
+            message(MESSAGE_ROW, 5);
+            idleFrames = 0;
+        } else {
+            if (autoLeft != 0) {
+                autoLeft = autoLeft - 1;
+            }
+            startSpin();
+        }
+    }
+}
+
+// Play forever. `autoSpins` is the number of spins the machine takes by
+// itself right after it starts (0 for a person at the keyboard): headless
+// screenshots cannot press a key.
+export function play(autoSpins: utinyint): void {
+    screen.blank();
+    layout.centre(BLOCK_WIDTH);
+    random.seed(SEED);
+    input.begin();
+    bank.set(START_CREDITS);
+    autoLeft = autoSpins;
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        scroll.place(reel, 0);
+    }
+    drawStatic();
+    drawReels();
+    setBet(0);
+    drawCredit();
+    drawWin();
+    message(MESSAGE_ROW, 0);
+
+    while (true) {
+        waitFrame();
+        input.poll();
+        if (state == 1) {
+            frameSpinning();
+        } else if (state == 2) {
+            framePaying();
+        } else {
+            frameIdle();
+        }
+    }
+}

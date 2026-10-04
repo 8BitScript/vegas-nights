@@ -1,0 +1,38 @@
+// The player's credits. One 16-bit balance, because the 6502 backends in
+// @8bitscript 0.24.0 do not lower 32-bit values ("this path only lowers
+// 8-bit values", measured), and every addition saturates at 65535 rather
+// than wrapping: a lucky run stops growing instead of silently becoming a
+// small number. A game whose biggest pay times its biggest bet can exceed
+// that is told so by `add` returning the amount it actually banked.
+let balance: usmallint = 0;
+
+export namespace bank {
+    function set(value: usmallint): void {
+        balance = value;
+    }
+
+    function credits(): usmallint {
+        return balance;
+    }
+
+    // a + b, held at 65535 instead of wrapping.
+    function sum(a: usmallint, b: usmallint): usmallint {
+        let total: usmallint = a + b;
+        if (total < a) {
+            total = 65535;
+        }
+        return total;
+    }
+
+    function add(amount: usmallint): void {
+        balance = bank.sum(balance, amount);
+    }
+
+    function canPay(amount: usmallint): bool {
+        return balance >= amount;
+    }
+
+    function take(amount: usmallint): void {
+        balance = balance - amount;
+    }
+}
