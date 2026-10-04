@@ -1,0 +1,18 @@
+// Test support: two solid character blocks (reverse-video spaces) on an
+// otherwise empty screen, at the block's cell (0, 1) and (10, 15). A screenshot
+// of this program is how the test measures, on each machine, exactly where a text
+// cell is in pixels and how big: the bounding box of a solid block IS the cell.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+
+export function main(): void {
+    screen.blank();
+    layout.centre(13);
+    text.setReverse(true);
+    text.print(layout.cell(0, 1), " ");
+    text.print(layout.cell(10, 15), " ");
+    while (true) {
+        waitFrame();
+    }
+}

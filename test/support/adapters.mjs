@@ -1,0 +1,158 @@
+// How each kind of machine draws a reel, and how to read it back.
+//
+// A reel's position is a number of "units" down its strip: pixels on the machines
+// that compose glyphs (C64, X16), pseudo-pixel rows of four pixels on the ones that
+// build the reel from the ROM's quadrant blocks (PET, VIC-20), whole symbols on the
+// text fallback (the web). For each kind the adapter can
+//   expected(reel, position)  what a reel at that position looks like, computed
+//                             here from the tile data, and
+//   observe(png, geo, reel)   what the screenshot shows of that reel,
+// as values that compare with ===/join, so a screenshot can be matched to the
+// exact position it shows — or to none, which is a failed test.
+import { loadFile, loadTable } from './table.mjs';
+import { cellKey } from './screen.mjs';
+
+const table = loadTable();
+const c = table.consts;
+const strip = table.arrays.STRIPS;
+
+export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'text' };
+
+/** A background-aware reader of logical pixels of a screenshot. */
+export function inkReader(png) {
+  const counts = new Map();
+  for (let y = 0; y < png.height; y += 1) for (let x = 0; x < png.width; x += 1) {
+    const v = png.at(x, y);
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  const background = [...counts.entries()].sort((p, q) => q[1] - p[1])[0][0];
+  return (x, y) => (png.at(x, y) !== background ? 1 : 0);
+}
+
+const REEL_COL = (reel) => 1 + reel * 4; // block column of a reel's first cell
+const REEL_TOP = 4;                       // block row of a reel's first cell
+
+// ---- pixel machines -----------------------------------------------------------
+function pixelAdapter(machine) {
+  const tiles = loadFile(machine === 'cx16' ? 'tiles/classic.cx16.8bs' : 'tiles/classic.8bs');
+  const bitmap = tiles.arrays.SYMBOL_BITMAP;
+  const PX = 24; // pixels in a symbol
+  const rowBits = (symbol, y) => {
+    // the 24 pixels of pixel row y of a symbol, as one number, leftmost pixel highest
+    let v = 0;
+    for (let col = 0; col < 3; col += 1) v = (v << 8) | bitmap[symbol * 72 + ((y >> 3) * 3 + col) * 8 + (y & 7)];
+    return v;
+  };
+  return {
+    unit: 'pixel',
+    positions: c.STOPS * PX,
+    unitsPerSymbol: PX,
+    expected(reel, position) {
+      const out = [];
+      for (let v = 0; v < 72; v += 1) {
+        const a = position + v;
+        const stop = Math.floor(a / PX) % c.STOPS;
+        out.push(rowBits(strip[reel * c.STOPS + stop], a % PX));
+      }
+      return out.join(',');
+    },
+    observe(png, geo, ink, reel) {
+      const out = [];
+      const sx = geo.pitchX / 8;
+      const sy = geo.pitchY / 8;
+      for (let v = 0; v < 72; v += 1) {
+        let row = 0;
+        for (let bit = 0; bit < 24; bit += 1) {
+          const cellCol = REEL_COL(reel) + (bit >> 3);
+          const x = geo.x0 + cellCol * geo.pitchX + Math.floor(((bit & 7) + 0.5) * sx);
+          const y = geo.y0 + (REEL_TOP - 1) * geo.pitchY + Math.floor((v + 0.5) * sy);
+          row = (row << 1) | ink(x, y);
+        }
+        out.push(row >>> 0);
+      }
+      return out.join(',');
+    },
+  };
+}
+
+// ---- quadrant machines --------------------------------------------------------
+function quadAdapter() {
+  const tiles = loadFile('tiles/classic.pet.8bs');
+  const pixels = tiles.arrays.SYMBOL_PIXELS;
+  const ROWS = 6; // pseudo-pixel rows in a symbol
+  const pseudo = (symbol, row) => pixels[symbol * ROWS + row];
+  return {
+    unit: 'quadrant row (4 pixels)',
+    positions: c.STOPS * ROWS,
+    unitsPerSymbol: ROWS,
+    expected(reel, position) {
+      const nibbles = [];
+      const rowAt = (a) => pseudo(strip[reel * c.STOPS + (Math.floor(a / ROWS) % c.STOPS)], a % ROWS);
+      for (let down = 0; down < 9; down += 1) {
+        const upper = rowAt(position + down * 2);
+        const lower = rowAt(position + down * 2 + 1);
+        for (let across = 0; across < 3; across += 1) {
+          const shift = 6 - across * 2;
+          nibbles.push((((upper >> shift) & 3) << 2) | ((lower >> shift) & 3));
+        }
+      }
+      return nibbles.join(',');
+    },
+    observe(png, geo, ink, reel) {
+      const out = [];
+      const sx = geo.pitchX / 8;
+      const sy = geo.pitchY / 8;
+      for (let down = 0; down < 9; down += 1) {
+        for (let across = 0; across < 3; across += 1) {
+          const ox = geo.x0 + (REEL_COL(reel) + across) * geo.pitchX;
+          const oy = geo.y0 + (REEL_TOP + down - 1) * geo.pitchY;
+          const at = (px, py) => ink(ox + Math.floor((px + 0.5) * sx), oy + Math.floor((py + 0.5) * sy));
+          // the middle of each of the four 4x4 quadrants
+          out.push((at(1, 1) << 3) | (at(5, 1) << 2) | (at(1, 5) << 1) | at(5, 5));
+        }
+      }
+      return out.join(',');
+    },
+  };
+}
+
+// ---- the text fallback --------------------------------------------------------
+function textAdapter(reference) {
+  return {
+    unit: 'symbol',
+    positions: c.STOPS,
+    unitsPerSymbol: 1,
+    expected(reel, position) {
+      const out = [];
+      for (let row = 0; row < c.ROWS; row += 1) out.push(strip[reel * c.STOPS + ((position + row) % c.STOPS)]);
+      return out.join(',');
+    },
+    observe(png, geo, ink, reel) {
+      const out = [];
+      for (let row = 0; row < c.ROWS; row += 1) {
+        const key = [0, 1, 2].map((i) => cellKey(png, geo, REEL_COL(reel) + i, 7 + row)).join('|');
+        out.push(reference.symbols.has(key) ? reference.symbols.get(key) : -1);
+      }
+      return out.join(',');
+    },
+  };
+}
+
+export function adapterFor(machine, textReference) {
+  const kind = KINDS[machine];
+  if (kind === 'pixel') return pixelAdapter(machine);
+  if (kind === 'quad') return quadAdapter();
+  return textAdapter(textReference);
+}
+
+/** Every position of a reel that shows exactly what `observed` shows. */
+export function matches(adapter, expectedByPosition, observed) {
+  const out = [];
+  for (let p = 0; p < adapter.positions; p += 1) if (expectedByPosition[p] === observed) out.push(p);
+  return out;
+}
+
+/** expected(reel, p) for every p, once per reel. */
+export function precompute(adapter, reels) {
+  return Array.from({ length: reels }, (_, reel) => Array.from({ length: adapter.positions }, (_, p) => adapter.expected(reel, p)));
+}

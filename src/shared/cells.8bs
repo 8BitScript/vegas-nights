@@ -1,0 +1,23 @@
+// Writing a raw screen code (and, where there is colour, an ink) into one text
+// cell, bypassing the ASCII-to-screen-code translation that text.putChar does:
+// the quadrant block characters the reel view uses are not ASCII, and several of
+// their codes sit where a translation would turn them into letters. This base
+// file is the answer "not here"; a machine whose reels are built from its ROM's
+// blocks has a twin (cells.pet.8bs, cells.vic20.8bs).
+//
+//   COLORED   cells have a colour of their own.
+//   put       the raw screen code `code` at the text cell at index `at`.
+//   ink       colour that cell as symbol cell `cell` (0-8) of `symbol` is coloured.
+//   tint      colour that cell a plain colour number (frame cells).
+export namespace cells {
+    const COLORED: bool = false;
+
+    function put(at: usmallint, code: utinyint): void {
+    }
+
+    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
+    }
+
+    function tint(at: usmallint, color: utinyint): void {
+    }
+}

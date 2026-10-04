@@ -1,0 +1,322 @@
+// slot3x3 — a 3-reel, 3-row slot machine with three paylines (the middle row
+// and both diagonals).
+//
+// Everything about the odds comes from src/generated/classic3x3.8bs, emitted by
+// tools/slotmath: the reel strips, the paylines, the paytable and the fixed-odds
+// jackpot. This file only plays them. A reel stop is one random byte & STOP_MASK
+// (64 stops, so exactly uniform), drawn the moment a spin starts; the reels then
+// scroll to their stops pixel by pixel, and the win is read off the symbols at
+// the stops the reels came to rest on — the same symbols the player is looking at.
+// How a reel is drawn lives in view.8bs; this file never touches a pixel.
+//
+// States: IDLE (waiting for confirm) -> SPINNING (reels scrolling, stopping one
+// after another) -> PAYING (the winning lines flash) -> IDLE.
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { input } from "@8bitscript/input";
+import { random } from "@8bitscript/random";
+import { bank } from "@shared/bank.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { layout } from "@shared/layout.8bs";
+import { sound } from "@shared/sound.8bs";
+import { view } from "./view.8bs";
+import {
+    REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS,
+    LINE_COUNT, PAY_WIDTH, JACKPOT_DRAW_MASK,
+    STRIPS, BET_LEVELS, LINES, PAYS,
+    JACKPOT_SEED, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO
+} from "@generated/classic3x3.8bs";
+
+// The seed a person at the keyboard plays from; a headless run names its own, so
+// a screenshot reproduces the same spins on every machine (the test computes the
+// same draws in JavaScript).
+export const DEFAULT_SEED: usmallint = 2026;
+const START_CREDITS: usmallint = 2000;
+
+// Layout, in cells from the block's left edge (the machine is 13 cells wide).
+const BLOCK_WIDTH: utinyint = 13;
+const CREDIT_ROW: utinyint = 15;
+const BET_ROW: utinyint = 16;
+const WIN_ROW: utinyint = 17;
+const MESSAGE_ROW: utinyint = 19;
+const HINT_ROW: utinyint = 21;
+const NUMBER_COLUMN: utinyint = 8;
+
+let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying
+let betIndex: utinyint = 0;
+let multiplier: utinyint = 1;
+let targets: array<utinyint, 3>;
+let jackpotHit: bool = false;
+let lineWin: array<utinyint, 3>;
+let autoLeft: utinyint = 0;
+let idleFrames: utinyint = 0;
+let flashLeft: utinyint = 0;
+let flashWait: utinyint = 0;
+let stoppedReels: utinyint = 0;
+
+// The symbol a reel shows on `row` of the window when it rests on `stop`.
+function symbolAt(reel: utinyint, stop: utinyint, row: utinyint): utinyint {
+    return STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
+}
+
+function clearRow(row: utinyint): void {
+    text.print(layout.cell(1, row), "                    ");
+}
+
+// Six digits, as two adjacent fields of three (see shared/bank.8bs for why).
+function drawCredit(): void {
+    text.print(layout.cell(1, CREDIT_ROW), "CREDIT");
+    text.printNumber(layout.cell(NUMBER_COLUMN, CREDIT_ROW), bank.high(), 3);
+    text.printNumber(layout.cell(NUMBER_COLUMN + 3, CREDIT_ROW), bank.low(), 3);
+}
+
+function drawBet(): void {
+    text.print(layout.cell(1, BET_ROW), "BET");
+    text.printNumber(layout.cell(NUMBER_COLUMN, BET_ROW), 0, 3);
+    text.printNumber(layout.cell(NUMBER_COLUMN + 3, BET_ROW), BET_CREDITS * multiplier, 3);
+}
+
+function drawWin(): void {
+    text.print(layout.cell(1, WIN_ROW), "WIN");
+    text.printNumber(layout.cell(NUMBER_COLUMN, WIN_ROW), bank.winThousands(), 3);
+    text.printNumber(layout.cell(NUMBER_COLUMN + 3, WIN_ROW), bank.winUnits(), 3);
+}
+
+function message(which: utinyint): void {
+    clearRow(MESSAGE_ROW);
+    let at: usmallint = layout.cell(1, MESSAGE_ROW);
+    if (which == 1) {
+        text.print(at, "SPINNING");
+    } else if (which == 2) {
+        text.print(at, "WIN");
+    } else if (which == 3) {
+        text.print(at, "JACKPOT!");
+    } else if (which == 4) {
+        text.print(at, "NO WIN");
+    } else if (which == 5) {
+        text.print(at, "NEED CREDIT");
+    } else {
+        text.print(at, "PRESS CONFIRM");
+    }
+}
+
+function drawStatic(): void {
+    text.print(layout.cell(1, 1), "VEGAS NIGHTS");
+    text.print(layout.cell(1, 2), "SLOT 3X3");
+    text.print(layout.cell(1, HINT_ROW), "UP DOWN: BET");
+}
+
+// ---- play ----------------------------------------------------------------
+
+function setBet(index: utinyint): void {
+    betIndex = index;
+    multiplier = BET_LEVELS[index];
+    drawBet();
+}
+
+function startSpin(): void {
+    bank.take(BET_CREDITS * multiplier);
+    bank.clearWin();
+    // The draw plan, in the order tools/slotmath documents: one byte per
+    // reel (& STOP_MASK), then two for the jackpot (little-endian).
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let byte: utinyint = random.next();
+        targets[reel] = byte & STOP_MASK;
+        // Each reel runs at least six more symbols than the one before.
+        let minimum: usmallint = reel;
+        minimum = minimum + 1;
+        minimum = minimum * 144;
+        reelscroll.start(reel, targets[reel], minimum, STOPS);
+    }
+    let low: utinyint = random.next();
+    let high: utinyint = random.next();
+    let draw: usmallint = high;
+    draw = draw << 8;
+    draw = draw | low;
+    draw = draw & JACKPOT_DRAW_MASK;
+    jackpotHit = false;
+    if (draw >= JACKPOT_RANGE_FROM[0]) {
+        if (draw < JACKPOT_RANGE_TO[0]) {
+            if (multiplier >= JACKPOT_MIN_BET[0]) {
+                jackpotHit = true;
+            }
+        }
+    }
+    drawCredit();
+    drawWin();
+    message(1);
+    stoppedReels = 0;
+    state = 1;
+}
+
+// The pay of one line, in credits at the base bet: the longest run of one
+// symbol from the first reel, looked up in the paytable. Reels are at rest, so
+// each is on a whole stop.
+function linePay(line: utinyint): usmallint {
+    let first: utinyint = symbolAt(0, reelscroll.stop(0), LINES[line * REELS]);
+    let second: utinyint = symbolAt(1, reelscroll.stop(1), LINES[line * REELS + 1]);
+    let third: utinyint = symbolAt(2, reelscroll.stop(2), LINES[line * REELS + 2]);
+    let run: utinyint = 1;
+    if (second == first) {
+        run = 2;
+        if (third == first) {
+            run = 3;
+        }
+    }
+    return PAYS[first * PAY_WIDTH + run];
+}
+
+function settle(): void {
+    let base: usmallint = 0;
+    for (let line: utinyint = 0; line < LINE_COUNT; line++) {
+        let pay: usmallint = linePay(line);
+        lineWin[line] = 0;
+        if (pay != 0) {
+            lineWin[line] = 1;
+            base = bank.sum(base, pay);
+        }
+    }
+    // The win is the lines' credits times the bet, plus the jackpot's, in credits
+    // that are exact at every bet (the bank holds six digits).
+    for (let i: utinyint = 0; i < multiplier; i++) {
+        bank.addWin(base);
+        if (jackpotHit) {
+            bank.addWin(JACKPOT_SEED[0]);
+        }
+    }
+    bank.collect();
+    drawCredit();
+    drawWin();
+    flashLeft = 0;
+    if (jackpotHit) {
+        message(3);
+        sound.bonus();
+    } else if (bank.winning()) {
+        message(2);
+        sound.win();
+    } else {
+        message(4);
+    }
+    if (bank.winning()) {
+        flashLeft = 8;
+        flashWait = 0;
+        state = 2;
+    } else {
+        state = 0;
+        idleFrames = 0;
+    }
+}
+
+function frameSpinning(): void {
+    let any: bool = false;
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        let moved: utinyint = reelscroll.step(reel, STOPS);
+        if (moved != 0) {
+            view.moved(reel, moved);
+            sound.tick();
+            if (!reelscroll.moving(reel)) {
+                sound.stop();
+            }
+        }
+        if (reelscroll.moving(reel)) {
+            any = true;
+        }
+    }
+    if (!any) {
+        settle();
+    }
+}
+
+function framePaying(): void {
+    if (flashWait != 0) {
+        flashWait = flashWait - 1;
+        return;
+    }
+    if (flashLeft == 0) {
+        state = 0;
+        idleFrames = 0;
+        return;
+    }
+    flashLeft = flashLeft - 1;
+    flashWait = 7;
+    let lit: bool = (flashLeft & 1) != 0;
+    for (let line: utinyint = 0; line < LINE_COUNT; line++) {
+        if (lineWin[line] != 0) {
+            view.flashLine(line, lit);
+        }
+    }
+}
+
+function frameIdle(): void {
+    if (idleFrames < 255) {
+        idleFrames = idleFrames + 1;
+    }
+    let cost: usmallint = BET_CREDITS * multiplier;
+    let go: bool = false;
+    if (input.confirm()) {
+        go = true;
+    }
+    if (autoLeft != 0) {
+        if (idleFrames > 20) {
+            go = true;
+        }
+    }
+    if (input.up()) {
+        if (betIndex + 1 < 4) {
+            setBet(betIndex + 1);
+        }
+    }
+    if (input.down()) {
+        if (betIndex != 0) {
+            setBet(betIndex - 1);
+        }
+    }
+    if (go) {
+        if (!bank.canPay(cost)) {
+            // Out of credit: the lab reloads rather than ending the session.
+            bank.set(START_CREDITS);
+            drawCredit();
+            message(5);
+            idleFrames = 0;
+        } else {
+            if (autoLeft != 0) {
+                autoLeft = autoLeft - 1;
+            }
+            startSpin();
+        }
+    }
+}
+
+// Play forever from `seed`. `autoSpins` is the number of spins the machine takes
+// by itself right after it starts (0 for a person at the keyboard): headless
+// screenshots cannot press a key.
+export function play(autoSpins: utinyint, seed: usmallint): void {
+    screen.blank();
+    layout.centre(BLOCK_WIDTH);
+    random.seed(seed);
+    input.begin();
+    bank.set(START_CREDITS);
+    autoLeft = autoSpins;
+    for (let reel: utinyint = 0; reel < REELS; reel++) {
+        reelscroll.place(reel, 0);
+    }
+    view.begin();
+    drawStatic();
+    view.drawAll();
+    setBet(0);
+    drawCredit();
+    drawWin();
+    message(0);
+
+    while (true) {
+        waitFrame();
+        input.poll();
+        if (state == 1) {
+            frameSpinning();
+        } else if (state == 2) {
+            framePaying();
+        } else {
+            frameIdle();
+        }
+    }
+}

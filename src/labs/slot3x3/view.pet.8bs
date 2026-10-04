@@ -1,0 +1,25 @@
+// The reels on the PET: the quadrant composer (quad.8bs), in four-pixel steps, no colour.
+// The game calls only this interface; see view.8bs for what each function means.
+import { quad } from "./quad.8bs";
+
+export namespace view {
+    function begin(): void {
+        quad.begin();
+    }
+
+    function draw(reel: utinyint): void {
+        quad.draw(reel);
+    }
+
+    function drawAll(): void {
+        quad.drawAll();
+    }
+
+    function moved(reel: utinyint, pixels: utinyint): void {
+        quad.moved(reel, pixels);
+    }
+
+    function flashLine(line: utinyint, on: bool): void {
+        quad.flashLine(line, on);
+    }
+}

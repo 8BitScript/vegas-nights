@@ -1,0 +1,30 @@
+// Test support: the ten digits on row 10 of the block, and the fallback's six
+// symbols (three characters each, the web's reel text) on rows 2-7 — the
+// reference the screenshot test matches the machine's own digits and text cells
+// against, in its font and colours. (The pixel and quadrant machines need no
+// symbol reference: the test renders those pictures itself from the tile data.)
+import { screen } from "@8bitscript/screen";
+import { text, TextColor } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+
+const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
+const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
+const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
+
+export function main(): void {
+    screen.blank();
+    layout.centre(13);
+    for (let symbol: utinyint = 0; symbol < 6; symbol++) {
+        let at: usmallint = layout.cell(1, 2 + symbol);
+        text.putChar(at, GLYPH_LEFT[symbol]);
+        text.putChar(at + 1, GLYPH_MID[symbol]);
+        text.putChar(at + 2, GLYPH_RIGHT[symbol]);
+        text.putColor(at, TextColor.WHITE);
+        text.putColor(at + 1, TextColor.WHITE);
+        text.putColor(at + 2, TextColor.WHITE);
+    }
+    text.print(layout.cell(1, 10), "0123456789");
+    while (true) {
+        waitFrame();
+    }
+}

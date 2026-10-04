@@ -1,0 +1,120 @@
+// How a reel moves, in pixels. Replaces scroll.8bs's whole-symbol steps for
+// machines that can draw a reel at any pixel offset (see reelview).
+//
+// A reel's position is the strip pixel row at the top of its window, kept as
+// the symbol under that row (`stop`, 0..STOPS-1) and the row within it (`row`,
+// 0..SYMBOL_PIXELS-1). Scrolling down means that position counts DOWN. `start`
+// fixes the whole distance in advance so the last step lands exactly on the
+// drawn stop with row 0: the picture never decides the outcome, the draw does.
+//
+// A spin has three speeds: whole symbols at a time while far from the stop (a
+// blur, one redraw per step), then 8, 4 and finally 2 pixels a step as it eases
+// in, which is what the eye reads as a reel settling. Each step is a number of
+// pixels and a number of frames to wait before the next one, so a machine that
+// can only redraw one reel a frame still scrolls smoothly: reels start a frame
+// apart and step every third frame, one at a time.
+//
+// Up to five reels, so the 5x5 uses the same file.
+import { feel } from "@shared/feel.8bs";
+
+let stops: array<utinyint, 5>;
+let rows: array<utinyint, 5>;
+let remaining: array<usmallint, 5>;
+let waits: array<utinyint, 5>;
+let gaps: array<utinyint, 5>;
+
+export namespace reelscroll {
+    // Pixels of a symbol, and the frames between redraws of one reel.
+    const SYMBOL: utinyint = 24;
+
+    function place(reel: utinyint, stop: utinyint): void {
+        stops[reel] = stop;
+        rows[reel] = 0;
+        remaining[reel] = 0;
+        waits[reel] = reel;
+        gaps[reel] = 0;
+    }
+
+    function stop(reel: utinyint): utinyint {
+        return stops[reel];
+    }
+
+    function row(reel: utinyint): utinyint {
+        return rows[reel];
+    }
+
+    function moving(reel: utinyint): bool {
+        return remaining[reel] != 0;
+    }
+
+    // Start `reel` toward stop `target` on a strip of `count` stops: at least
+    // `minimum` pixels (a multiple of SYMBOL), then however many more it takes to
+    // land on the target. The reel is at rest when this is called (row 0).
+    function start(reel: utinyint, target: utinyint, minimum: usmallint, count: utinyint): void {
+        let around: usmallint = count;
+        around = around * 24;
+        let origin: usmallint = stops[reel];
+        origin = origin * 24;
+        let goal: usmallint = target;
+        goal = goal * 24;
+        // distance down the strip from `origin` to `goal`, wrapping
+        let extra: usmallint = origin + around;
+        extra = extra - goal;
+        while (extra >= around) {
+            extra = extra - around;
+        }
+        // …and enough more laps' worth to reach `minimum`
+        let total: usmallint = extra;
+        while (total < minimum) {
+            total = total + around;
+        }
+        remaining[reel] = total;
+        waits[reel] = reel;
+        gaps[reel] = 0;
+    }
+
+    // Call once a frame. Returns the pixels the reel moved down (0 if it did
+    // not move this frame); the caller redraws the reel when it is not 0.
+    //
+    // The schedule, by pixels still to go, is a blur far out and finer and finer in:
+    // feel.FAR pixels a redraw (at most 12 once fewer than eight symbols remain), 8
+    // within four symbols, 4 within one, and 2 for the last eight pixels — each
+    // boundary a multiple of the step before it, so the last step lands exactly on the
+    // stop. Between redraws a reel waits feel.WAIT frames (the machine's measured
+    // redraw budget), one more in the last steps so it settles.
+    function step(reel: utinyint, count: utinyint): utinyint {
+        if (remaining[reel] == 0) {
+            return 0;
+        }
+        if (waits[reel] != 0) {
+            waits[reel] = waits[reel] - 1;
+            return 0;
+        }
+        let left: usmallint = remaining[reel];
+        let pixels: utinyint = feel.FAR;
+        let wait: utinyint = feel.WAIT;
+        if (pixels > 12 && left <= 192) {
+            pixels = 12;
+        }
+        if (pixels > 8 && left <= 96) {
+            pixels = 8;
+        }
+        if (left <= 24) {
+            pixels = 4;
+        }
+        if (left <= 8) {
+            pixels = 2;
+            wait = feel.WAIT + 1;
+        }
+        // slide the window up the strip by `pixels`
+        let at: utinyint = rows[reel];
+        if (at < pixels) {
+            at = at + 24;
+            stops[reel] = (stops[reel] - 1) & (count - 1);
+        }
+        rows[reel] = at - pixels;
+        remaining[reel] = left - pixels;
+        waits[reel] = wait;
+        return pixels;
+    }
+}

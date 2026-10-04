@@ -1,0 +1,72 @@
+// The reel scroller: how a reel gets from where it is to where the draw says
+// it stops, one visible step at a time, and how it slows into the stop.
+//
+// A reel is a position on its strip: the stop shown on its top row. Scrolling
+// down means the position counts DOWN (the symbol that was one stop above the
+// top row arrives there, and every symbol moves a row down). `start` fixes
+// the number of steps in advance so that the last step lands exactly on the
+// drawn stop — the picture never decides the outcome, the draw does — and
+// each reel has a minimum so the reels stop one after another.
+//
+// Up to five reels, so the 5x5 lab uses the same file. The strip itself and
+// how a position is drawn belong to the game; this file only moves numbers.
+let positions: array<utinyint, 5>;
+let remaining: array<utinyint, 5>;
+let waits: array<utinyint, 5>;
+
+export namespace scroll {
+    // Frames between steps while a reel is at speed, and in the last steps
+    // of its run (it eases in: 2, 2, ..., 3, 4, 6 frames per step).
+    const FAST: utinyint = 2;
+
+    function place(reel: utinyint, position: utinyint): void {
+        positions[reel] = position;
+        remaining[reel] = 0;
+        waits[reel] = 0;
+    }
+
+    function position(reel: utinyint): utinyint {
+        return positions[reel];
+    }
+
+    function moving(reel: utinyint): bool {
+        return remaining[reel] != 0;
+    }
+
+    // Start `reel` toward stop `target` on a strip of mask + 1 stops. At
+    // least `minimum` steps, then however many more it takes to land on the
+    // target: steps ≡ position - target (mod stops), so counting down from
+    // the current position ends exactly there.
+    function start(reel: utinyint, target: utinyint, minimum: utinyint, mask: utinyint): void {
+        let extra: utinyint = positions[reel] - target;
+        extra = extra - minimum;
+        extra = extra & mask;
+        remaining[reel] = minimum + extra;
+        waits[reel] = 0;
+    }
+
+    // Call once a frame. True when the reel moved one stop this frame (the
+    // caller redraws it); the reel counts as stopped once `moving` is false.
+    function step(reel: utinyint, mask: utinyint): bool {
+        if (remaining[reel] == 0) {
+            return false;
+        }
+        if (waits[reel] != 0) {
+            waits[reel] = waits[reel] - 1;
+            return false;
+        }
+        positions[reel] = (positions[reel] - 1) & mask;
+        remaining[reel] = remaining[reel] - 1;
+        let left: utinyint = remaining[reel];
+        let gap: utinyint = scroll.FAST;
+        if (left == 1) {
+            gap = 6;
+        } else if (left == 2) {
+            gap = 4;
+        } else if (left == 3) {
+            gap = 3;
+        }
+        waits[reel] = gap - 1;
+        return true;
+    }
+}

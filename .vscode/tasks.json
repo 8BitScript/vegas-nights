@@ -32,8 +32,8 @@
       "id": "lab",
       "type": "pickString",
       "description": "Which lab?",
-      "options": ["hello-reels", "main"],
-      "default": "hello-reels"
+      "options": ["slot3x3", "hello-reels", "tile-test", "main"],
+      "default": "slot3x3"
     },
     {
       "id": "target",

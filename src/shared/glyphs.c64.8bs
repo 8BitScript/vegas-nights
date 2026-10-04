@@ -1,0 +1,266 @@
+// The C64's glyph layer: the character set the VIC-II draws text from is a copy
+// in RAM under the I/O area ($D000, @8bitscript/c64/charset), writable one byte
+// at a time while the I/O area is banked out. A reel draw writes hundreds of
+// bytes, so it brackets them with ONE open()/close() instead of paying the bank
+// switch per glyph the way charset.define does.
+//
+// Codes 128-255 are the upper-case set's reverse-video copies, which a program
+// that never prints reverse text is free to use; the reels take them.
+import { setupVideo, bankIoOut, bankIoIn } from "@8bitscript/c64";
+import { Video } from "@8bitscript/c64/video";
+
+// Where the tileset is staged for the assembly composer: $C000-$CFFF is plain RAM
+// on the C64, outside the video bank's screen, sprite shapes and character copy
+// and above any program this size. (A const array is not reachable from an
+// asm6502 block, and the compiler lowers no array parameters, so the bytes are
+// copied once to an address the block can name.)
+@address(0xC000)
+let tileBytes: array<utinyint, 1024>;
+
+// …and the reels' strips, a symbol number a stop, right after the tiles.
+@address(0xC400)
+let stripBytes: array<utinyint, 320>;
+
+export namespace glyphs {
+    const AVAILABLE: bool = true;
+    const FIRST: utinyint = 128;
+    const CODES: utinyint = 127;
+    const PORT: bool = false;
+    const PORT_ADDRESS: usmallint = 0;
+    const TILE_RAM: usmallint = 0xC000;
+    const STRIP_RAM: usmallint = 0xC400;
+
+    // The ROM-to-RAM character copy and the video mode must exist before the
+    // first glyph write; setupVideo() does both and is cheap when done.
+    function begin(): void {
+        setupVideo();
+    }
+
+    // @8bitscript/text keeps the mixed-case set selected ($D018 = MEMORY_POINTER_LOWERCASE:
+    // the second half of the character copy, +$0800), so that is the set whose
+    // glyphs the screen shows. (charset.define writes the other half; its header
+    // says the text package uses that one, which no longer matches text.8bs.)
+    function address(code: utinyint): usmallint {
+        let offset: usmallint = code;
+        offset = offset * 8;
+        return Video.CHARSET + 2048 + offset;
+    }
+
+    function seek(code: utinyint): void {
+    }
+
+    function stage(index: usmallint, value: utinyint): void {
+        tileBytes[index] = value;
+    }
+
+    function stageStrip(index: usmallint, value: utinyint): void {
+        stripBytes[index] = value;
+    }
+
+    // A whole reel window in one call: nine cell rows of three glyphs, composed
+    // from the staged tileset ($C000) according to the staged strip (`strip` is the
+    // address of this reel's stops, one symbol number a stop) at the pixel offset
+    // given by `stop` (the symbol on the window's top row) and `row` (the pixel row
+    // within it, 0-23). `dest` is the first of the reel's 27 consecutive glyphs'
+    // bytes; `mask` is the number of stops minus one (a power of two).
+    //
+    // Each cell row takes eight pixel rows of the strip from where it is: `run`
+    // bytes (8 - within) from the symbol cell it starts in, then `rest` (within)
+    // from the one below — the cell under it in the same symbol, or the first of
+    // the next symbol — for each of the three glyphs, whose sources are 8 bytes
+    // apart. The whole thing is ~6000 cycles; the same loop in compiled script was
+    // ~17000 and, before the copy was assembly, ~70000.
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+        let first: usmallint = 0;
+        let second: usmallint = 0;
+        let here: usmallint = 0;
+        let run: utinyint = 0;
+        let rest: utinyint = 0;
+        let band: utinyint = 0;
+        let left: utinyint = 0;
+        asm6502 {
+            lda #9
+            sta left
+        1:
+            ldy stop
+            lda (strip),y
+            asl a
+            asl a
+            asl a
+            sta band
+            sta here
+            lda #0
+            sta here+1
+            asl here
+            rol here+1
+            asl here
+            rol here+1
+            asl here
+            rol here+1
+            clc
+            lda here
+            adc band
+            sta here
+            bcc 2f
+            inc here+1
+        2:
+            lda row
+            and #7
+            sta rest
+            lda row
+            lsr a
+            lsr a
+            lsr a
+            sta band
+            asl a
+            asl a
+            asl a
+            sta first
+            lda band
+            asl a
+            asl a
+            asl a
+            asl a
+            clc
+            adc first
+            clc
+            adc rest
+            clc
+            adc here
+            sta first
+            lda here+1
+            adc #0
+            clc
+            adc #$C0
+            sta first+1
+            lda band
+            cmp #2
+            bcs 3f
+            sec
+            lda first
+            sbc rest
+            sta second
+            lda first+1
+            sbc #0
+            sta second+1
+            clc
+            lda second
+            adc #24
+            sta second
+            bcc 5f
+            inc second+1
+            jmp 5f
+        3:
+            lda stop
+            clc
+            adc #1
+            and mask
+            tay
+            lda (strip),y
+            asl a
+            asl a
+            asl a
+            sta band
+            sta second
+            lda #0
+            sta second+1
+            asl second
+            rol second+1
+            asl second
+            rol second+1
+            asl second
+            rol second+1
+            clc
+            lda second
+            adc band
+            sta second
+            bcc 4f
+            inc second+1
+        4:
+            clc
+            lda second+1
+            adc #$C0
+            sta second+1
+        5:
+            sec
+            lda second
+            sbc rest
+            sta second
+            lda second+1
+            sbc #0
+            sta second+1
+            lda #8
+            sec
+            sbc rest
+            sta run
+            ldx #3
+        6:
+            ldy #0
+        7:
+            lda (first),y
+            sta (dest),y
+            iny
+            cpy run
+            bne 7b
+            lda rest
+            beq 9f
+        8:
+            lda (second),y
+            sta (dest),y
+            iny
+            cpy #8
+            bne 8b
+        9:
+            clc
+            lda first
+            adc #8
+            sta first
+            bcc 10f
+            inc first+1
+        10:
+            clc
+            lda second
+            adc #8
+            sta second
+            bcc 11f
+            inc second+1
+        11:
+            clc
+            lda dest
+            adc #8
+            sta dest
+            bcc 12f
+            inc dest+1
+        12:
+            dex
+            bne 6b
+            clc
+            lda row
+            adc #8
+            sta row
+            cmp #24
+            bcc 13f
+            sec
+            sbc #24
+            sta row
+            lda stop
+            clc
+            adc #1
+            and mask
+            sta stop
+        13:
+            dec left
+            beq 14f
+            jmp 1b
+        14:
+        }
+    }
+
+    function open(): void {
+        bankIoOut();
+    }
+
+    function close(): void {
+        bankIoIn();
+    }
+}

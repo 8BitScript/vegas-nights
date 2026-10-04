@@ -1,0 +1,26 @@
+// Where things go on whatever text grid this machine has. The screen is 22
+// columns on the VIC-20, 40 on the PET and C64, wider on the X16 and the web:
+// a lab centres a block of known width and counts rows from the top.
+import { text } from "@8bitscript/text";
+
+let indent: utinyint = 0;
+
+export namespace layout {
+    // Centre a block `width` columns wide (or sit at the left edge if the
+    // grid is narrower than the block).
+    function centre(width: utinyint): void {
+        indent = 0;
+        if (text.COLUMNS > width) {
+            indent = (text.COLUMNS - width) >> 1;
+        }
+    }
+
+    // The cell `col` columns in from the block's left edge on text row `row`.
+    function cell(col: utinyint, row: utinyint): usmallint {
+        let at: usmallint = row;
+        at = at * text.COLUMNS;
+        at = at + indent;
+        at = at + col;
+        return at;
+    }
+}

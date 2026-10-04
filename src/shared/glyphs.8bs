@@ -1,0 +1,59 @@
+// The machine layer under the reel view: can this machine redefine character
+// glyphs while a program runs, and how are their bytes written?
+//
+// This base file is the answer "no": a lab that asks `glyphs.AVAILABLE` gets
+// false, the pixel reel view folds away entirely (a build costs nothing for what
+// it cannot use), and the lab draws its reels the fallback way — whole cells, in
+// the machine's own character set. A machine that can has a twin beside this
+// file (glyphs.c64.8bs, ...). The interface a twin answers:
+//
+//   AVAILABLE   true: glyphs can be redefined.
+//   FIRST       the first glyph code a reel may use (the lab maps its cells to
+//               FIRST + n and rewrites those glyphs' bytes as a reel scrolls).
+//   CODES       how many codes from FIRST are free to use.
+//   PORT        false: glyph bytes are memory-mapped, `address(code)` is where.
+//               true: bytes go to a write port that steps along by itself
+//               (the X16's VERA data register), after `seek(code)`.
+//   address(code)  where glyph `code`'s eight bytes live (memory-mapped only).
+//   seek(code)     point the write port at glyph `code` (port only).
+//   open() / close()  bracket a run of writes (the C64 banks its I/O area out).
+//   TILE_RAM / stage / composeRow  (memory-mapped machines with an assembly
+//                  composer): the tileset is staged byte by byte into RAM at
+//                  TILE_RAM once, and composeRow(first, second, dest, run, rest)
+//                  copies three glyphs' worth from there, `run` bytes from the
+//                  address `first` then `rest` from `second`, per glyph.
+//   begin()        once, before the first glyph write.
+export namespace glyphs {
+    const AVAILABLE: bool = false;
+    const FIRST: utinyint = 0;
+    const CODES: utinyint = 0;
+    const PORT: bool = false;
+    const PORT_ADDRESS: usmallint = 0;
+    const TILE_RAM: usmallint = 0;
+    const STRIP_RAM: usmallint = 0;
+
+    function begin(): void {
+    }
+
+    function address(code: utinyint): usmallint {
+        return 0;
+    }
+
+    function seek(code: utinyint): void {
+    }
+
+    function stage(index: usmallint, value: utinyint): void {
+    }
+
+    function stageStrip(index: usmallint, value: utinyint): void {
+    }
+
+    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint): void {
+    }
+
+    function open(): void {
+    }
+
+    function close(): void {
+    }
+}

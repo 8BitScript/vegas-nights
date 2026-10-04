@@ -1,0 +1,5 @@
+// The web redraws in the runtime: every reel, every frame, 8 pixels each.
+export namespace feel {
+    const WAIT: utinyint = 0;
+    const FAR: utinyint = 8;
+}

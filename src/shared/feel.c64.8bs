@@ -1,0 +1,6 @@
+// The C64 redraws a reel in ~0.6 of a frame (assembly composer), so three reels fit
+// in two frames: a reel moves 12 pixels every second frame, 6 pixels a frame.
+export namespace feel {
+    const WAIT: utinyint = 1;
+    const FAR: utinyint = 12;
+}
