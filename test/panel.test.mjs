@@ -1,9 +1,8 @@
 // The panel's layout, from the sources: one blank row between the frame and the first line of text under it, no
 // message that repeats a label, no message too long for its row. (The on-screen half, which reads the pixels, is in
-// machines.test.mjs and slot5x5.machines.test.mjs.) Two 5x5 layouts have no spare row, and are listed, not skipped
-// silently: the VIC-20's (22 columns and 23 rows hold the frame, 17 rows, and six panel lines), and the PET's, whose
-// bonus banner prints on row 23, the row a panel one lower would end on (the PET and web 5x5 move their panel into
-// the margin beside a bigger block in the next change, which removes the exception).
+// machines.test.mjs and slot5x5.machines.test.mjs.) One layout has no spare row, and is listed, not skipped
+// silently: the VIC-20's 5x5 (22 columns and 23 rows hold the frame, 17 rows, and six panel lines). The PET's and the
+// web's 5x5 put the panel in the margin beside the block, where it needs no gap.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,7 +10,7 @@ import { frame, panelRows, messages, blockWidth, panelBeside } from './support/g
 import { labConsts } from './support/table.mjs';
 
 const MACHINES = ['pet', 'vic20', 'c64', 'cx16', 'web'];
-const NO_SPARE_ROW = new Set(['slot5x5/vic20', 'slot5x5/pet']);
+const NO_SPARE_ROW = new Set(['slot5x5/vic20']);
 const LABELS = ['CREDIT', 'BET', 'WIN', 'CR', 'FS', 'MI', 'MN', 'MJ', 'GR'];
 
 for (const lab of ['slot3x3', 'slot5x5']) {
