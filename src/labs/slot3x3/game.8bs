@@ -47,6 +47,7 @@ let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying
 let betIndex: utinyint = 0;
 let multiplier: utinyint = 1;
 let targets: array<utinyint, 3>;
+let seen: array<utinyint, 3>;     // the symbol each reel was on a frame ago: a tick is a change of it
 let jackpotHit: bool = false;
 let lineWin: array<utinyint, 3>;
 let autoLeft: utinyint = 0;
@@ -101,6 +102,21 @@ function message(which: utinyint): void {
     }
 }
 
+// The volume setting (the cancel key cycles it), where the machine's view has room for it.
+function drawVolume(): void {
+    if (view.VOLUME) {
+        let at: usmallint = layout.cell(view.VOLUME_COL, view.VOLUME_ROW);
+        let level: utinyint = sound.volume();
+        if (level == 0) {
+            text.print(at, "VOL OFF");
+        } else if (level == 1) {
+            text.print(at, "VOL LOW");
+        } else {
+            text.print(at, "VOL MID");
+        }
+    }
+}
+
 // ---- play ----------------------------------------------------------------
 
 function setBet(index: utinyint): void {
@@ -122,6 +138,7 @@ function startSpin(): void {
         minimum = minimum + 1;
         minimum = minimum * (symbolpx.CELLS_H * 48);
         reelscroll.start(reel, targets[reel], minimum, STOPS);
+        seen[reel] = reelscroll.stop(reel);
     }
     let low: utinyint = random.next();
     let high: utinyint = random.next();
@@ -185,7 +202,7 @@ function settle(): void {
     flashLeft = 0;
     if (jackpotHit) {
         message(3);
-        sound.bonus();
+        sound.jackpot();
     } else if (bank.winning()) {
         message(2);
         // A pay of twenty times the bet or more (the engine's credits at the base bet) is big.
@@ -210,13 +227,18 @@ function settle(): void {
 
 function frameSpinning(): void {
     let any: bool = false;
-    let stepped: bool = false;
+    let crossed: bool = false;
     let stopped: bool = false;
     for (let reel: utinyint = 0; reel < REELS; reel++) {
         let moved: utinyint = reelscroll.step(reel, STOPS);
         if (moved != 0) {
             view.moved(reel, moved);
-            stepped = true;
+            // A tick is a symbol going by: the reel's symbol changed, not just its pixels.
+            let now: utinyint = reelscroll.stop(reel);
+            if (now != seen[reel]) {
+                seen[reel] = now;
+                crossed = true;
+            }
             if (!reelscroll.moving(reel)) {
                 stopped = true;
             }
@@ -228,18 +250,18 @@ function frameSpinning(): void {
     // The reels that moved were composed out of sight; show them all at once (nothing on a machine
     // that draws straight to the screen).
     view.flush();
-    // One sound a frame: a reel coming to rest outranks the ticking (a new
-    // effect cuts the old one off), and three reels ticking at once is one tick.
-    // The frame the last reel rests settles the spin, and the result has its own
-    // sound (a pay's jingle, or the stop itself for a loss), so no stop is struck
-    // under it: a second tone started over the first on the SID would not retrigger.
+    // One sound a frame: a reel coming to rest outranks the ticking, and three reels
+    // passing a symbol at once is one tick (sfx.8bs lets no tick through more than
+    // every few frames, and none over something more important). The frame the last
+    // reel rests settles the spin, and the result has its own sound (a pay's jingle,
+    // or the stop itself for a loss), so no stop is struck under it.
     if (!any) {
         // Both copies of the glyphs alike and the text package's copy on the screen, before it prints.
         view.sync();
         settle();
     } else if (stopped) {
         sound.stop();
-    } else if (stepped) {
+    } else if (crossed) {
         sound.tick();
     }
 }
@@ -320,6 +342,7 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
     }
     view.begin();
     view.statics();
+    drawVolume();
     view.drawAll();
     setBet(0);
     drawCredit();
@@ -337,8 +360,11 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
             }
             input.poll();
             sound.update();
-            if (input.cancel()) {
-                sound.toggle();
+            // The volume key is read between spins: on the C64 the text package prints to the home copy of
+            // the glyphs, which is not the one on the screen while the reels are composed out of sight.
+            if (state != 1 && input.cancel()) {
+                sound.cycle();
+                drawVolume();
             }
             if (state == 1) {
                 frameSpinning();

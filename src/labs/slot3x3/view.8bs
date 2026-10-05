@@ -79,6 +79,10 @@ export namespace view {
     const MESSAGE_ROW: utinyint = block.MESSAGE;
     const MESSAGE_COL: utinyint = 1;
     const MESSAGE_WIDTH: utinyint = 20;
+    // Where the volume setting goes (beside "SLOT 3X3").
+    const VOLUME: bool = true;
+    const VOLUME_COL: utinyint = 10;
+    const VOLUME_ROW: utinyint = 2;
 
     // The words that never change: the title, the labels of the three numbers and the key hint.
     function statics(): void {
