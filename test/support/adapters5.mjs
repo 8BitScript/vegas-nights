@@ -5,6 +5,8 @@
 // build the reel from quadrant blocks (PET, VIC-20, web: 24 pixels, six rows a symbol).
 import { loadFile, loadTable } from './table.mjs';
 import { nibbleOf, quadCell } from './adapters.mjs';
+import { quadAdapter as tableQuadAdapter } from './quadadapter.mjs';
+import { labConsts } from './table.mjs';
 
 const table = loadTable('grid5x5');
 const c = table.consts;
@@ -12,8 +14,8 @@ const a = table.arrays;
 
 export const KIND = { pet: 'quad', vic20: 'quad', web: 'quad', c64: 'pixel', cx16: 'pixel', c64web: 'pixel' };
 
-// Where the game puts the window's first row (src/labs/slot5x5/view.8bs, view.pet.8bs).
-export const TOP = (machine) => (KIND[machine] === 'pixel' ? 3 : 1);
+// Where the game puts the window's first row (src/labs/slot5x5/view.8bs; geometry*.8bs for the quadrant machines).
+export const TOP = (machine) => labConsts('slot5x5', machine).TOP;
 
 export function pixelAdapter(machine) {
   const bitmap = loadFile(machine === 'cx16' ? 'tiles/cosmic.cx16.8bs' : 'tiles/cosmic.8bs').arrays.SYMBOL_BITMAP;
@@ -50,7 +52,15 @@ export function pixelAdapter(machine) {
   };
 }
 
+/**
+ * The PET and the web draw the 5x5 from the table-driven quadrant composer (labs/slot5x5/quad.8bs), whose picture is the
+ * generated tables decoded back to pseudo-pixels (quadadapter.mjs); the VIC-20 keeps the compact original, which composes
+ * from the symbols' 6x6 pseudo-pixels (cosmic.pet.8bs).
+ */
 export function quadAdapter(machine) {
+  if (machine !== 'vic20') {
+    return tableQuadAdapter({ table, tiles: machine === 'web' ? 'tiles/cosmic.quad.web.8bs' : 'tiles/cosmic.quad.8bs', web: machine === 'web', top: TOP(machine) });
+  }
   const pixels = loadFile('tiles/cosmic.pet.8bs').arrays.SYMBOL_PIXELS;
   const R = 6; // pseudo-pixel rows in a symbol
   const rowAt = (reel, at) => pixels[a.STRIPS[reel * c.STOPS + (Math.floor(at / R) % c.STOPS)] * R + (at % R)];

@@ -6,7 +6,8 @@
 // the margin beside a bigger block in the next change, which removes the exception).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { frame, panelRows, messages } from './support/geometry.mjs';
+import { readFileSync } from 'node:fs';
+import { frame, panelRows, messages, blockWidth, panelBeside } from './support/geometry.mjs';
 import { labConsts } from './support/table.mjs';
 
 const MACHINES = ['pet', 'vic20', 'c64', 'cx16', 'web'];
@@ -18,6 +19,12 @@ for (const lab of ['slot3x3', 'slot5x5']) {
     for (const machine of MACHINES) {
       test(`${machine}: a blank row under the frame, then the panel`, { skip: NO_SPARE_ROW.has(`${lab}/${machine}`) }, () => {
         const f = frame(lab, machine);
+        if (panelBeside(lab, machine)) {
+          // in the margin beside the block: a blank column between them, and every line inside the frame's rows
+          const v = labConsts(lab, machine);
+          assert.ok(v.PANEL_COL >= blockWidth(lab, machine) + 1, `the panel (column ${v.PANEL_COL}) is against the block (${blockWidth(lab, machine)} wide)`);
+          assert.ok(v.PANEL > f.top && v.PANEL <= f.bottom, `the panel starts on row ${v.PANEL}, outside the frame (${f.top}-${f.bottom})`);
+        }
         for (const row of panelRows(lab, machine)) {
           // a line above the frame (the VIC-20's win and message) may sit against its top border; one below needs a gap
           assert.ok(row < f.top || row >= f.bottom + 2, `row ${row} is against the frame (its bottom border is row ${f.bottom})`);
@@ -30,7 +37,8 @@ for (const lab of ['slot3x3', 'slot5x5']) {
       assert.ok(all.length >= 6, 'the message function was not found');
       for (const m of all) assert.ok(!LABELS.includes(m), `the message "${m}" is also a label on the panel`);
       for (const machine of MACHINES) {
-        const width = lab === 'slot3x3' ? (labConsts(lab, machine).MESSAGE_WIDTH ?? 20) : 21;
+        const game = Object.fromEntries([...readFileSync(new URL(`../src/labs/${lab}/game.8bs`, import.meta.url), 'utf8').matchAll(/^const (\w+): u(?:tiny|small)int = (\d+);/gm)].map((x) => [x[1], Number(x[2])]));
+        const width = lab === 'slot3x3' ? (labConsts(lab, machine).MESSAGE_WIDTH ?? 20) : (panelBeside(lab, machine) ? game.STACK_MESSAGE_WIDTH : 21);
         // the VIC-20's 3x3 message shares its row with the win: 11 columns
         for (const m of all) assert.ok(m.length <= width, `"${m}" is ${m.length} columns; ${machine}'s message row holds ${width}`);
       }

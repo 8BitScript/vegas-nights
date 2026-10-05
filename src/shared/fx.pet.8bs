@@ -2,15 +2,14 @@
 // is made of what the screen map can say: the ROM's solid, shade and quarter-block characters and
 // its reverse video, from const tables, in cells the game never reads.
 //
-//   * Marquee. A ring of dots runs round the edge of the screen (the left and right edges, the
-//     bottom row, and the top row beside the machine) and four comets (a solid block, then a
+//   * Marquee. A ring of dots runs round the edge of the screen (the top and bottom rows and the
+//     left and right columns: the 5x5 block and its panel leave all four free) and four comets (a solid block, then a
 //     shade, then back to a dot) chase round it, one cell every four frames each, a different
 //     comet on every frame. This is the whole of the motion in the margins: the first version
 //     also dropped six `$` coins down the margins and blinked eight `*` stars on and off, and in
 //     the motion strips (docs/fx-brief.md) those isolated single characters appearing and
 //     vanishing at scattered cells read as screen noise, not as confetti. A smooth chase is
 //     the one thing here that reads as intentional, so it is the one thing left.
-//   * Cabinet sides. A strip of shade blocks runs down both sides of the machine, drawn once.
 //   * Banner. There is no title row on the PET (view.TITLE is false), so "-- FREE SPINS --"
 //     goes on the free row under the panel (row 23), and a block of reverse video scans along
 //     it, a cell every fourth frame.
@@ -23,11 +22,11 @@
 // the reels would turn their block graphics into letters. So RASTER here is not
 // #fact(video.raster): it is true on every PET, because frame() does something on all of them.
 //
-// What it touches, and puts back. Only cells outside the machine: the margins (columns before
-// the block and after it), the top row beside the block, the bottom row, and row 23. The block
-// is rows 0-16 and the panel rows 17-22, in the 21 columns layout.centre() chose; neither the
-// reels, the frame, the panel digits nor the meters are written here. end() puts a space in
-// every cell begin() and frame() can have written.
+// What it touches, and puts back. Only cells outside the machine: the screen's four edges (rows 0
+// and 24, columns 0 and COLUMNS - 1) and row 23. The block is rows 1-22 and the panel the eleven
+// columns beside it (labs/slot5x5/geometry.8bs, centred by layout.centre()); neither the reels,
+// the frame, the panel digits nor the meters are written here. end() puts a space in every cell
+// begin() and frame() can have written.
 //
 // Cost. The PET has almost no time to spare: the quadrant composer that redraws the reels takes
 // most of a frame, and any work added to a frame that is already near the limit costs a whole
@@ -41,7 +40,6 @@
 
 import { text } from "@8bitscript/text";
 import { cells } from "@shared/cells.8bs";
-import { layout } from "@shared/layout.8bs";
 
 // Screen codes. The game runs in the PET's text set (upper and lower case), where the letters
 // are 1-26 for lower case and 65-90 for capitals; the codes below read the same in both sets.
@@ -51,11 +49,8 @@ const DOT: utinyint = 46;
 const SHADE: utinyint = 102;
 const BULB: utinyint = 160;
 
-// The ring has 2 * columns + 25 places once the 21 columns of the machine are taken out of the
-// top row: 105 on a 40-column PET, 185 on an 80-column one. An array length cannot be an
-// expression, so the table is the 80-column size on both (160 zero bytes in the 40-column image).
-const SIDE_FIRST_ROW: utinyint = 1;
-const SIDE_ROWS: utinyint = 22;
+// The ring is the screen's edge: 2 * columns + 46 places, 126 on a 40-column PET and 206 on an 80-column
+// one. An array length cannot be an expression, so the tables are the 80-column size on both.
 
 const COMET_COUNT: utinyint = 4;
 const BANNER_LEN: utinyint = 16;
@@ -66,19 +61,16 @@ const LAST_ROW: utinyint = 24;
 // reverse video.
 const BANNER: array<utinyint, 16> = [45, 45, 32, 70, 82, 69, 69, 32, 83, 80, 73, 78, 83, 32, 45, 45];
 
-let indent: utinyint = 0;       // the block's left column
 let pathLength: utinyint = 0;   // cells in the marquee ring
 let head: array<utinyint, 4>;   // each comet's head, as a place on the ring
-// The screen offset of each place on the ring, as two tables of 16-bit offsets of 93 places
-// each: a single table of 185 offsets is 370 bytes, and the 6502 backend indexes one with an
+// The screen offset of each place on the ring, as two tables of 16-bit offsets of 103 places
+// each: a single table of 206 offsets is 412 bytes, and the 6502 backend indexes one with an
 // 8-bit index register, so on an 80-column PET every place from the 128th would land on top of
-// one of the first 57. (The 40-column ring has 105 places, so its second table holds 12.)
-const RING_HALF: utinyint = 93;
-let ringFirst: array<usmallint, 93>;
-let ringSecond: array<usmallint, 92>;
+// one of the first 78. (The 40-column ring has 126 places, so its second table holds 23.)
+const RING_HALF: utinyint = 103;
+let ringFirst: array<usmallint, 103>;
+let ringSecond: array<usmallint, 103>;
 let bannerAt: usmallint = 0;    // the first cell of the banner
-let sideLeft: usmallint = 0;    // the first cell of the strip beside the machine's left, and ...
-let sideRight: usmallint = 0;   // ... of its right
 let bannerPos: utinyint = 0;    // the banner cell in reverse video
 
 // The offset of the cell `row`, `col`. A multiply: begin() only.
@@ -87,15 +79,6 @@ function at(row: utinyint, col: utinyint): usmallint {
     a = a * text.COLUMNS;
     a = a + col;
     return a;
-}
-
-// A margin cell: `offset` columns from the left edge, or from the right edge when `right` is 1.
-function margin(row: utinyint, offset: utinyint, right: utinyint): usmallint {
-    let col: utinyint = offset;
-    if (right == 1) {
-        col = text.COLUMNS - 1 - offset;
-    }
-    return at(row, col);
 }
 
 // The screen offset of place `i` on the ring.
@@ -114,43 +97,36 @@ function setRing(n: utinyint, a: usmallint): void {
     }
 }
 
-// Lay the marquee ring out in the ring tables, by adding and subtracting only. It starts on the top row at
-// the cell beside the machine and goes left, then down the left edge, along the bottom row, up the
-// right edge and left again along the top row to the machine's right-hand side.
+// Lay the marquee ring out in the ring tables, by adding and subtracting only. It starts in the top
+// left corner and runs right along the top row, down the right column, left along the bottom row and up
+// the left column.
 function layRing(): void {
     let n: utinyint = 0;
-    let a: usmallint = indent;
-    a = a - 1;
-    for (let i: utinyint = 0; i < indent; i++) {
+    let a: usmallint = 0;
+    for (let i: utinyint = 0; i < text.COLUMNS; i++) {
         setRing(n, a);
-        a = a - 1;
+        a = a + 1;
         n = n + 1;
     }
-    a = text.COLUMNS;
+    a = a - 1;
+    a = a + text.COLUMNS;
     for (let i: utinyint = 0; i < LAST_ROW; i++) {
         setRing(n, a);
         a = a + text.COLUMNS;
         n = n + 1;
     }
     a = a - text.COLUMNS;
-    a = a + 1;
+    a = a - 1;
     for (let i: utinyint = 1; i < text.COLUMNS; i++) {
         setRing(n, a);
-        a = a + 1;
+        a = a - 1;
         n = n + 1;
     }
+    a = a + 1;
     a = a - text.COLUMNS;
-    a = a - 1;
-    for (let i: utinyint = 0; i < LAST_ROW; i++) {
+    for (let i: utinyint = 1; i < LAST_ROW; i++) {
         setRing(n, a);
         a = a - text.COLUMNS;
-        n = n + 1;
-    }
-    a = text.COLUMNS;
-    a = a - 2;
-    for (let i: utinyint = indent + 21; i < text.COLUMNS - 1; i++) {
-        setRing(n, a);
-        a = a - 1;
         n = n + 1;
     }
     pathLength = n;
@@ -177,18 +153,6 @@ function drawBanner(): void {
     }
 }
 
-// The strips beside the machine: `code` down SIDE_ROWS cells each.
-function drawSides(code: utinyint): void {
-    let left: usmallint = sideLeft;
-    let right: usmallint = sideRight;
-    for (let i: utinyint = 0; i < SIDE_ROWS; i++) {
-        cells.put(left, code);
-        cells.put(right, code);
-        left = left + text.COLUMNS;
-        right = right + text.COLUMNS;
-    }
-}
-
 // One comet moves on a place: a new head, the old head becomes shade, the old shade a dot.
 function stepComet(k: utinyint): void {
     let was: utinyint = head[k];
@@ -203,9 +167,7 @@ export namespace fx {
     const RASTER: bool = true;
 
     function begin(): void {
-        // The block is the 21 columns layout.centre() put at `indent`; the ring runs outside it.
-        let left: usmallint = layout.cell(0, 0);
-        indent = left;
+        // The block and its panel are inside the screen's edge; the ring runs along the edge itself.
         layRing();
         for (let i: utinyint = 0; i < pathLength; i++) {
             cells.put(ringCell(i), DOT);
@@ -215,9 +177,6 @@ export namespace fx {
             cells.put(ringCell(head[k]), BULB);
             cells.put(ringCell(wrapPrevious(head[k])), SHADE);
         }
-        sideLeft = at(SIDE_FIRST_ROW, indent - 1);
-        sideRight = at(SIDE_FIRST_ROW, indent + 21);
-        drawSides(SHADE);
         bannerAt = at(BANNER_ROW, (text.COLUMNS - BANNER_LEN) >> 1);
         bannerPos = 0;
         drawBanner();
@@ -245,6 +204,5 @@ export namespace fx {
         for (let k: utinyint = 0; k < BANNER_LEN; k++) {
             cells.put(bannerAt + k, BLANK);
         }
-        drawSides(BLANK);
     }
 }
