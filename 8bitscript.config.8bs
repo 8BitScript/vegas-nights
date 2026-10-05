@@ -49,13 +49,17 @@ export default {
   imports: {
     '@shared': 'src/shared',
     '@generated': 'src/generated',
+    '@assets': 'assets',
   },
   // The five machines this release of 8BitScript builds for. The PET is the
-  // 32K 4032 and the VIC-20 the 8K expansion: the smaller stock machines are
-  // below what a lab needs (PET 2001 has 4K; the unexpanded VIC-20 about 3.5K).
+  // 32K 4032 and the VIC-20 the 16K expansion: the smaller stock machines are
+  // below what a lab needs (PET 2001 has 4K; the unexpanded VIC-20 about 3.5K), and the 5x5
+  // with its composed sounds is about 12.9 KB of program, past what the 8K expansion holds.
   targets: {
-    pet: { hardware: { model: '4032', ram: '32' } },
-    vic20: { hardware: { ram: '8k' } },
+    // The 4032 has its speaker built in; the catalog's default for the option is none, which would
+    // leave the PET silent (a .8ba song is omitted, 8BS2211, on a build with no speaker).
+    pet: { hardware: { model: '4032', ram: '32', speaker: 'attached' } },
+    vic20: { hardware: { ram: '16k' } },
     c64: {},
     cx16: {},
     web: {},

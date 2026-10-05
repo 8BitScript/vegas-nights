@@ -1,59 +1,54 @@
-// The game's sound hooks: the game calls these at the moments that should be
-// heard, and they play the effects in sfx.8bs through @8bitscript/audio's
-// `audio.tone` (the SID, the VIC-I, the PET's speaker, the X16's PSG, the web's
-// oscillator). On a machine with no sound driver `audio.NOTE_HIGH` is 0 and
-// every call folds to nothing, so a silent machine pays no bytes.
+// The game's sound hooks: the game calls these at the moments that should be heard, and
+// src/shared/sfx.8bs decides what plays (the sounds themselves are composed in
+// assets/audio/classic.8ba). On a machine with no sound driver every call folds to nothing.
 //
-//   tick    the reels moved a step (at most once a frame)
-//   stop    a reel came to rest
-//   win     a spin paid
-//   big     a spin paid a lot
-//   bonus   a jackpot or bonus
-//   update  once a frame, from the game loop
-//   toggle  mute / unmute (the cancel key)
+//   tick      a reel passed a symbol (the game calls it only when a reel's symbol changes)
+//   stop      a reel came to rest
+//   win       a spin paid          big   a spin paid a lot          jackpot   the jackpot
+//   bonus     the bonus round begins          over   ...and ends
+//   update    once a frame, from the game loop
+//   cycle     the volume key: off -> low -> normal -> off
+//   volume    0 off, 1 low, 2 normal (what the panel shows)
 import { sfx } from "./sfx.8bs";
-
-let muted: bool = false;
 
 export namespace sound {
     function tick(): void {
-        if (!muted) {
-            sfx.tick();
-        }
+        sfx.tick();
     }
 
     function stop(): void {
-        if (!muted) {
-            sfx.stop();
-        }
+        sfx.stop();
     }
 
     function win(): void {
-        if (!muted) {
-            sfx.win();
-        }
+        sfx.win();
     }
 
     function big(): void {
-        if (!muted) {
-            sfx.big();
-        }
+        sfx.big();
+    }
+
+    function jackpot(): void {
+        sfx.jackpot();
     }
 
     function bonus(): void {
-        if (!muted) {
-            sfx.bonus();
-        }
+        sfx.bonus();
+    }
+
+    function over(): void {
+        sfx.over();
     }
 
     function update(): void {
         sfx.update();
     }
 
-    function toggle(): void {
-        muted = !muted;
-        if (muted) {
-            sfx.silence();
-        }
+    function cycle(): void {
+        sfx.cycle();
+    }
+
+    function volume(): utinyint {
+        return sfx.volume();
     }
 }

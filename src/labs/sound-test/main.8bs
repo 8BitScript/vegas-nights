@@ -1,17 +1,17 @@
-// sound-test — plays each of the slot machines' sounds when you press a key,
-// so the sound subsystem can be heard (or measured) on every machine before a
-// slot machine depends on it.
+// sound-test — plays each of the slot machines' sounds (the seven songs composed in
+// assets/audio/classic.8ba) when you press a key, so they can be heard, or measured, on every
+// machine.
 //
-// Up and down choose the effect, confirm plays it. It also plays all five once,
-// a second after it starts, because a headless run cannot press anything:
-// scripts/sound.mjs records that run's audio and checks each effect's notes.
+// Up and down choose the effect, confirm plays it, cancel cycles the volume (off, low, normal).
+// It also plays all seven once, a second after it starts, because a headless run cannot press
+// anything: scripts/sound.mjs records that run's audio and checks each effect's notes.
 import { screen } from "@8bitscript/screen";
 import { text } from "@8bitscript/text";
 import { input } from "@8bitscript/input";
 import { sfx } from "@shared/sfx.8bs";
 
 const ROW: usmallint = text.COLUMNS;
-const EFFECTS: utinyint = 5;
+const EFFECTS: utinyint = 7;
 
 // The first menu row; the entries are two rows apart.
 const FIRST_ROW: utinyint = 6;
@@ -45,14 +45,21 @@ function play(): void {
         sfx.win();
     } else if (chosen == 3) {
         sfx.big();
-    } else {
+    } else if (chosen == 4) {
+        sfx.jackpot();
+    } else if (chosen == 5) {
         sfx.bonus();
+    } else {
+        sfx.over();
     }
 }
 
 export function main(): void {
     screen.blank();
     input.begin();
+    // The games start at LOW; this lab is for hearing and measuring everything, ticks included
+    // (a one-bit speaker plays no ticks at LOW), so it starts at NORMAL.
+    sfx.cycle();
 
     text.print(2 * ROW + 1, "SOUND TEST");
     text.print(4 * ROW + 1, "UP DOWN CONFIRM");
@@ -60,11 +67,13 @@ export function main(): void {
     text.print((FIRST_ROW + 2) * ROW + 3, "STOP");
     text.print((FIRST_ROW + 4) * ROW + 3, "WIN");
     text.print((FIRST_ROW + 6) * ROW + 3, "BIG WIN");
-    text.print((FIRST_ROW + 8) * ROW + 3, "BONUS");
+    text.print((FIRST_ROW + 8) * ROW + 3, "JACKPOT");
+    text.print((FIRST_ROW + 10) * ROW + 3, "BONUS");
+    text.print((FIRST_ROW + 12) * ROW + 3, "OVER");
     mark();
 
     // Each effect once at the start, 40 frames apart, so a recording of a
-    // run that presses nothing hears all five. Then the keys take over.
+    // run that presses nothing hears all seven. Then the keys take over.
     let demo: utinyint = 0;
     let wait: utinyint = 60;
 
@@ -96,6 +105,9 @@ export function main(): void {
         }
         if (input.confirm()) {
             play();
+        }
+        if (input.cancel()) {
+            sfx.cycle();
         }
     }
 }

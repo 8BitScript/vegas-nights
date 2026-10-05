@@ -68,6 +68,7 @@ let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying, 3 waiting for th
 let betIndex: utinyint = 0;
 let multiplier: utinyint = 1;
 let targets: array<utinyint, 5>;
+let seen: array<utinyint, 5>;        // the symbol each reel was on a frame ago: a tick is a change of it
 let grid: array<utinyint, 25>;       // grid[reel * 5 + row]: the symbol on screen
 let rowMask: array<utinyint, 5>;     // per reel, the symbol rows that took part in a win
 let scatters: utinyint = 0;
@@ -172,10 +173,27 @@ function drawJackpots(): void {
     drawMeter(14, JACKPOT_ROW + 1, purse.GRAND);
 }
 
+// The volume setting (the cancel key cycles it), beside the title, where the machine has a row
+// above the frame for one.
+function drawVolume(): void {
+    if (view.TITLE) {
+        let at: usmallint = layout.cell(11, 1);
+        let level: utinyint = sound.volume();
+        if (level == 0) {
+            text.print(at, "VOL OFF");
+        } else if (level == 1) {
+            text.print(at, "VOL LOW");
+        } else {
+            text.print(at, "VOL MID");
+        }
+    }
+}
+
 function drawStatic(): void {
     if (view.TITLE) {
         text.print(layout.cell(0, 0), "VEGAS NIGHTS");
         text.print(layout.cell(0, 1), "COSMIC 5X5");
+        drawVolume();
     }
 }
 
@@ -235,6 +253,7 @@ function startSpin(free: bool): void {
             minimum = minimum * 144;
         }
         spin.start(reel, targets[reel], minimum, STOPS);
+        seen[reel] = spin.stop(reel);
     }
     jackpotHit = 255;
     if (!free) {
@@ -399,13 +418,21 @@ function settle(): void {
     flashLeft = 0;
     if (jackpotHit != 255) {
         message(3);
-        sound.bonus();
+        sound.jackpot();
     } else if (started) {
         message(6);
         sound.bonus();
     } else if (!purse.isZero(purse.WIN)) {
         message(2);
-        sound.win();
+        // A pay of twenty bets or more is a big one.
+        let bigAt: usmallint = BET_CREDITS;
+        bigAt = bigAt * multiplier;
+        bigAt = bigAt * 20;
+        if (purse.canPay(purse.WIN, bigAt)) {
+            sound.big();
+        } else {
+            sound.win();
+        }
     } else if (!inBonus) {
         message(4);
     }
@@ -430,6 +457,7 @@ function finishSpin(): void {
             banner(false);
             fx.end();
             message(7);
+            sound.over();
             drawFree();
             drawWin(purse.SESSION);
             view.unpulse();
@@ -444,21 +472,35 @@ function finishSpin(): void {
 
 function frameSpinning(): void {
     let any: bool = false;
+    let crossed: bool = false;
+    let stopped: bool = false;
     for (let reel: utinyint = 0; reel < REELS; reel++) {
         let moved: utinyint = spin.step(reel, STOPS);
         if (moved != 0) {
             view.moved(reel, moved);
-            sound.tick();
+            // A tick is a symbol going by: the reel's symbol changed, not just its pixels.
+            let now: utinyint = spin.stop(reel);
+            if (now != seen[reel]) {
+                seen[reel] = now;
+                crossed = true;
+            }
             if (!spin.moving(reel)) {
-                sound.stop();
+                stopped = true;
             }
         }
         if (spin.moving(reel)) {
             any = true;
         }
     }
+    // One sound a frame: a reel coming to rest outranks the ticking, and five reels passing a
+    // symbol at once is one tick. The frame the last reel rests settles the spin, which has
+    // its own sound.
     if (!any) {
         settle();
+    } else if (stopped) {
+        sound.stop();
+    } else if (crossed) {
+        sound.tick();
     }
 }
 
@@ -585,7 +627,8 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
         // closes the gate of the first note it opens, and the machine drones for ever.
         sound.update();
         if (input.cancel()) {
-            sound.toggle();
+            sound.cycle();
+            drawVolume();
         }
         frameBonusPulse();
         frameFx();
