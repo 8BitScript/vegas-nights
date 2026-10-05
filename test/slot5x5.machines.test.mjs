@@ -120,7 +120,7 @@ for (const machine of MACHINES) {
       log(`cell ${geo.pitchX}x${geo.pitchY} px, reel unit = ${adapter.unit}, ${adapter.positions} positions a reel`);
     });
 
-    test('the row under the frame is blank, and the panel starts below it', { skip: machine === 'vic20' || machine === 'pet' ? `the ${machine}'s 5x5 has no spare row (test/panel.test.mjs lists it)` : false }, async () => {
+    test('the row under the frame is blank, and the panel starts below it', { skip: machine === 'vic20' ? 'the 22-column VIC-20 has no spare row (test/panel.test.mjs lists it)' : false }, async () => {
       const png = await shoot('slot5x5-lose', 'panelrow', SPIN[machine]);
       const f = frame('slot5x5', machine);
       assert.ok(rowBlank(png, geo, f.bottom + 1, 0, blockWidth('slot5x5', machine)), `row ${f.bottom + 1}, under the frame, has something drawn in it`);
