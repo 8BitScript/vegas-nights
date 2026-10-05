@@ -24,7 +24,7 @@ import { loadTable } from './support/table.mjs';
 import { MACHINES, unavailable, capture, HAS_DEFINE } from './support/emulator.mjs';
 import { calibrate, loadPng } from './support/screen.mjs';
 import { adapterFor, inkReader } from './support/adapters.mjs';
-import { KIND as KIND5, pixelAdapter, quadAdapter } from './support/adapters5.mjs';
+import { KIND as KIND5, pixelAdapter, quadAdapter, x16Adapter } from './support/adapters5.mjs';
 
 // A frame by which the machine has booted and drawn the reels (the VICE machines spend ~215
 // frames booting), per machine.
@@ -34,7 +34,7 @@ const STOPS_TRIED = [3, 11];
 
 const GAMES = [
   { name: '3x3', program: 'slot3x3-offset', ruler: 'slot3x3-ruler', consts: loadTable().consts, adapter: (machine) => adapterFor(machine, undefined) },
-  { name: '5x5', program: 'slot5x5-offset', ruler: 'slot5x5-ruler', consts: loadTable('grid5x5').consts, adapter: (machine) => (KIND5[machine] === 'pixel' ? pixelAdapter(machine) : quadAdapter(machine)) },
+  { name: '5x5', program: 'slot5x5-offset', ruler: 'slot5x5-ruler', consts: loadTable('grid5x5').consts, adapter: (machine) => (KIND5[machine] === 'sprite' ? x16Adapter() : KIND5[machine] === 'pixel' ? pixelAdapter(machine) : quadAdapter(machine)) },
 ];
 
 for (const machine of MACHINES) {
@@ -44,7 +44,7 @@ for (const machine of MACHINES) {
       const c = game.consts;
       const adapter = game.adapter(machine);
       // Pixels in a symbol on this machine: 24, 16 where the art is 16x16 (the web's 3x3, the 5x5 on C64 and X16).
-      const symbolPixels = adapter.symbolPixels ?? adapter.unitsPerSymbol * adapter.pxPerUnit;
+      const symbolPixels = adapter.unit === 'pixel' ? adapter.unitsPerSymbol : (adapter.symbolPixels ?? adapter.unitsPerSymbol * adapter.pxPerUnit);
       const pixel = adapter.unit === 'pixel';
       let geo;
 

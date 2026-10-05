@@ -1,0 +1,131 @@
+// The X16's VERA, as the sprite reels use it: no game in here, only the chip.
+//
+// A reel is a stack of 64x64 4-bit sprites. VERA draws a sprite wherever its attribute table says,
+// so scrolling a reel is writing each sprite's Y a few pixels further down; nothing is composed
+// and the CPU never touches a pixel of art after start-up. What this file knows:
+//
+//   * where things live in video memory: the sprites' pixels from $04000 (2 KiB a symbol), the
+//     attribute table at $1FC00 (8 bytes a sprite, sprite 0 is the KERNAL's mouse pointer and is
+//     never touched), and two palette blocks at entries 128-143 (the art) and 144-159 (the same
+//     art lit white, for a payline's flash);
+//   * how to stand a 48x48 symbol in the middle of a 64x64 sprite (VERA's sprites are 8, 16, 32
+//     or 64 pixels, so the art has an 8-pixel clear margin all round);
+//   * the mask: the rows above and below a window are cells of the TEXT layer with an opaque black
+//     background (palette entry 11 is set to black for them), and the text layer draws over
+//     sprites at z-depth 2, so the sprite that is entering or leaving shows nowhere outside the window;
+//   * the emulator quirk the graphics package also corrects, one line further: with the picture
+//     inset (DC_VSTART nonzero), x16emu draws a sprite's first line one line above the active
+//     area's, and the text layer's first cell line is itself the active area's SECOND line (the
+//     screen package's 2-line scroll correction leaves one). Measured: a frame cell's top edge is
+//     at the active area's line 17, the sprites' art at 16, so `rise` is 2 here, not the graphics
+//     package's 1, to put a symbol exactly on the cell grid. Under x16emu r50; real VERA unchecked.
+//
+// The bonus round's border bars (fx.cx16.8bs) take palette entries 64-83; nothing here touches
+// those, or entries 0-15 other than the mask's 11.
+import { setVramAddress, locateTextMap, mapBank, mapLow } from "@8bitscript/cx16";
+
+let rise: usmallint = 0;
+
+export namespace vera {
+    const PIXELS: usmallint = 0x4000;       // bank 0: the first symbol's pixels
+    const SYMBOL_UNITS: utinyint = 64;      // a symbol's 2,048 bytes in sprite address units of 32
+    const ATTRIBUTES: usmallint = 0xFC00;   // bank 1: sprite attribute table
+    const PALETTE: usmallint = 0xFB00;      // bank 1: entry 128, palette offset 8
+    const LIT: usmallint = 0xFB20;          // bank 1: entry 144, palette offset 9
+    const MASK_ENTRY: usmallint = 0xFA16;   // bank 1: entry 11, set to black
+    const ART: utinyint = 0xF8;             // 64x64, palette offset 8
+    const FLASH: utinyint = 0xF9;           // 64x64, palette offset 9
+
+    // Text-layer attributes (background nibble high, ink low) for the mask and the machine's frame.
+    const MASK: utinyint = 0xB1;
+    const FRAME_OUTER: utinyint = 0x71;     // yellow
+    const FRAME_INNER: utinyint = 0x81;     // orange
+
+    // Turn sprites on, remember x16emu's one-line offset, and make entry 11 an opaque black.
+    function begin(): void {
+        let ctrl: utinyint = memory.read(0x9F25);
+        memory.write(0x9F25, ctrl & 0xFD);
+        memory.write(0x9F29, memory.read(0x9F29) | 0x40);
+        memory.write(0x9F25, 0x02);
+        rise = 0;
+        if (memory.read(0x9F2B) != 0) {
+            rise = 2;
+        }
+        memory.write(0x9F25, ctrl);
+        setVramAddress(1, vera.MASK_ENTRY, 1);
+        memory.write(0x9F23, 0);
+        memory.write(0x9F23, 0);
+    }
+
+    // The art's palette block is written by the view (the data is its own); the lit block is the
+    // same sixteen entries with every colour but the clear one and the theme's black turned white.
+    function lit(): void {
+        setVramAddress(1, vera.LIT, 1);
+        memory.write(0x9F23, 0);
+        memory.write(0x9F23, 0);
+        memory.write(0x9F23, 0);
+        memory.write(0x9F23, 0);
+        for (let i: utinyint = 2; i < 16; i++) {
+            memory.write(0x9F23, 0xFF);
+            memory.write(0x9F23, 0x0F);
+        }
+    }
+
+    // Point the data port at sprite `n` (VERA sprite n + 1) attribute `offset`, stepping by one.
+    function seek(n: utinyint, offset: utinyint): void {
+        let at: usmallint = n;
+        at = vera.ATTRIBUTES + (at + 1) * 8 + offset;
+        setVramAddress(1, at, 1);
+    }
+
+    // Write one sprite's eight attribute bytes at the port: it shows symbol `symbol` with its
+    // 64x64 box's top-left corner at (x, y) in the layers' pixels (the 48x48 art is 8 further in).
+    function put(symbol: utinyint, x: usmallint, y: usmallint, flags: utinyint): void {
+        let unit: usmallint = symbol;
+        unit = unit * vera.SYMBOL_UNITS + 0x200;
+        let top: usmallint = y + rise;
+        memory.write(0x9F23, unit % 256);
+        memory.write(0x9F23, unit / 256);
+        memory.write(0x9F23, x % 256);
+        memory.write(0x9F23, x / 256);
+        memory.write(0x9F23, top % 256);
+        memory.write(0x9F23, top / 256);
+        memory.write(0x9F23, 0x08);        // z-depth 2: in front of layer 0, behind the text layer
+        memory.write(0x9F23, flags);
+    }
+
+    // Light (or put back) one sprite: the palette-offset byte only.
+    function paint(n: utinyint, flags: utinyint): void {
+        vera.seek(n, 7);
+        memory.write(0x9F23, flags);
+    }
+
+    // Fill a block of the text map with spaces whose attribute is `attr`: `width` x `height` cells
+    // from grid cell (col, row). The grid is the map's top-left 76x56, so cell (0, 0) is the map's.
+    function fill(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint): void {
+        locateTextMap();
+        for (let r: utinyint = 0; r < height; r++) {
+            let at: usmallint = row + r;
+            at = at * 256 + mapLow + col * 2;
+            setVramAddress(mapBank, at, 1);
+            for (let c: utinyint = 0; c < width; c++) {
+                memory.write(0x9F23, 32);
+                memory.write(0x9F23, attr);
+            }
+        }
+    }
+
+    // Recolour the background of a block of cells and leave the characters (a frame cell with an
+    // arrow in it keeps the arrow).
+    function tint(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint): void {
+        locateTextMap();
+        for (let r: utinyint = 0; r < height; r++) {
+            let at: usmallint = row + r;
+            at = at * 256 + mapLow + col * 2 + 1;
+            setVramAddress(mapBank, at, 2);
+            for (let c: utinyint = 0; c < width; c++) {
+                memory.write(0x9F23, attr);
+            }
+        }
+    }
+}
