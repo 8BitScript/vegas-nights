@@ -1,10 +1,13 @@
 // The reels on the web: the quadrant composer (quad.8bs), in four-pixel steps.
 // The game calls only this interface; see view.8bs for what each function means.
 import { quad } from "./quad.8bs";
+import { geometry } from "./geometry.8bs";
 
 export namespace view {
-    const WIDTH: utinyint = 21;
-    const PANEL: utinyint = 18;
+    const WIDTH: utinyint = geometry.WIDTH;
+    const PANEL: utinyint = geometry.PANEL;
+    const PANEL_COL: utinyint = geometry.PANEL_COL;
+    const STACKED: bool = geometry.STACKED;
     const TITLE: bool = false;
 
     function begin(): void {
