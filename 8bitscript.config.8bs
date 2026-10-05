@@ -25,6 +25,7 @@ export default {
     // The 5x5: five reels, five rows, ways pays, a free-spin bonus round and four progressive
     // jackpot meters. The entries after it play from fixed seeds for the screenshot tests.
     slot5x5: { entry: 'src/labs/slot5x5/main.8bs' },
+    'slot5x5-hops': { entry: 'src/labs/slot5x5/hops.8bs', targets: ['pet', 'vic20', 'web'] },
     'slot5x5-lose': { entry: 'src/labs/slot5x5/lose.8bs' },
     'slot5x5-win': { entry: 'src/labs/slot5x5/win.8bs' },
     'slot5x5-bonus': { entry: 'src/labs/slot5x5/bonus.8bs' },

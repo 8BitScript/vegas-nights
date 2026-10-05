@@ -47,6 +47,8 @@ export namespace view {
     const TOP: utinyint = 3;
     // The first row under the frame, where the panels start.
     const PANEL: utinyint = 15;
+    const PANEL_COL: utinyint = 0;
+    const STACKED: bool = false;
     // Whether the screen has room for the title above the frame.
     const TITLE: bool = true;
     // Rows of the window, and glyphs a reel uses: ten rows of two.

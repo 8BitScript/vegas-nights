@@ -1,0 +1,22 @@
+// Where the 5x5 sits on the machines that build the reels from the ROM's quadrant blocks (the PET and the web).
+// A symbol is QUAD_S = 4 cells square, so the block is 5 reels of four cells, six frame and divider cells,
+// 26 across, and 20 cell rows of window with a frame row above and below: 22 rows. The panel is not under the
+// block, as it is on the 22-column VIC-20 (geometry.vic20.8bs), but in the margin beside it: eleven columns,
+// the CREDIT and WIN numbers on a line of their own.
+//
+// The screen's edge is left free: the PET's bonus marquee runs round it (src/shared/fx.pet.8bs). On a 40-column
+// screen layout.centre(WIDTH) puts the block's left edge in column 1 and the panel's right edge in column 38.
+//
+//   TOP        the window's first text row; the frame is the row above and the row below the window.
+//   WIDTH      what layout.centre() centres: the block, a blank column, the panel.
+//   PANEL      the panel's first text row, and PANEL_COL its first column, from the block's left edge.
+//   HOP        the composer moves whole cell rows with a block copy (quad.8bs); the VIC-20's compact one recomposes (quad.vic20.8bs).
+//   STACKED    the panel is in the margin (its lines stacked, game.8bs) and not under the block.
+export namespace geometry {
+    const TOP: utinyint = 2;
+    const WIDTH: utinyint = 38;
+    const PANEL: utinyint = 2;
+    const PANEL_COL: utinyint = 27;
+    const HOP: bool = true;
+    const STACKED: bool = true;
+}

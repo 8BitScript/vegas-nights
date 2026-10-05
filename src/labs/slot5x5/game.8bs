@@ -58,12 +58,23 @@ const START_THOUSANDS: usmallint = 100;
 
 const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
 
-// Cells from the block's left edge on each panel row (rows count from view.PANEL).
+// The panel's rows (counting from view.PANEL), and its columns from view.PANEL_COL. Under the reels (the
+// default: the 22-column VIC-20, the C64 and X16) each line is one row: CREDIT, BET, WIN, the message, two rows
+// of jackpot meters. In the margin beside a wide block (view.STACKED: the PET and the web, eleven columns) the
+// long numbers take a line of their own and the four meters a row each. test/slot5x5.machines.test.mjs reads
+// these constants to find the numbers on a screenshot, so they are literals.
 const CREDIT_ROW: utinyint = 0;
 const BET_ROW: utinyint = 1;
 const WIN_ROW: utinyint = 2;
 const MESSAGE_ROW: utinyint = 3;
 const JACKPOT_ROW: utinyint = 4;
+const STACK_CREDIT_ROW: utinyint = 0;   // the label; the number is on the row below
+const STACK_BET_ROW: utinyint = 3;
+const STACK_FREE_ROW: utinyint = 4;
+const STACK_WIN_ROW: utinyint = 6;      // the label; the number is on the row below
+const STACK_MESSAGE_ROW: utinyint = 9;
+const STACK_METER_ROW: utinyint = 11;   // MINI, MINOR, MAJOR, GRAND, a row each
+const STACK_MESSAGE_WIDTH: utinyint = 11;
 
 let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying, 3 waiting for the next free spin
 let betIndex: utinyint = 0;
@@ -91,7 +102,7 @@ let freeSpin: bool = false;          // the spin on the reels is a free one
 // ---- the panels ------------------------------------------------------------------
 
 function cellAt(col: utinyint, row: utinyint): usmallint {
-    return layout.cell(col, view.PANEL + row);
+    return layout.cell(view.PANEL_COL + col, view.PANEL + row);
 }
 
 function printReg(col: utinyint, row: utinyint, reg: utinyint): void {
@@ -101,21 +112,39 @@ function printReg(col: utinyint, row: utinyint, reg: utinyint): void {
 }
 
 function drawCredit(): void {
-    text.print(cellAt(0, CREDIT_ROW), "CREDIT");
-    printReg(7, CREDIT_ROW, purse.BALANCE);
+    if (view.STACKED) {
+        text.print(cellAt(0, STACK_CREDIT_ROW), "CREDIT");
+        printReg(0, STACK_CREDIT_ROW + 1, purse.BALANCE);
+    } else {
+        text.print(cellAt(0, CREDIT_ROW), "CREDIT");
+        printReg(7, CREDIT_ROW, purse.BALANCE);
+    }
 }
 
 function drawBet(): void {
-    text.print(cellAt(0, BET_ROW), "BET");
+    let row: utinyint = BET_ROW;
+    if (view.STACKED) {
+        row = STACK_BET_ROW;
+    }
+    text.print(cellAt(0, row), "BET");
     let bet: usmallint = BET_CREDITS;
     for (let i: utinyint = 1; i < multiplier; i++) {
         bet = bet + BET_CREDITS;
     }
-    text.printNumber(cellAt(4, BET_ROW), bet, 4);
+    text.printNumber(cellAt(4, row), bet, 4);
 }
 
 function drawFree(): void {
-    if (inBonus) {
+    if (view.STACKED) {
+        // its own line under the bet: FS 07 X3
+        if (inBonus) {
+            text.print(cellAt(0, STACK_FREE_ROW), "FS");
+            text.printNumber(cellAt(3, STACK_FREE_ROW), fsLeft, 2);
+            text.print(cellAt(6, STACK_FREE_ROW), "X3");
+        } else {
+            text.print(cellAt(0, STACK_FREE_ROW), "        ");
+        }
+    } else if (inBonus) {
         text.print(cellAt(10, BET_ROW), "FS");
         text.printNumber(cellAt(13, BET_ROW), fsLeft, 2);
         text.print(cellAt(16, BET_ROW), "X3");
@@ -125,17 +154,33 @@ function drawFree(): void {
 }
 
 function drawWin(reg: utinyint): void {
-    text.print(cellAt(0, WIN_ROW), "WIN");
-    printReg(4, WIN_ROW, reg);
+    if (view.STACKED) {
+        text.print(cellAt(0, STACK_WIN_ROW), "WIN");
+        printReg(0, STACK_WIN_ROW + 1, reg);
+    } else {
+        text.print(cellAt(0, WIN_ROW), "WIN");
+        printReg(4, WIN_ROW, reg);
+    }
+}
+
+function messageAt(): usmallint {
+    if (view.STACKED) {
+        return cellAt(0, STACK_MESSAGE_ROW);
+    }
+    return cellAt(0, MESSAGE_ROW);
 }
 
 function clearMessage(): void {
-    text.print(cellAt(0, MESSAGE_ROW), "                     ");
+    if (view.STACKED) {
+        text.print(messageAt(), "           ");
+    } else {
+        text.print(messageAt(), "                     ");
+    }
 }
 
 function message(which: utinyint): void {
     clearMessage();
-    let at: usmallint = cellAt(0, MESSAGE_ROW);
+    let at: usmallint = messageAt();
     if (which == 1) {
         text.print(at, "SPINNING");
     } else if (which == 2) {
@@ -165,6 +210,17 @@ function drawMeter(col: utinyint, row: utinyint, reg: utinyint): void {
 }
 
 function drawJackpots(): void {
+    if (view.STACKED) {
+        text.print(cellAt(0, STACK_METER_ROW), "MI");
+        drawMeter(3, STACK_METER_ROW, purse.MINI);
+        text.print(cellAt(0, STACK_METER_ROW + 1), "MN");
+        drawMeter(3, STACK_METER_ROW + 1, purse.MINOR);
+        text.print(cellAt(0, STACK_METER_ROW + 2), "MJ");
+        drawMeter(3, STACK_METER_ROW + 2, purse.MAJOR);
+        text.print(cellAt(0, STACK_METER_ROW + 3), "GR");
+        drawMeter(3, STACK_METER_ROW + 3, purse.GRAND);
+        return;
+    }
     text.print(cellAt(0, JACKPOT_ROW), "MI");
     drawMeter(3, JACKPOT_ROW, purse.MINI);
     text.print(cellAt(11, JACKPOT_ROW), "MN");

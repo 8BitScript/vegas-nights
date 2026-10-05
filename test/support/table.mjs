@@ -46,6 +46,11 @@ export function labConsts(lab, machine) {
     return out;
   };
   const consts = read(file);
+  // The 5x5's quadrant machines state where the block and panel sit in geometry*.8bs (the view reads it from there).
+  if (lab === 'slot5x5' && ['pet', 'vic20', 'web'].includes(machine)) {
+    const g = existsSync(join(dir, `geometry.${machine}.8bs`)) ? `geometry.${machine}.8bs` : 'geometry.8bs';
+    Object.assign(consts, read(g));
+  }
   // view.8bs serves the C64 and the X16, whose machines differ in size; their layout numbers are
   // block.8bs's (block.c64.8bs for the C64 and its wasm build), which view.8bs aliases
   if (file === 'view.8bs' && lab === 'slot3x3') {

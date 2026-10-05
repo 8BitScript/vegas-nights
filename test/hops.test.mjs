@@ -14,8 +14,10 @@ import assert from 'node:assert/strict';
 import { MACHINES, unavailable, capture, HAS_DEFINE } from './support/emulator.mjs';
 import { loadPng } from './support/screen.mjs';
 
-// long enough for twenty full redraws of three reels (a VIC-20 redraw is ~2.5 frames a reel) after the boot
-const FRAMES = { vic20: 900, pet: 600, web: 30 };
+// long enough for twenty full redraws of the reels (a VIC-20 redraw is ~2.5 frames a reel) after the boot
+const FRAMES = { slot3x3: { vic20: 900, pet: 600, web: 30 }, slot5x5: { pet: 1100, web: 30 } };
+// the 5x5's VIC-20 keeps the compact composer, which recomposes a reel whole and never hops
+const GAMES = [['slot3x3', ['pet', 'vic20', 'web']], ['slot5x5', ['pet', 'web']]];
 
 
 /** Every pixel of a decoded screenshot as one string, so two can be compared and a difference located. */
@@ -29,18 +31,18 @@ function dump(png) {
   return out;
 }
 
-for (const machine of MACHINES.filter((m) => ['pet', 'vic20', 'web'].includes(m))) {
+for (const [game, machines] of GAMES) for (const machine of MACHINES.filter((m) => machines.includes(m))) {
   const skip = unavailable(machine) ?? (HAS_DEFINE ? false : 'the probe reads #define: set EIGHTBS_CHECKOUT to an 8BitScript checkout that has it');
-  describe(`${machine}: hopping is the same picture as redrawing`, { skip }, () => {
+  describe(`${game} on the ${machine}: hopping is the same picture as redrawing`, { skip }, () => {
     for (const step of [8, 16]) {
       test(`twenty moves of ${step} pixels: the spin's own path and a full redraw give the same screen`, async () => {
-        const shoot = async (full) => dump(loadPng(await capture(machine, 'slot3x3-hops', `hops${step}-${full}`, FRAMES[machine], { HOPS: 20, STEP: step, FULL: full })));
+        const shoot = async (full) => dump(loadPng(await capture(machine, `${game}-hops`, `${game}-hops${step}-${full}`, FRAMES[game][machine], { HOPS: 20, STEP: step, FULL: full })));
         const walked = await shoot(0);
         const redrawn = await shoot(1);
         const rows = walked.map((r, y) => (r === redrawn[y] ? -1 : y)).filter((y) => y >= 0);
         assert.deepEqual(rows, [], `rows ${rows.slice(0, 10).join(', ')} differ between the hopped and the redrawn screen`);
         // not vacuous: the same program with no moves at all shows a different picture
-        const still = dump(loadPng(await capture(machine, 'slot3x3-hops', `hops${step}-still`, FRAMES[machine], { HOPS: 0, STEP: step, FULL: 0 })));
+        const still = dump(loadPng(await capture(machine, `${game}-hops`, `${game}-hops${step}-still`, FRAMES[game][machine], { HOPS: 0, STEP: step, FULL: 0 })));
         assert.notDeepEqual(still, walked, 'the reels moved: the walked screen is not the starting one');
       });
     }
