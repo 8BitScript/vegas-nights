@@ -1,0 +1,202 @@
+// The VIC-20's 5x5 reels (the PET and the web have the table-driven, hopping composer in quad.8bs; this one is the
+// compact original, 1,500 bytes smaller, which is what an 8K VIC-20 can hold) from the quadrant blocks every Commodore character ROM holds: a
+// character cell is a 2x2 picture, so the screen is 80x50 "pixels". Used by the PET
+// (whose ROM is fixed) and the VIC-20 (whose RAM has no room reserved for a character
+// set yet). A symbol is 6x6 of them (src/generated/tiles/cosmic.pet.8bs), a reel window
+// five symbols = 30 rows = 15 cell rows of three cells, and a reel scrolls one such row
+// — four real pixels — at a time. The same composer as the 3x3's (labs/slot3x3/quad.8bs),
+// with five reels, a window five symbols tall, and the geometry in constants.
+//
+// Each display cell is built from two consecutive rows of the window: the pair of bits
+// of the upper row and the pair of the lower row, together a number 0-15, index the table
+// of quadrant screen codes. The screen map is rewritten (45 cells a reel).
+import { text } from "@8bitscript/text";
+import { cells } from "@shared/cells.8bs";
+import { layout } from "@shared/layout.8bs";
+import { spin } from "./spin.8bs";
+import { ink } from "./ink.8bs";
+import { REELS, ROWS, STOPS, STOP_MASK, STRIPS } from "@generated/grid5x5.8bs";
+import { quadcode } from "./quadcode.8bs";
+import {
+    SYMBOL_PIXELS,
+    FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
+    FRAME_DIV, FRAME_DIVT, FRAME_DIVB
+} from "@generated/tiles/cosmic.pet.8bs";
+
+// Per reel: the pseudo-pixel row last drawn (so a 2-pixel step that does not reach the
+// next row costs nothing), and which of its five symbol rows are shown inverted.
+let drawnRow: array<utinyint, 5>;
+let drawnStop: array<utinyint, 5>;
+let inverted: array<utinyint, 5>;
+
+// 1 << n, as a table: the 6502 backends take no run-time shift amount.
+const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
+const GOLD_FRAME: utinyint = 7;     // the reel frame's colour for the whole bonus round: yellow, the gold of the Gold look
+
+export namespace quad {
+    // The block: a frame cell, five three-cell reels with a divider between, a frame
+    // cell. 21 wide; the window's 15 rows start at row 1.
+    const WIDTH: utinyint = 21;
+    const TOP: utinyint = 1;
+    const PANEL: utinyint = 17;
+
+    function drawFrame(): void {
+        for (let col: utinyint = 0; col < 21; col++) {
+            let top: utinyint = FRAME_T;
+            let low: utinyint = FRAME_B;
+            if (col == 0) {
+                top = FRAME_TL;
+                low = FRAME_BL;
+            } else if (col == 20) {
+                top = FRAME_TR;
+                low = FRAME_BR;
+            } else if (col == 4 || col == 8 || col == 12 || col == 16) {
+                top = FRAME_DIVT;
+                low = FRAME_DIVB;
+            }
+            let above: usmallint = layout.cell(col, 0);
+            let below: usmallint = layout.cell(col, 16);
+            cells.put(above, quadcode.frame(top));
+            cells.put(below, quadcode.frame(low));
+            cells.tint(above, 7);
+            cells.tint(below, 7);
+        }
+        for (let row: utinyint = 1; row < 16; row++) {
+            let side: usmallint = layout.cell(0, row);
+            cells.put(side, quadcode.frame(FRAME_L));
+            cells.put(side + 20, quadcode.frame(FRAME_R));
+            cells.put(side + 4, quadcode.frame(FRAME_DIV));
+            cells.put(side + 8, quadcode.frame(FRAME_DIV));
+            cells.put(side + 12, quadcode.frame(FRAME_DIV));
+            cells.put(side + 16, quadcode.frame(FRAME_DIV));
+            cells.tint(side, 7);
+            cells.tint(side + 20, 7);
+            cells.tint(side + 4, 2);
+            cells.tint(side + 8, 2);
+            cells.tint(side + 12, 2);
+            cells.tint(side + 16, 2);
+        }
+    }
+
+    // Draw `reel` at its current position: fifteen cell rows of three cells.
+    function drawReel(reel: utinyint): void {
+        let stop: utinyint = spin.stop(reel);
+        // The window's top row within its symbol: six rows of 4 pixels each.
+        let line: utinyint = spin.row(reel) >> 2;
+        drawnRow[reel] = line;
+        drawnStop[reel] = stop;
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
+        let at: usmallint = layout.cell(1 + reel * 4, quad.TOP);
+        let band: utinyint = 0;  // which symbol row (0-4) this cell row belongs to
+        let third: utinyint = 0;
+        for (let down: utinyint = 0; down < 15; down++) {
+            // The two rows of the window this cell row is made of.
+            let upperSymbol: utinyint = STRIPS[strip + stop];
+            let upper: utinyint = SYMBOL_PIXELS[upperSymbol * 6 + line];
+            let nextLine: utinyint = line + 1;
+            let nextStop: utinyint = stop;
+            if (nextLine == 6) {
+                nextLine = 0;
+                nextStop = (stop + 1) & STOP_MASK;
+            }
+            let lowerSymbol: usmallint = STRIPS[strip + nextStop];
+            let lower: utinyint = SYMBOL_PIXELS[lowerSymbol * 6 + nextLine];
+            let flip: utinyint = 0;
+            if ((inverted[reel] & BIT[band]) != 0) {
+                flip = 15;
+            }
+            // The three cells of the row: the pair of pixels each takes from the upper
+            // and the lower window row (bit 7 is the leftmost pixel).
+            let left: utinyint = (((upper >> 6) & 3) << 2) | ((lower >> 6) & 3);
+            let middle: utinyint = (((upper >> 4) & 3) << 2) | ((lower >> 4) & 3);
+            let right: utinyint = (((upper >> 2) & 3) << 2) | ((lower >> 2) & 3);
+            cells.put(at, quadcode.block(left ^ flip));
+            cells.put(at + 1, quadcode.block(middle ^ flip));
+            cells.put(at + 2, quadcode.block(right ^ flip));
+            if (cells.COLORED) {
+                // Each cell takes the colour of the symbol cell its upper row is in.
+                let base: utinyint = (line >> 1) * 3;
+                ink.cell(at, upperSymbol, base);
+                ink.cell(at + 1, upperSymbol, base + 1);
+                ink.cell(at + 2, upperSymbol, base + 2);
+            }
+            at = at + text.COLUMNS;
+            // three cell rows to a symbol row
+            third = third + 1;
+            if (third == 3) {
+                third = 0;
+                band = band + 1;
+            }
+            // two rows on
+            line = nextLine + 1;
+            stop = nextStop;
+            if (line == 6) {
+                line = 0;
+                stop = (stop + 1) & STOP_MASK;
+            }
+        }
+    }
+
+    // ---- what the game calls ---------------------------------------------
+
+    function begin(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            inverted[reel] = 0;
+            drawnRow[reel] = 255;
+            drawnStop[reel] = 255;
+        }
+        quad.drawFrame();
+    }
+
+    function draw(reel: utinyint): void {
+        quad.drawReel(reel);
+    }
+
+    function drawAll(): void {
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            quad.drawReel(reel);
+        }
+    }
+
+    // A reel moved `pixels` down; redraw once it has moved a whole pseudo-pixel row or
+    // past a symbol (a 24-pixel hop keeps the row and changes the symbol).
+    function moved(reel: utinyint, pixels: utinyint): void {
+        if (drawnRow[reel] != (spin.row(reel) >> 2) || drawnStop[reel] != spin.stop(reel)) {
+            quad.drawReel(reel);
+        }
+    }
+
+    // Light the symbol rows of `reel` set in `mask` (bit 0 = the top symbol) by inverting
+    // them, or put them back.
+    function flashRows(reel: utinyint, mask: utinyint, on: bool): void {
+        if (on) {
+            inverted[reel] = inverted[reel] | mask;
+        } else {
+            inverted[reel] = inverted[reel] & (255 - mask);
+        }
+        quad.drawReel(reel);
+    }
+
+    // The bonus round's frame: every frame cell in gold, held (the VIC-20 has colour; the
+    // PET's frame stays as it is).
+    function pulse(phase: utinyint): void {
+        if (!cells.COLORED) {
+            return;
+        }
+        let color: utinyint = GOLD_FRAME;
+        for (let col: utinyint = 0; col < 21; col++) {
+            cells.tint(layout.cell(col, 0), color);
+            cells.tint(layout.cell(col, 16), color);
+        }
+        for (let row: utinyint = 1; row < 16; row++) {
+            cells.tint(layout.cell(0, row), color);
+            cells.tint(layout.cell(20, row), color);
+        }
+    }
+
+    function unpulse(): void {
+        quad.drawFrame();
+    }
+}

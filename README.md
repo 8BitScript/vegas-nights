@@ -686,12 +686,22 @@ Numbers are from `pnpm run test:machines` on a Mac, NTSC, CLI 0.24.0.
 | --- | :-: | --- | :-: | :-: | --- | --- |
 | C64 | yes | 10,899 / 105 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 2.7 px a frame | composed glyphs, pixel art, colour |
 | X16 | yes | 17,173 / 176 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 3.5 px a frame | composed glyphs through VERA, pixel art, colour |
-| PET (4032, 32K) | yes | 9,077 / 95 B | exact, block for block | exact credit | 12-pixel hops, about 3.4 px a frame | quadrant blocks, no colour |
-| VIC-20 (8K) | yes | 9,686 / 96 B | exact, block for block | exact credit | 12-pixel hops, about 1 px a frame | quadrant blocks, coloured |
-| web | yes | 1,160 B const / 161 B | exact, block for block | exact credit | 8-pixel hops every frame, about 8 px a frame | quadrant blocks on the host font, coloured |
+| PET (4032, 32K) | yes | 12,547 / 113 B | exact, block for block | exact credit | 8-pixel hops (a block copy), about 6.7 px a frame | quadrant blocks, 32-pixel symbols, no colour; 57% of the screen |
+| VIC-20 (8K) | yes | 11,060 / 111 B | exact, block for block | exact credit | 12-pixel steps (recomposed), about 1.2 px a frame | quadrant blocks, 24-pixel symbols, coloured; unchanged: 22 columns hold no bigger block |
+| web | yes | 1,535 B const / 178 B | exact, block for block | exact credit | 8-pixel steps every frame, 8 px a frame | quadrant blocks on the host font, 32-pixel symbols, coloured; 44% of the Modern 48x27 grid |
 
 Every cell above passed in one full run of `test/slot5x5.machines.test.mjs` on each machine against the code in this change
-(7 tests a machine). "About N px a frame" is the mean step between screenshots taken five frames apart while a spin runs
+(8 tests a machine; the PET and web rows against the bigger layout below).
+
+**The bigger 5x5 on the PET and the web.** Symbols are 4 x 4 cells (32 pixels, the generated `cosmic.quad` tables), so the block
+is 26 columns by 22 rows (572 of the PET's 1,000 cells, 57%; it was 21 x 17, 36%). With five reels that wide the panel does not
+fit under the block, so it sits in the 11-column margin beside it, its long numbers on a line of their own and the four
+jackpot meters a row each (`labs/slot5x5/geometry.8bs`, `STACKED` in `game.8bs`). Both machines use the same table-driven
+composer as the 3x3 (`labs/slot5x5/quad.8bs`): a reel that moves a whole cell row does not recompose, it copies its cells down
+and composes only the new top row, and `test/hops.test.mjs` shows twenty such hops give the same screen as full redraws, pixel
+for pixel. The PET's bonus marquee runs round the screen's edge, which the block and the panel leave free
+(`src/shared/fx.pet.8bs`). The VIC-20 keeps the compact composer (`labs/slot5x5/quad.vic20.8bs`): the table-driven one is 1,500
+bytes larger and an 8K VIC-20 has 700 to spare; its 22 columns hold a 21-column block and nothing bigger. "About N px a frame" is the mean step between screenshots taken five frames apart while a spin runs
 (a frame is the machine's 50 or 60 Hz refresh; the web's is the host's), so it is a mean over hops, not a hop.
 
 ## Cursor / VS Code

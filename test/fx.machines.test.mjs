@@ -54,13 +54,14 @@ const FX = {
   // frame. before is the first spin, after the round is long over; the border is x 0-39 of the capture, the
   // marquee the picture's last 16-pixel column (x 376-391).
   vic20: { kind: 'pulse', frames: [2400, 2412, 2424, 2436, 2448, 2460], before: 600, after: 13000, column: 10, marquee: { x: 384, rows: [24, 200] } },
-  // The PET's effect is a marquee ring and a banner scanner written into the margins beside the machine
-  // (src/shared/fx.pet.8bs). The 4032 is 40 columns; a capture's screen starts at pixel (32, 36), 8 pixels a
-  // cell; the machine is columns 9-29. The columns read are the middle of margin cells: the ring on the two
-  // edges (0 and 39) and the margin lanes beside the machine. The forced bonus round starts near frame 508
-  // and ends near 3,957, so `before` is after the machine is drawn and before the round, and `after` is well
-  // past it.
-  pet: { kind: 'margins', frames: [3000, 3012], before: 400, after: 6000, columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 31, 32, 33, 34, 35, 36, 37, 38, 39].map((c) => 32 + 8 * c + 4), colours: 2, moved: 40 },
+  // The PET's effect is a marquee ring and a banner scanner written into the screen's edge and the free row under the
+  // machine (src/shared/fx.pet.8bs). The 4032 is 40 columns; a capture's screen starts at pixel (32, 36), 8 pixels a
+  // cell; the 5x5 block is columns 1-26 and its panel columns 28-38. The columns read are the middle of the two edge
+  // columns (0 and 39) and the picture rows of the top and bottom edge rows (0 and 24), which the ring runs along and
+  // nothing else draws in. The forced bonus round starts near frame
+  // 508 and ends near 2,100 (the reels hop now), so `before` is after the machine is drawn and before the round, and
+  // `after` is well past it.
+  pet: { kind: 'margins', frames: [1300, 1312], before: 400, after: 6000, columns: [0, 39].map((c) => 32 + 8 * c + 4), rows: [[36, 44], [228, 236]], xs: [32, 352], colours: 2, moved: 40 },
   // The X16's border is 16 pixels wide once screen.8bs insets the picture: x = 8 is inside it. Its glow is a
   // palette cycle, twelve stripes of a 24-step gold table, one notch every 4 video frames.
   cx16: { frames: [1100, 1112], calm: [1104], before: 200, after: 4400, column: 8, maxColours: 14 },
@@ -165,7 +166,11 @@ for (const machine of MACHINES) {
 
     test('the margins show the effect during the round, it moves, and they are exactly as they were after', { skip: why ?? (config.kind === 'margins' ? false : 'this machine does not write into margins: another test holds it') }, async () => {
       const shot = async (frames) => loadPng(await capture(machine, 'slot5x5-bonus', `fx-${frames}`, frames));
-      const read = (png) => config.columns.flatMap((x) => columnOf(png, x));
+      // the edge columns, then the edge rows across the whole screen (the ring runs round all four edges)
+      const read = (png) => [
+        ...config.columns.flatMap((x) => columnOf(png, x)),
+        ...(config.rows ?? []).flatMap(([y0, y1]) => Array.from({ length: (y1 - y0) * (config.xs[1] - config.xs[0]) }, (_, i) => png.at(config.xs[0] + (i % (config.xs[1] - config.xs[0])), y0 + Math.floor(i / (config.xs[1] - config.xs[0]))))),
+      ];
 
       const before = read(await shot(config.before));
       assert.equal(new Set(before).size, 1, 'the margins are one plain colour before the bonus round');

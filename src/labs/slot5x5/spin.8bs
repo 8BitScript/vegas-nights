@@ -4,12 +4,14 @@
 // always 24 pixels tall. On the machines that redefine characters (C64, X16) the 5x5
 // uses 16x16 art — two cells a symbol, so that five reels fit in the 127 free glyph
 // codes — and on the machines that build the reels from the ROM's quadrant blocks
-// (PET, VIC-20) it uses 3x3 cells, 24 pixels. A position is the symbol on the window's
+// (PET, VIC-20, web) it uses QUAD_S cells square (4 on the PET and the web, 32 pixels; 3 on the VIC-20, 24). A position is the symbol on the window's
 // top row (`stop`) and the pixel row within it (`row`, 0..symbol-1); scrolling down
 // counts DOWN, and `start` fixes the whole distance in advance so the draw, not the
 // picture, decides the outcome.
 import { feel } from "@shared/feel.8bs";
 import { glyphs } from "@shared/glyphs.8bs";
+import { QUAD_S } from "@generated/tiles/cosmic.quad.8bs";
+import { geometry } from "./geometry.8bs";
 
 let stops: array<utinyint, 5>;
 let rows: array<utinyint, 5>;
@@ -22,7 +24,7 @@ export namespace spin {
         if (glyphs.AVAILABLE) {
             return 16;
         }
-        return 24;
+        return QUAD_S * 8;
     }
 
     function place(reel: utinyint, stop: utinyint): void {
@@ -64,9 +66,9 @@ export namespace spin {
             origin = origin << 4;
             to = to << 4;
         } else {
-            around = around * 24;
-            origin = origin * 24;
-            to = to * 24;
+            around = around * (QUAD_S * 8);
+            origin = origin * (QUAD_S * 8);
+            to = to * (QUAD_S * 8);
         }
         let extra: usmallint = origin + around;
         extra = extra - to;
@@ -83,7 +85,7 @@ export namespace spin {
         if (glyphs.AVAILABLE) {
             around = around << 4;
         } else {
-            around = around * 24;
+            around = around * (QUAD_S * 8);
         }
         let total: usmallint = spin.distance(stops[reel], target, count);
         while (total < minimum) {
@@ -117,7 +119,24 @@ export namespace spin {
                 pixels = 2;
                 wait = feel.WAIT + 1;
             }
+        } else if (geometry.HOP) {
+            // The quadrant machines that hop scroll as the 3x3 does (shared/reelscroll.step): feel.REEL_FAR pixels a
+            // redraw, 8 within four symbols, 4 for the last feel.EASE, 2 for the last eight; every boundary a multiple
+            // of the step before it, so the last step lands exactly on the stop.
+            pixels = feel.REEL_FAR;
+            wait = feel.REEL_WAIT;
+            if (pixels > 8 && left <= QUAD_S * 32) {
+                pixels = 8;
+            }
+            if (left <= feel.EASE) {
+                pixels = 4;
+            }
+            if (left <= 8) {
+                pixels = 2;
+                wait = feel.REEL_WAIT + 1;
+            }
         } else {
+            // The VIC-20's compact composer recomposes a reel whole: feel.FAR pixels a redraw, finer near the stop.
             if (pixels > 12 && left <= 192) {
                 pixels = 12;
             }

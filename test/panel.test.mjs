@@ -1,16 +1,16 @@
 // The panel's layout, from the sources: one blank row between the frame and the first line of text under it, no
 // message that repeats a label, no message too long for its row. (The on-screen half, which reads the pixels, is in
-// machines.test.mjs and slot5x5.machines.test.mjs.) Two 5x5 layouts have no spare row, and are listed, not skipped
-// silently: the VIC-20's (22 columns and 23 rows hold the frame, 17 rows, and six panel lines), and the PET's, whose
-// bonus banner prints on row 23, the row a panel one lower would end on (the PET and web 5x5 move their panel into
-// the margin beside a bigger block in the next change, which removes the exception).
+// machines.test.mjs and slot5x5.machines.test.mjs.) One layout has no spare row, and is listed, not skipped
+// silently: the VIC-20's 5x5 (22 columns and 23 rows hold the frame, 17 rows, and six panel lines). The PET's and the
+// web's 5x5 put the panel in the margin beside the block, where it needs no gap.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { frame, panelRows, messages } from './support/geometry.mjs';
+import { readFileSync } from 'node:fs';
+import { frame, panelRows, messages, blockWidth, panelBeside } from './support/geometry.mjs';
 import { labConsts } from './support/table.mjs';
 
 const MACHINES = ['pet', 'vic20', 'c64', 'cx16', 'web'];
-const NO_SPARE_ROW = new Set(['slot5x5/vic20', 'slot5x5/pet']);
+const NO_SPARE_ROW = new Set(['slot5x5/vic20']);
 const LABELS = ['CREDIT', 'BET', 'WIN', 'CR', 'FS', 'MI', 'MN', 'MJ', 'GR'];
 
 for (const lab of ['slot3x3', 'slot5x5']) {
@@ -18,6 +18,12 @@ for (const lab of ['slot3x3', 'slot5x5']) {
     for (const machine of MACHINES) {
       test(`${machine}: a blank row under the frame, then the panel`, { skip: NO_SPARE_ROW.has(`${lab}/${machine}`) }, () => {
         const f = frame(lab, machine);
+        if (panelBeside(lab, machine)) {
+          // in the margin beside the block: a blank column between them, and every line inside the frame's rows
+          const v = labConsts(lab, machine);
+          assert.ok(v.PANEL_COL >= blockWidth(lab, machine) + 1, `the panel (column ${v.PANEL_COL}) is against the block (${blockWidth(lab, machine)} wide)`);
+          assert.ok(v.PANEL > f.top && v.PANEL <= f.bottom, `the panel starts on row ${v.PANEL}, outside the frame (${f.top}-${f.bottom})`);
+        }
         for (const row of panelRows(lab, machine)) {
           // a line above the frame (the VIC-20's win and message) may sit against its top border; one below needs a gap
           assert.ok(row < f.top || row >= f.bottom + 2, `row ${row} is against the frame (its bottom border is row ${f.bottom})`);
@@ -30,7 +36,8 @@ for (const lab of ['slot3x3', 'slot5x5']) {
       assert.ok(all.length >= 6, 'the message function was not found');
       for (const m of all) assert.ok(!LABELS.includes(m), `the message "${m}" is also a label on the panel`);
       for (const machine of MACHINES) {
-        const width = lab === 'slot3x3' ? (labConsts(lab, machine).MESSAGE_WIDTH ?? 20) : 21;
+        const game = Object.fromEntries([...readFileSync(new URL(`../src/labs/${lab}/game.8bs`, import.meta.url), 'utf8').matchAll(/^const (\w+): u(?:tiny|small)int = (\d+);/gm)].map((x) => [x[1], Number(x[2])]));
+        const width = lab === 'slot3x3' ? (labConsts(lab, machine).MESSAGE_WIDTH ?? 20) : (panelBeside(lab, machine) ? game.STACK_MESSAGE_WIDTH : 21);
         // the VIC-20's 3x3 message shares its row with the win: 11 columns
         for (const m of all) assert.ok(m.length <= width, `"${m}" is ${m.length} columns; ${machine}'s message row holds ${width}`);
       }

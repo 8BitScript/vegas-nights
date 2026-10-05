@@ -26,7 +26,7 @@ import { loadTable, labConsts } from './support/table.mjs';
 import { play } from './support/reference5.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng, rowBlank } from './support/screen.mjs';
-import { frame } from './support/geometry.mjs';
+import { frame, blockWidth } from './support/geometry.mjs';
 import { inkReader } from './support/adapters.mjs';
 import { KIND, pixelAdapter, quadAdapter } from './support/adapters5.mjs';
 import { bestChain } from './support/chain.mjs';
@@ -47,8 +47,31 @@ const MAX_PX_PER_FRAME = { c64: 12, cx16: 8, pet: 12, vic20: 12, web: 12, c64web
 const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
 const SAMPLES = { c64: 10, vic20: 8, pet: 8, cx16: 6, web: 10, c64web: 10 };
 
-// Where the game puts things (src/labs/slot5x5/game.8bs, view.8bs, view.pet.8bs).
+// Where the game puts things (src/labs/slot5x5/game.8bs, view.8bs, view.pet.8bs, geometry*.8bs).
 const PANEL = (machine) => labConsts('slot5x5', machine).PANEL;
+const GAME = Object.fromEntries([...readFileSync(new URL('../src/labs/slot5x5/game.8bs', import.meta.url), 'utf8').matchAll(/^const (\w+): u(?:tiny|small)int = (\d+);/gm)].map((m) => [m[1], Number(m[2])]));
+
+/**
+ * Where each number is, as [column, row, digits] from the block's left edge, for `machine`: under the reels (one
+ * line each) or, on the PET and the web, stacked in the margin beside them (game.8bs STACK_*).
+ */
+function panelMap(machine) {
+  const v = labConsts('slot5x5', machine);
+  const x = v.PANEL_COL ?? 0;
+  const p = v.PANEL;
+  if (!(x > 0)) {
+    return {
+      credit: [x + 7, p + GAME.CREDIT_ROW, 9], bet: [x + 4, p + GAME.BET_ROW, 4], win: [x + 4, p + GAME.WIN_ROW, 9], free: [x + 13, p + GAME.BET_ROW, 2],
+      meters: [[x + 3, p + GAME.JACKPOT_ROW], [x + 14, p + GAME.JACKPOT_ROW], [x + 3, p + GAME.JACKPOT_ROW + 1], [x + 14, p + GAME.JACKPOT_ROW + 1]],
+      firstRow: p,
+    };
+  }
+  return {
+    credit: [x, p + GAME.STACK_CREDIT_ROW + 1, 9], bet: [x + 4, p + GAME.STACK_BET_ROW, 4], win: [x, p + GAME.STACK_WIN_ROW + 1, 9], free: [x + 3, p + GAME.STACK_FREE_ROW, 2],
+    meters: [0, 1, 2, 3].map((i) => [x + 3, p + GAME.STACK_METER_ROW + i]),
+    firstRow: p,
+  };
+}
 
 const log = (...args) => console.log('   ', ...args);
 
@@ -66,14 +89,15 @@ for (const machine of MACHINES) {
     let expectedAt;
     const shoot = async (program, name, frames) => loadPng(await capture(machine, program, name, frames));
     const panel = PANEL(machine);
+    const map = panelMap(machine);
     const num = (png, col, row, width) => readNumber(png, geo, ref, col, row, width);
-    const credit = (png) => num(png, 7, panel, 9);
-    const win = (png) => num(png, 4, panel + 2, 9);
-    const bet = (png) => num(png, 4, panel + 1, 4);
-    const freeSpins = (png) => num(png, 13, panel + 1, 2);
+    const credit = (png) => num(png, ...map.credit);
+    const win = (png) => num(png, ...map.win);
+    const bet = (png) => num(png, ...map.bet);
+    const freeSpins = (png) => num(png, ...map.free);
     // a jackpot meter: one digit of millions, then two groups of three
-    const meter = (png, col, row) => num(png, col, panel + row, 1) * 1_000_000 + num(png, col + 1, panel + row, 6);
-    const meters = (png) => [meter(png, 3, 4), meter(png, 14, 4), meter(png, 3, 5), meter(png, 14, 5)];
+    const meter = (png, col, row) => num(png, col, row, 1) * 1_000_000 + num(png, col + 1, row, 6);
+    const meters = (png) => map.meters.map(([col, row]) => meter(png, col, row));
 
     /** The first frame in [lo, hi] at which `holds(png)` is true (and stays true), by bisection. */
     async function firstFrame(program, lo, hi, holds, step = 4) {
@@ -96,11 +120,11 @@ for (const machine of MACHINES) {
       log(`cell ${geo.pitchX}x${geo.pitchY} px, reel unit = ${adapter.unit}, ${adapter.positions} positions a reel`);
     });
 
-    test('the row under the frame is blank, and the panel starts below it', { skip: machine === 'vic20' || machine === 'pet' ? `the ${machine}'s 5x5 has no spare row (test/panel.test.mjs lists it)` : false }, async () => {
+    test('the row under the frame is blank, and the panel starts below it', { skip: machine === 'vic20' ? 'the 22-column VIC-20 has no spare row (test/panel.test.mjs lists it)' : false }, async () => {
       const png = await shoot('slot5x5-lose', 'panelrow', SPIN[machine]);
       const f = frame('slot5x5', machine);
-      assert.ok(rowBlank(png, geo, f.bottom + 1, 0, 21), `row ${f.bottom + 1}, under the frame, has something drawn in it`);
-      assert.ok(!rowBlank(png, geo, panel, 0, 21), `the credit row (${panel}) is empty`);
+      assert.ok(rowBlank(png, geo, f.bottom + 1, 0, blockWidth('slot5x5', machine)), `row ${f.bottom + 1}, under the frame, has something drawn in it`);
+      assert.ok(!rowBlank(png, geo, map.credit[1], map.credit[0], map.credit[0] + 9), `the credit row (${map.credit[1]}) is empty`);
     });
 
     for (const name of ['lose', 'win', 'jackpot']) {
@@ -165,7 +189,8 @@ for (const machine of MACHINES) {
           const seen = adapter.observe(png, geo, ink, reel);
           const cands = [];
           for (let p = 0; p < adapter.positions; p += 1) if (expectedAt[reel][p] === seen) cands.push(p);
-          return { seen, cands };
+          // a moving quadrant reel can show a seam for a frame (one band the picture before the move, the rest after)
+          return { seen, cands: cands.length || !adapter.match ? cands : adapter.match(expectedAt[reel], seen) };
         }) });
       }
       return shots;
