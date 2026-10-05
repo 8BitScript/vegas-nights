@@ -9,10 +9,10 @@ import { quad } from "./quad.8bs";
 export namespace view {
     // ---- where everything else goes, in cells from the block's left edge ----
     const BLOCK_WIDTH: utinyint = 22;
-    const CREDIT_ROW: utinyint = 21;
+    const CREDIT_ROW: utinyint = 22;
     const CREDIT_NUM: utinyint = 7;
     const BET_ROW: utinyint = 22;
-    const BET_NUM: utinyint = 7;
+    const BET_NUM: utinyint = 20;
     const WIN_ROW: utinyint = 23;
     const WIN_NUM: utinyint = 7;
     const MESSAGE_ROW: utinyint = 24;
@@ -21,10 +21,10 @@ export namespace view {
 
     function statics(): void {
         text.print(layout.cell(0, 0), "VEGAS NIGHTS 3X3");
-        text.print(layout.cell(0, 21), "CREDIT");
-        text.print(layout.cell(0, 22), "BET");
+        text.print(layout.cell(0, 22), "CREDIT");
+        text.print(layout.cell(16, 22), "BET");
         text.print(layout.cell(0, 23), "WIN");
-        text.print(layout.cell(14, 22), "UP DOWN: BET");
+        text.print(layout.cell(16, 23), "UP DOWN: BET");
     }
 
     function begin(): void {

@@ -46,7 +46,7 @@ export namespace view {
     const WIDTH: utinyint = 16;
     const TOP: utinyint = 3;
     // The first row under the frame, where the panels start.
-    const PANEL: utinyint = 14;
+    const PANEL: utinyint = 15;
     // Whether the screen has room for the title above the frame.
     const TITLE: bool = true;
     // Rows of the window, and glyphs a reel uses: ten rows of two.

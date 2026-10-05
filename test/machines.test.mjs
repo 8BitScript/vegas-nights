@@ -23,7 +23,8 @@ import assert from 'node:assert/strict';
 import { loadTable } from './support/table.mjs';
 import { play } from './support/reference.mjs';
 import { MACHINES, unavailable, capture } from './support/emulator.mjs';
-import { calibrate, reference, readNumber, loadPng, layoutFor } from './support/screen.mjs';
+import { calibrate, reference, readNumber, loadPng, layoutFor, rowBlank } from './support/screen.mjs';
+import { frame } from './support/geometry.mjs';
 import { adapterFor, inkReader, precompute, matches } from './support/adapters.mjs';
 import { bestChain } from './support/chain.mjs';
 
@@ -65,6 +66,15 @@ for (const machine of MACHINES) {
       expectedAt = precompute(adapter, c.REELS);
       assert.ok(ref.digits.size === 10);
       log(`cell ${geo.pitchX}x${geo.pitchY} px, reel unit = ${adapter.unit}, ${adapter.positions} positions a reel`);
+    });
+
+    test('the row under the frame is blank, and the panel lines are below it', async () => {
+      const p = PROGRAMS.lose;
+      const png = await shoot('slot3x3-lose', 'panelrow', Math.round(p.frames * SETTLE_SCALE[machine]));
+      const f = frame('slot3x3', machine);
+      assert.ok(rowBlank(png, geo, f.bottom + 1, 0, 22), `row ${f.bottom + 1}, under the frame, has something drawn in it`);
+      assert.ok(!rowBlank(png, geo, L.creditRow, 0, 22), `the credit row (${L.creditRow}) is empty: the panel moved without the view`);
+      assert.ok(!rowBlank(png, geo, L.winRow, 0, 22), `the win row (${L.winRow}) is empty`);
     });
 
     for (const [name, p] of Object.entries(PROGRAMS)) {
