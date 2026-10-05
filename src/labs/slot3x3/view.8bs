@@ -51,6 +51,15 @@ let inkKey: array<usmallint, 5>;
 // reel-colour pass would otherwise multiply for every cell row it draws.
 let colorBase: array<utinyint, 16>;
 
+// Where the machine keeps TWO copies of the glyph block (glyphs.BUFFERED, the C64), a reel is composed into the
+// copy the screen is not showing and the screen switches to it once, after every reel that moved has been composed
+// (view.flush). `latest` says which copy holds each reel's current picture (bit 0 the home copy, bit 1 the other,
+// 3 both), `inkDirty` which reels have staged colours not yet written to colour RAM, `pending` whether anything
+// has been composed that the screen does not show yet. See the C64 glyph layer for how the two copies work.
+let latest: array<utinyint, 5>;
+let inkDirty: array<utinyint, 5>;
+let pending: bool = false;
+
 export namespace view {
     // The block, in cells: a frame cell, then the reels, SYMBOL_CELLS_W across, with a divider
     // between each pair, then a frame cell. 13 wide for 3-cell symbols, 16 for 4-cell ones
@@ -239,7 +248,7 @@ export namespace view {
             }
         } else {
             // Memory-mapped glyphs: the whole reel in one assembly call.
-            glyphs.drawReel(glyphs.STRIP_RAM + strip, stop, row, glyphs.address(view.base() + reel * block.PER_REEL), STOP_MASK, SYMBOL_CELLS_W, SYMBOL_CELLS_H, block.DOWN);
+            glyphs.drawReel(glyphs.STRIP_RAM + strip, stop, row, glyphs.target(view.base() + reel * block.PER_REEL), STOP_MASK, SYMBOL_CELLS_W, SYMBOL_CELLS_H, block.DOWN);
         }
         glyphs.close();
     }
@@ -292,9 +301,121 @@ export namespace view {
         }
     }
 
-    function drawGlyphs(reel: utinyint): void {
+    // The colours of reel `reel`'s cells, worked out as drawColors does but staged (glyphs.stageColor) instead of
+    // written, so that they can go to colour RAM in the same breath as the switch to the new shapes.
+    function stageInk(reel: utinyint): void {
+        let stop: utinyint = reelscroll.stop(reel);
+        let row: utinyint = reelscroll.row(reel);
+        let band: utinyint = row >> 3;
+        if ((row & 7) > 4) {
+            band = band + 1;
+        }
+        let key: usmallint = stop;
+        key = key * (SYMBOL_CELLS_H + 1);
+        key = key + band;
+        if (inkKey[reel] == key) {
+            return;
+        }
+        inkKey[reel] = key;
+        inkDirty[reel] = 1;
+        let strip: usmallint = reel;
+        strip = strip * STOPS;
+        let slot: usmallint = reel;
+        slot = slot * block.PER_REEL;
+        for (let down: utinyint = 0; down < block.DOWN; down++) {
+            let symbol: utinyint = STRIPS[strip + stop];
+            let inkRow: utinyint = row >> 3;
+            if ((row & 7) > 4) {
+                if (inkRow < SYMBOL_CELLS_H - 1) {
+                    inkRow = inkRow + 1;
+                } else {
+                    inkRow = 0;
+                    symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
+                }
+            }
+            let index: utinyint = colorBase[symbol] + inkRow * SYMBOL_CELLS_W;
+            for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
+                glyphs.stageColor(slot + across, SYMBOL_COLOR[index + across]);
+            }
+            slot = slot + SYMBOL_CELLS_W;
+            row = row + 8;
+            if (row >= block.PIXELS) {
+                row = row - block.PIXELS;
+                stop = (stop + 1) & STOP_MASK;
+            }
+        }
+    }
+
+    // Write reel `reel`'s staged colours to colour RAM, now.
+    function paintInk(reel: utinyint): void {
+        inkDirty[reel] = 0;
+        let slot: usmallint = reel;
+        slot = slot * block.PER_REEL;
+        glyphs.putColors(layout.cell(1 + reel * block.PITCH, view.TOP), slot, SYMBOL_CELLS_W, block.DOWN);
+    }
+
+    // Compose reel `reel` at its current offset into the glyph copy the screen is not showing. The screen does not change
+    // until view.flush().
+    function composeReel(reel: utinyint): void {
         view.drawBytes(reel);
-        view.drawColors(reel);
+        latest[reel] = glyphs.hiddenBit();
+        view.stageInk(reel);
+        pending = true;
+    }
+
+    // Show what composeReel has composed since the last flush: every reel whose hidden copy is out of date (it did not
+    // move this time, but an earlier move left its newest picture only in the copy being shown) is first copied across, then
+    // the screen switches copies when the beam is clear of the window, and the colours that go with the new shapes follow.
+    function flush(): void {
+        if (!glyphs.BUFFERED) {
+            return;
+        }
+        if (!pending) {
+            return;
+        }
+        pending = false;
+        let bit: utinyint = glyphs.hiddenBit();
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            if ((latest[reel] & bit) == 0) {
+                glyphs.mirror(view.base() + reel * block.PER_REEL, block.PER_REEL);
+                latest[reel] = 3;
+            }
+        }
+        glyphs.flip();
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            if (inkDirty[reel] != 0) {
+                view.paintInk(reel);
+            }
+        }
+    }
+
+    // Leave both copies holding every reel's current picture and the home copy on the screen, which is where the text
+    // package expects it to be: the game calls this when the reels have stopped, before it prints anything. Invisible
+    // by construction: the two copies are alike when the screen goes back.
+    function sync(): void {
+        if (!glyphs.BUFFERED) {
+            return;
+        }
+        view.flush();
+        for (let reel: utinyint = 0; reel < REELS; reel++) {
+            if (latest[reel] != 3) {
+                glyphs.mirror(view.base() + reel * block.PER_REEL, block.PER_REEL);
+                latest[reel] = 3;
+            }
+        }
+        glyphs.home();
+    }
+
+    function drawGlyphs(reel: utinyint): void {
+        if (glyphs.BUFFERED) {
+            // One reel, shown at once, and both copies left alike.
+            view.composeReel(reel);
+            view.flush();
+            view.sync();
+        } else {
+            view.drawBytes(reel);
+            view.drawColors(reel);
+        }
     }
 
     // ---- what the game calls ---------------------------------------------
@@ -328,6 +449,15 @@ export namespace view {
             view.defineFrame();
             view.mapCells();
             view.drawFrame();
+            if (glyphs.BUFFERED) {
+                // The frame and the cell map are in the home copy; the second copy starts as a duplicate of it.
+                glyphs.region(view.TOP, block.DOWN);
+                for (let reel: utinyint = 0; reel < REELS; reel++) {
+                    latest[reel] = 3;
+                    inkDirty[reel] = 0;
+                }
+                glyphs.clone();
+            }
         } else {
             text.print(layout.cell(1, 6), "-----------");
             text.print(layout.cell(1, 10), "-----------");
@@ -352,7 +482,9 @@ export namespace view {
     // A reel moved `pixels` down. The composer redraws on every move; the
     // fallback only when a whole symbol went by.
     function moved(reel: utinyint, pixels: utinyint): void {
-        if (glyphs.AVAILABLE) {
+        if (glyphs.BUFFERED) {
+            view.composeReel(reel);
+        } else if (glyphs.AVAILABLE) {
             view.drawGlyphs(reel);
         } else if (reelscroll.row(reel) < pixels) {
             view.drawText(reel);
@@ -372,7 +504,13 @@ export namespace view {
                     }
                 } else {
                     inkKey[reel] = 65535;
-                    view.drawGlyphs(reel);
+                    if (glyphs.BUFFERED) {
+                        // The shapes were never touched by the flash, only the colours.
+                        view.stageInk(reel);
+                        view.paintInk(reel);
+                    } else {
+                        view.drawGlyphs(reel);
+                    }
                 }
             } else if (on) {
                 let at: usmallint = layout.cell(1 + reel * 4, 7 + row);

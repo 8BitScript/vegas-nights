@@ -175,7 +175,7 @@ they came to rest on.
 
 | machine | how | one pixel step is | measured redraw | program / RAM |
 | --- | --- | --- | --- | --- |
-| C64 | the reel is 48 redefined characters (4 across, 12 down) of 32×32-pixel symbols; a frame rewrites their bytes from the symbol bitmaps, in assembly | 1 pixel | ~0.8 frames a reel | 9,809 B / 119 B |
+| C64 | the reel is 48 redefined characters (4 across, 12 down) of 32×32-pixel symbols; a frame rewrites their bytes from the symbol bitmaps, in assembly, **into a second copy of the character set that is not on the screen**, and the screen switches to it when the beam is clear of the reels ([double buffering](#double-buffering-on-the-c64)) | 1 pixel | ~0.8 frames a reel to compose | 10,753 B / 116 B |
 | X16 | the same, through VERA's data port | 1 pixel | ~0.25 frames | 8,285 B / 197 B |
 | PET | the reel is built from the 16 quadrant blocks in the character ROM: 6×6-cell symbols (48 px), three precomputed tables, a 6502 block-copy hop | 4 pixels (half a block row) | 1.25 frames to redraw, **0.32 to hop** | 8,439 B / 121 B |
 | VIC-20 | the same, with a colour for every cell (the hop moves the colour RAM too) | 4 pixels | 2.71 frames to redraw, **0.67 to hop 8 px, 0.83 for 16** | 9,452 B / 133 B |
@@ -211,13 +211,21 @@ symbol and a real word on BAR (`docs/tiles/classic.c64.png`).
 
 The same winning spin, before (left) and after: three BARs on the middle line.
 
-A spin in motion on the new machine, eight consecutive frames each. Far from the stop a reel hops a
-whole symbol at a time (frames 300–307, a blur); in the last stretch it eases through 8, 4 and 2 pixels
-(frames 434–441). Frames 301 and 306, and the second reel in 434 and 437, show the tearing described below.
+A spin in motion on the new machine, eight consecutive frames each, **taken before the second
+character set** (the commit that adds it is described in [Double buffering](#double-buffering-on-the-c64)).
+Far from the stop a reel hops a whole symbol at a time (frames 300–307, a blur); in the last stretch it
+eases through 8, 4 and 2 pixels (frames 434–441). Frames 301 and 306, and the second reel in 434 and 437,
+show the tearing that the second set removed.
 
 ![eight consecutive frames of a C64 spin, far from the stop](docs/slot3x3/c64-spin-blur.png)
 
 ![eight consecutive frames of a C64 spin easing in to the stop](docs/slot3x3/c64-spin-ease-in.png)
+
+The same eight frames (434–441) of the same seeded spin, top row **before** the second character set,
+bottom row after. In the top row a reel is caught half redrawn in frames 434, 437 and 439 (the white
+glitch shapes over the cherries and bars); in the bottom row none is.
+
+![eight consecutive frames of the C64 spin easing in, before (red bar) and after (green bar) double buffering](docs/slot3x3/c64-tearing-before-after.png)
 
 **The glyph arithmetic**, which is the limit on a symbol's size (`test/glyph-budget.test.mjs` recomputes it):
 
@@ -239,6 +247,92 @@ letters a–z — the first capture of the new machine showed the alphabet in re
 is written raw (`glyphs.put`), and the glyph layer selects the mixed-case set itself (`begin()`), which
 `text` used to do as a side effect of its first write.
 
+### Double buffering on the C64
+
+The C64's reels were composed on the screen itself: 0.82 of a frame for a reel, while the beam crosses
+the reel window in about a third of one, so a frame could catch a reel half old and half new. They are now
+composed out of sight.
+
+**Two complete character sets.** The VIC-II shows whichever set `$D018` names. The *home* set is the
+mixed-case half of the character copy under the I/O area (`$D800`); it is the set `@8bitscript/text` selects
+on every run of text, so it is the one that must hold the right picture whenever the program prints. The
+*other* is a second 2 KB copy in plain RAM at `$C800` (`$D018` = `$82`), inside the same 16 K video bank, so
+the VIC reads it, and outside the I/O area, so the CPU writes it without banking anything out.
+
+| address | what | notes |
+| --- | --- | --- |
+| `$C000`–`$C3FF` | the tileset (symbol bitmaps) | staged once |
+| `$C400`–`$C53F` | the reels' strips | staged once |
+| `$C540`–`$C5FF` | staged cell colours | 144 of 192 bytes: 3 reels × 48 cells |
+| `$C600`–`$C61F` | where each symbol's tile starts | low and high bytes |
+| `$C800`–`$CFFF` | **the second character set** | `$D018` = `$82` |
+| `$D000`–`$D7FF` | the upper-case set (unused here) | `$D018` = `$84` |
+| `$D800`–`$DFFF` | **the home character set** | `$D018` = `$86`, the text package's |
+| `$E000`–`$E3E7` | the screen | the same for both sets |
+
+**One pass of the game loop is one tick.** Every reel that steps in a pass is composed into the set that is not on
+the screen (`view.composeReel`); the screen map never changes, only glyph bytes do, so there is no second screen
+to keep. When the pass has composed what it has to, `view.flush()` waits until the beam is outside the reel rows
+(`glyphs.flip`: in the 100 raster lines below the window, in the vertical blank, or in the first lines of the next
+picture; otherwise until it comes round to the window's bottom edge), writes `$D018` once, and writes the reels'
+new cell colours (staged while composing, so the shapes and their colours arrive together). The two sets then
+swap roles: the next pass composes into the set that was on the screen. `view.latest` remembers which set holds
+each reel's current picture; a reel that sat out a pass is first copied across (about 0.3 of a frame), so a set
+is never shown with an old reel in it.
+
+**The text package.** `text.prepare()` writes `$D018` = `$86` on every run of text, whatever is on the screen.
+So the game calls `view.sync()` when the reels have stopped, before it prints: both sets are made alike and the
+home set goes back on the screen — invisible, because the two are identical at that moment. Nothing prints while
+a spin is under way.
+
+**Why all three reels step together.** The C64's `feel.REEL_WAIT` was 1, which stepped reel 1 on odd passes and
+reels 0 and 2 on even ones. With a second set that means a copy of the idle reels into the hidden set on every
+pass, and a spin that took 37% longer (every reel at rest by capture 680 against 560). With `REEL_WAIT` = 0 every
+spinning reel steps on every pass, no pass needs a copy, and each reel steps about as often as before — a pass is
+three composes long, and one compose is most of a frame — so a whole spin takes as long as the single-buffered one
+did (every reel at rest by capture 560 in both). The reels still start a pass apart.
+
+**What it costs.** 944 bytes of program (9,809 → 10,753) and 3 fewer bytes of RAM; every other machine's build
+is byte-identical, because the whole mechanism folds away where `glyphs.BUFFERED` is false.
+
+**Measured** (`scripts/tear-rate.mjs c64`, 24 consecutive captures of a seeded spin, x64sc NTSC; "torn" is a
+capture in which a reel shows no valid window of its strip):
+
+| spin (seed) | frames | torn before | torn after |
+| --- | --- | --- | --- |
+| `lines` | 300–323 (the blur) | 7 of 24 | 0 of 24 |
+| `lines` | 434–457 (easing in) | 11 of 24 | 0 of 24 |
+| `cherries` | 300–323 | 7 of 24 | 0 of 24 |
+| `cherries` | 430–453 | 7 of 24 | 0 of 24 |
+| `jackpot` | 300–323 | 7 of 24 | 0 of 24 |
+| `jackpot` | 430–453 | 9 of 24 | 0 of 24 |
+| | | **48 of 144** | **0 of 144** |
+
+**PAL** (`EIGHTBS_RUN_ARGS=--pal`, 312 lines a frame, so the window logic also takes its bit-8 branch): the same script
+on the `lines` spin, frames 300–323 and 370–393 (the ease-in is earlier in PAL, and a window that reaches the win-line
+flash would flag the white cells as wrong colours):
+
+| spin (seed) | frames | torn before | torn after |
+| --- | --- | --- | --- |
+| `lines` | 300–323 (the blur) | 13 of 24 | 0 of 24 |
+| `lines` | 370–393 (easing in) | 9 of 24 (and 1 reel in the wrong colours) | 0 of 24 (0 wrong colours) |
+
+On PAL every reel is at rest from capture 460 against 500 before (`scripts/spin-timeline.mjs`).
+
+The script also checks colour: for every reel at a valid position it works out the colour each cell must have and
+compares it with the colour that cell has on a capture at rest (`--rest`). Only four colour indices appear in the
+finished position of that spin, so the check is partial; it found 0 colour mismatches before and after. A reel
+caught half redrawn is the shape check's catch, and that is the one the double buffer removes. `scripts/spin-timeline.mjs`
+decodes every reel's position every N frames and prints the first capture from which none moves again, which
+is how a frozen picture (zero tears, no spin) would be told from a working one.
+
+**What it does not do.** The 5x5 on the C64 composes its pre-laid strips straight into the characters in a
+couple of copies per reel and is not double-buffered yet (the same flip would do it: the 5x5's sets would hold
+80-byte columns instead of 384-byte windows). The quadrant machines (PET, VIC-20, web) have no second set to switch to;
+their seam is described under Tearing. The flip waits on the raster position, so an interrupt that holds the CPU for
+more than the rest of the window delays a pass by a frame, never corrupts a picture; the 3x3 has no raster interrupt
+of its own.
+
 ### What a redraw costs, and what a hop saves
 
 `scripts/measure-redraw.mjs` redraws one reel N times under each machine's own
@@ -252,8 +346,13 @@ With 32×32 symbols the same call composes 384 bytes instead of 216 (48 glyphs, 
 **0.82 frames** (0.57 before), plus about a third of a frame to colour 48 cells. The composer no longer
 knows the symbol size: the symbols' addresses come from a table `glyphs.symbols()` fills, and the cell
 width, height and window rows are arguments. A spin on the C64 is a little longer than before — reel 0
-of the `lines` entry comes to rest at frame ~463 against ~424 — because a symbol is a third taller; a
-16-pixel far hop was smoother but rested at ~565. The quadrant machines' trick below would help here too:
+of the `lines` entry came to rest at frame ~463 against ~424 — because a symbol is a third taller; a
+16-pixel far hop was smoother but rested at ~565. (With the second character set below, a reel drawn
+*on its own and shown at once* costs 1.50 frames in `scripts/measure-redraw.mjs`: the 0.82 to compose, the
+wait for the beam and the copy that keeps the two sets alike. A spin does not draw reels on their own: all
+the reels that step in a pass are composed first and shown once, so a reel costs its 0.82 and a share of one
+switch, and a whole spin takes as long as before — see [Double buffering](#double-buffering-on-the-c64).)
+The quadrant machines' trick below would help here too:
 a reel that hops a *whole symbol* needs no recomposing in its lower eight cell rows, only a memory move
 and the new symbol's four rows copied straight from the tile data — roughly half the redraw. That is
 the next thing to try on the C64; it is not done.
@@ -299,14 +398,13 @@ there is nothing to copy and a reel is redrawn whole.
   top-first and leaves the old picture below). The motion test knows exactly this and accepts nothing
   else; it is invisible at rest and reads as motion blur while a reel spins. Making the three reels
   finish before the beam reaches the window would need each hop under 0.1 frame.
-  The C64 recomposes whole windows, so a frame there can show a reel part old, part new.
-  `scripts/tear-rate.mjs` counts the frames in which a reel shows no valid window of its strip: on
-  the C64's old 24×24 machine **16 of 24** consecutive frames in the blur and **17 of 24** in the last stretch
-  before the stop; on the 32×32 machine **4 of 24** and **12 of 24**, because it redraws less often.
-  Fewer, not none: a redraw takes most of a frame and the beam crosses the reels in about a third of
-  one, so the beam passes rows the composer has not reached. Ending it takes a double-buffered
-  character set (two copies, flipped at the frame edge) or reels as hardware sprites; neither fits the
-  glyph budget above.
+  The C64 used to recompose whole windows on the screen itself, so a frame there could show a reel part
+  old, part new: `scripts/tear-rate.mjs` counted **16 of 24** consecutive frames in the blur and **17 of 24**
+  in the last stretch before the stop on the old 24×24 machine, and **7 of 24** and **11 of 24** on the 32×32
+  one. It no longer does: the reels are composed into a second copy of the character set and the screen
+  switches to it while the beam is clear of them ([Double buffering](#double-buffering-on-the-c64)), and
+  the same counts are **0**. (An earlier version of this file said a second set did not fit the glyph
+  budget. It does: the budget is codes within *one* set, and a set is only 2 KB.)
 - **Panels are text.** The credit, bet and win are in the machine's own font; the
   frame, dividers and payline arrows are graphics.
 - **The jackpot is fixed-odds**, not a progressive meter, and there is no bonus
@@ -368,7 +466,7 @@ Numbers are from `pnpm run test:machines` and `scripts/measure-redraw.mjs` on a 
 
 | machine | builds | program / RAM | reels = engine's evaluator | reel hop while spinning | eases to | what it is |
 | --- | :-: | --- | :-: | --- | --- | --- |
-| C64 | yes | 9,809 / 119 B | exact, pixel for pixel | 32 px (a symbol) a redraw far out, 8 within four symbols | 2 px | composed glyphs, 32×32 pixel art |
+| C64 | yes | 10,753 / 116 B (was 9,809 / 119) | exact, pixel for pixel | 32 px (a symbol) a pass far out, all three reels together, 8 within four symbols | 2 px | composed glyphs, 32×32 pixel art, double-buffered |
 | X16 | yes | 9,517 / 198 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs through VERA, 24×24 pixel art |
 | PET | yes (4032, 32K) | 8,439 / 121 B (was 6,689 / 108) | exact, block for block | 8 px every frame (3 reels) | 4 px | 6×6-cell quadrant blocks, no colour; 44% of the screen (was 14%) |
 | VIC-20 | yes (8K) | 9,452 / 133 B (was 7,254 / 111) | exact, block for block | 16 px about every 3rd frame | 4 px | 6×6-cell quadrant blocks, coloured; 87% of the screen (was 28%) |
@@ -546,6 +644,14 @@ pnpm test                 # the odds: both slots, from the committed tables; no 
 pnpm run test:machines    # every machine, headless, under its own emulator (many minutes; the X16 runs in real time)
 MACHINES=c64,web node --test test/slot5x5.machines.test.mjs
 ```
+
+The C64's reels are checked in motion by three scripts (headless, x64sc; `EIGHTBS_CHECKOUT` as above, and
+`EIGHTBS_RUN_ARGS=--pal` runs the same on PAL): `scripts/tear-rate.mjs c64 --from N --count 24 [--program lines|cherries|lose|jackpot]`
+counts the consecutive captures in which a reel shows no valid window of its strip, or is in the wrong colours for
+its shape; `scripts/spin-timeline.mjs c64` decodes every reel's position every N frames and prints when the last
+reel comes to rest (so a frozen picture is not mistaken for a clean one); `scripts/spin-strip.mjs` crops the
+reel window of consecutive captures and stacks the rows of two builds into one picture
+(`docs/slot3x3/c64-tearing-before-after.png`). They are measurements, not CI: they need the emulator.
 
 `test/odds5.test.mjs` runs the 5x5's rules, in JavaScript, over every one of the 33,554,432 reel positions and
 requires the mean to equal the engine's exact ways + scatter return (61.132% + 3.171%) to within 1e-12; plays

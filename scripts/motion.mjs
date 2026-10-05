@@ -79,7 +79,7 @@ function writePng(file, width, height, rgb) {
   ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 2;
   writeFileSync(file, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]));
 }
-class Canvas {
+export class Canvas {
   constructor(w, h, bg = 0x202020) {
     this.w = w; this.h = h; this.rgb = Buffer.alloc(w * h * 3);
     for (let i = 0; i < w * h; i += 1) this.set(i % w, Math.floor(i / w), bg);

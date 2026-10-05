@@ -25,6 +25,37 @@ export namespace glyphs {
     const STRIP_RAM: usmallint = 0;
     // Recolouring a reel cell by cell in compiled code is fast enough at 8 MHz.
     const COLOR_STRIP: bool = false;
+    const BUFFERED: bool = false;
+
+    // Double buffering (glyphs.8bs): this machine has one copy of the glyph block, so none of it does anything.
+    function target(code: utinyint): usmallint {
+        return glyphs.address(code);
+    }
+
+    function hiddenBit(): utinyint {
+        return 0;
+    }
+
+    function region(row: utinyint, rows: utinyint): void {
+    }
+
+    function mirror(first: utinyint, count: utinyint): void {
+    }
+
+    function flip(): void {
+    }
+
+    function home(): void {
+    }
+
+    function clone(): void {
+    }
+
+    function stageColor(index: usmallint, color: utinyint): void {
+    }
+
+    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
+    }
 
     function begin(): void {
     }
