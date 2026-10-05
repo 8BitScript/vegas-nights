@@ -7,7 +7,7 @@ import { encodePng, decodePng } from '../src/png.mjs';
 import { Art, rgb } from '../src/raster.mjs';
 import { QUAD_CODE, resample, toPixelSymbol, toQuadSymbol, cellFromRows, quadCodeForCell } from '../src/convert.mjs';
 import { MACHINES, nearest } from '../src/palettes.mjs';
-import { reverseBits } from '../src/emit.mjs';
+import { reverseBits, emitVera } from '../src/emit.mjs';
 import { loadTheme, ROOT } from '../src/theme.mjs';
 import { buildTheme, convertTheme } from '../src/build.mjs';
 import { tileTestCells, expectedScreen } from '../src/layout.mjs';
@@ -134,6 +134,7 @@ test('nearest picks within the allowed set only', () => {
 // ---- the classic theme ---------------------------------------------------
 
 const theme = await loadTheme('classic');
+const cosmic = await loadTheme('cosmic');
 
 test('the classic theme lists the engine\'s symbols in the engine\'s order, and the odds file agrees', () => {
   const odds = readFileSync(join(ROOT, 'src', 'generated', 'classic3x3.8bs'), 'utf8');
@@ -144,10 +145,11 @@ test('the classic theme lists the engine\'s symbols in the engine\'s order, and 
 
 test('every machine gets a file, each symbol has ink, and the sizes follow the theme', () => {
   const { files, report } = buildTheme(theme);
-  assert.deepEqual(Object.keys(files).sort(), ['classic.8bs', 'classic.cx16.8bs', 'classic.pet.8bs', 'classic.quad.8bs', 'classic.quad.vic20.8bs', 'classic.quad.web.8bs', 'classic.vic20.8bs', 'classic.web.8bs']);
+  assert.deepEqual(Object.keys(files).sort(), ['classic-vera.8bs', 'classic.8bs', 'classic.cx16.8bs', 'classic.pet.8bs', 'classic.quad.8bs', 'classic.quad.vic20.8bs', 'classic.quad.web.8bs', 'classic.vic20.8bs', 'classic.web.8bs']);
   for (const [machine, r] of Object.entries(report)) {
     assert.ok(r.bytes > 1000, machine);
-    r.data.symbols.forEach((s) => assert.ok((s.ink ?? 1) > 0, `${machine} ${s.id} has ink`));
+    // the X16's sprite file keeps the masters as they are: it has no converted symbols to count ink in
+    (r.data?.symbols ?? []).forEach((s) => assert.ok((s.ink ?? 1) > 0, `${machine} ${s.id} has ink`));
   }
   assert.match(files['classic.pet.8bs'], /export const QUAD_CODE: array<utinyint, 16>/);
   // the C64's classic symbols are 4x4 cells (32x32 pixels, 128 bytes each), the other pixel machines' 3x3 or 2x2
@@ -219,6 +221,82 @@ test('the committed tables are what the pipeline writes now (a stale file fails 
   for (const [name, text] of Object.entries(files)) {
     assert.equal(readFileSync(join(ROOT, 'src', 'generated', 'tiles', name), 'utf8'), text + '\n', `${name} is current`);
   }
+});
+
+// ---- the X16's sprites ---------------------------------------------------------
+
+/** Read an emitted `export const NAME: array<utinyint, N> = [...]` back into numbers. */
+const arrayOf = (text, name) => {
+  const m = new RegExp(`export const ${name}: array<utinyint, (\\d+)> = \\[([^\\]]*)\\];`).exec(text);
+  const values = m[2].split(',').map((v) => Number(v.trim()));
+  assert.equal(values.length, Number(m[1]), `${name} declares its length`);
+  return values;
+};
+
+test('the X16 sprite file is the 48x48 masters at 4 bits a pixel, on the theme\'s own fifteen colours; the art has no clear pixel, only opaque black', () => {
+  const text = emitVera(theme, nearest);
+  const symbols = Number(/VERA_SYMBOLS: utinyint = (\d+)/.exec(text)[1]);
+  assert.equal(symbols, theme.symbols.length);
+  assert.match(text, /VERA_SYMBOL_BYTES: usmallint = 1152;/);
+  const pixels = arrayOf(text, 'VERA_PIXELS');
+  assert.equal(pixels.length, symbols * 1152, '48 x 48 pixels is 1,152 bytes a symbol');
+  const palette = arrayOf(text, 'VERA_PALETTE');
+  assert.equal(palette.length, 32, 'sixteen entries of two bytes');
+  assert.deepEqual(palette.slice(0, 2), [0, 0], 'entry 0 is the clear index');
+  // the palette is the theme\'s colours, 4 bits a channel, in the order theme.json lists them
+  const colours = Object.values(theme.colors);
+  colours.forEach(([r, g, b], i) => assert.deepEqual(palette.slice((i + 1) * 2, (i + 1) * 2 + 2), [((g >> 4) << 4) | (b >> 4), r >> 4], `entry ${i + 1}`));
+  // every pixel of every master: clear where it is transparent, else the nearest theme colour
+  const all = [[0, 0, 0], ...colours];
+  const allowed = colours.map((_, i) => i + 1);
+  let opaque = 0;
+  theme.symbols.forEach((sym, k) => {
+    for (let y = 0; y < 48; y += 1) for (let x = 0; x < 48; x += 1) {
+      const o = (y * 48 + x) * 4;
+      // transparent inside the art is stored as the theme's opaque black (index 1), never as clear (0)
+      const want = sym.img.rgba[o + 3] < 128 ? 1 : nearest(all, [sym.img.rgba[o], sym.img.rgba[o + 1], sym.img.rgba[o + 2]], allowed);
+      const byte = pixels[k * 1152 + y * 24 + (x >> 1)];
+      assert.equal(x & 1 ? byte & 15 : byte >> 4, want, `${sym.id} pixel (${x}, ${y})`);
+      if (want) opaque += 1;
+    }
+  });
+  assert.ok(opaque > 1000, 'the symbols have ink');
+  assert.ok(!pixels.some((b) => b >> 4 === 0 || (b & 15) === 0), 'no pixel of the art is the clear index: a window of symbols has no holes');
+});
+
+test('a master drawn in the theme\'s own colours converts exactly: no pixel moves to a different colour', () => {
+  const text = emitVera(theme, nearest);
+  const pixels = arrayOf(text, 'VERA_PIXELS');
+  const names = Object.keys(theme.colors);
+  const exact = (rgba, o) => names.findIndex((n) => theme.colors[n][0] === rgba[o] && theme.colors[n][1] === rgba[o + 1] && theme.colors[n][2] === rgba[o + 2]) + 1;
+  let checked = 0;
+  theme.symbols.forEach((sym, k) => {
+    for (let y = 0; y < 48; y += 1) for (let x = 0; x < 48; x += 1) {
+      const o = (y * 48 + x) * 4;
+      if (sym.img.rgba[o + 3] < 255) continue;
+      const index = exact(sym.img.rgba, o);
+      if (index === 0) continue; // an anti-aliased colour that is not in the palette: nearest
+      const byte = pixels[k * 1152 + y * 24 + (x >> 1)];
+      assert.equal(x & 1 ? byte & 15 : byte >> 4, index, `${sym.id} (${x}, ${y})`);
+      checked += 1;
+    }
+  });
+  assert.ok(checked > 2000, `checked ${checked} pixels that are exactly a theme colour`);
+});
+
+test('the sprite file refuses art that is not 48x48 and a theme with more than fifteen colours', () => {
+  const small = { ...theme, symbols: [{ ...theme.symbols[0], img: { width: 24, height: 24, rgba: new Uint8Array(24 * 24 * 4) } }] };
+  assert.throws(() => emitVera(small, nearest), /is 24x24; VERA sprite art is 48x48/);
+  const grey = { ...theme, colors: { grey: [120, 120, 120], ...theme.colors } };
+  assert.throws(() => emitVera(grey, nearest), /first colour in theme.json must be black/);
+  const many = { ...theme, colors: Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`c${i}`, [i * 10, 0, 0]])) };
+  assert.throws(() => emitVera(many, nearest), /holds 15 colours/);
+});
+
+test('the cosmic theme\'s sprite file has its nine symbols', () => {
+  const text = emitVera(cosmic, nearest);
+  assert.match(text, /VERA_SYMBOLS: utinyint = 9;/);
+  assert.equal(arrayOf(text, 'VERA_PIXELS').length, 9 * 1152);
 });
 
 // ---- the comparison itself -----------------------------------------------

@@ -1,7 +1,7 @@
 // theme -> { relative file name: source text } for every machine.
 import { MACHINES, nearest } from './palettes.mjs';
 import { toPixelSymbol, toQuadSymbol, quadCodeForCell, QUAD_CODE } from './convert.mjs';
-import { emitPixels, emitQuadrants } from './emit.mjs';
+import { emitPixels, emitQuadrants, emitVera } from './emit.mjs';
 import { cellsFor } from './theme.mjs';
 import { QUAD_OUTPUTS, emitQuadTables } from './quadtables.mjs';
 
@@ -60,5 +60,9 @@ export function buildTheme(theme) {
       if (S) files[out.file(theme.name)] = emitQuadTables(theme, out, S);
     }
   }
+  // The X16's sprites: the 48x48 masters as they are, on the theme's own palette.
+  const vera = emitVera(theme, nearest);
+  files[`${theme.name}-vera.8bs`] = vera;
+  report.vera = { data: null, bytes: Buffer.byteLength(vera), clash: 0, ink: 0 };
   return { files, report };
 }

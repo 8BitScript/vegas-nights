@@ -1,0 +1,35 @@
+// x16-draw-cost — a measurement, not a game: how much of a frame do the 3x3's sprite reels take?
+//
+// Each frame redraws all three reels N times (--define N=20) and counts the frames that
+// finished. While N redraws of three reels fit in the 133,333 cycles of a frame, the count keeps
+// up with the video; once they do not, `waitFrame()` waits for the NEXT frame and the count drops
+// to half. So the largest N that keeps up, times the cost of the counting itself, bounds what one
+// redraw of three reels costs: 133,333 / N cycles at most. The number printed is the count.
+//   8bs run cx16 --program x16-draw-cost --define N=20 --screenshot out.png --frames 400
+import { screen } from "@8bitscript/screen";
+import { text } from "@8bitscript/text";
+import { layout } from "@shared/layout.8bs";
+import { reelscroll } from "@shared/reelscroll.8bs";
+import { view } from "../slot3x3/view.8bs";
+
+const N: utinyint = #define("N", 20);
+
+export function main(): void {
+    screen.blank();
+    layout.centre(view.BLOCK_WIDTH);
+    for (let reel: utinyint = 0; reel < 3; reel++) {
+        reelscroll.place(reel, reel * 7);
+    }
+    view.begin();
+    let frames: usmallint = 0;
+    while (true) {
+        waitFrame();
+        for (let n: utinyint = 0; n < N; n++) {
+            view.draw(0);
+            view.draw(1);
+            view.draw(2);
+        }
+        frames = frames + 1;
+        text.printNumber(layout.cell(1, 1), frames, 5);
+    }
+}

@@ -154,10 +154,13 @@ src/shared/
   cells.*.8bs                  per machine: write a raw screen code and ink (PET, VIC-20)
   bank.8bs                     exact six-digit credits
   layout.8bs                   where the block sits on a 22-, 40- or 80-column screen
+  layout.cx16.8bs              the X16's: a wider, taller block (sprite reels), centred on its 76x56 grid
+  vera.8bs                     the X16's VERA as the sprite reels use it (sprite attributes, the mask, palettes)
   sound.8bs                    the game's sound hooks (tick / stop / win / big / bonus, mute) over sfx.8bs
 src/labs/slot3x3/
   game.8bs                     the machine: spin, stop, evaluate, pay, flash (no pixels)
-  view.8bs                     the reels where glyphs can be redefined (C64, X16), and the text fallback
+  view.8bs                     the reels where glyphs can be redefined (C64), and the text fallback
+  view.cx16.8bs                the reels on the X16: VERA hardware sprites, 48x48 art, nothing composed
   view.pet.8bs view.vic20.8bs  where the panel goes on each, and thin wrappers over quad.8bs
   view.web.8bs
   quad.8bs                     the reels from the quadrant blocks (PET, VIC-20, web): 6x6-cell symbols, table-driven
@@ -176,7 +179,7 @@ they came to rest on.
 | machine | how | one pixel step is | measured redraw | program / RAM |
 | --- | --- | --- | --- | --- |
 | C64 | the reel is 48 redefined characters (4 across, 12 down) of 32×32-pixel symbols; a frame rewrites their bytes from the symbol bitmaps, in assembly, **into a second copy of the character set that is not on the screen**, and the screen switches to it when the beam is clear of the reels ([double buffering](#double-buffering-on-the-c64)) | 1 pixel | ~0.8 frames a reel to compose | 10,753 B / 116 B |
-| X16 | the same, through VERA's data port | 1 pixel | ~0.25 frames | 8,285 B / 197 B |
+| X16 | **VERA hardware sprites**: each reel is a stack of four 64x64 sprites showing 48x48 art, scrolled by writing their Y; nothing is composed | 1 logical row = 2 pixels | ~0.013 frames a reel (about 1,700 cycles) | 15,353 B / 170 B |
 | PET | the reel is built from the 16 quadrant blocks in the character ROM: 6×6-cell symbols (48 px), three precomputed tables, a 6502 block-copy hop | 4 pixels (half a block row) | 1.25 frames to redraw, **0.32 to hop** | 8,439 B / 121 B |
 | VIC-20 | the same, with a colour for every cell (the hop moves the colour RAM too) | 4 pixels | 2.71 frames to redraw, **0.67 to hop 8 px, 0.83 for 16** | 9,452 B / 133 B |
 | web | the reel is built from the host font's sixteen 2×2 block glyphs (codes 128–143) with a colour per cell, 6×6 cells a symbol; no runtime change, a reel is redrawn whole each step | 4 pixels (8 a frame while spinning) | free (the runtime) | 1,327 B const / 82 B |
@@ -193,7 +196,7 @@ and finally 2 pixels a redraw, each distance a multiple of the step before, so t
 last step lands exactly on the drawn stop with the reel at rest — the picture never
 decides the outcome. How often a reel is redrawn and how far it hops far out are
 per-machine settings ([`feel.*.8bs`](src/shared)), set from the measured redraw
-cost: the C64 hops a whole symbol (32 pixels) a redraw until four symbols from its stop and then 8, the X16 8 pixels and the web 8 pixels
+cost: the C64 hops a whole symbol (32 pixels) a redraw until four symbols from its stop and then 8, the X16 4 rows (8 pixels) and the web 8 pixels
 every frame, the PET hops 8 pixels (one block row) every frame, the VIC-20 hops 16 (two
 block rows) about every third frame, and every machine eases in to 2-pixel (the PET,
 VIC-20 and web: 4-pixel) steps at the end.
@@ -333,6 +336,73 @@ their seam is described under Tearing. The flip waits on the raster position, so
 more than the rest of the window delays a pass by a frame, never corrupts a picture; the 3x3 has no raster interrupt
 of its own.
 
+### The X16's reels are sprites
+
+The X16 does not compose its reels. A reel is a stack of VERA hardware sprites, and scrolling one is
+writing each sprite's Y position a few pixels further down; when the stack has moved a symbol, the
+sprites take the strip's next symbols by changing their address. After the upload at start-up the
+CPU never touches a pixel of art. It looks like this: the 3x3's window is 176x144 pixels and its
+frame block 208x176 (**13% of the 76x56 text grid, 12% of the 640x480 display**, against 3% when
+the reels were composed glyphs); the 5x5's window is 304x240 and its block 336x272 (**34% of the
+grid, 30% of the display**). The art is the themes' 48x48 masters at full resolution and in colour
+(fifteen colours and clear), not the 24x24 or 16x16 reductions the glyph machines need.
+
+[`src/labs/slot3x3/view.cx16.8bs`](src/labs/slot3x3/view.cx16.8bs) and
+[`src/labs/slot5x5/view.cx16.8bs`](src/labs/slot5x5/view.cx16.8bs) replace `view.8bs` on the X16 (the
+machine twin rule); [`src/shared/vera.8bs`](src/shared/vera.8bs) is the chip. The game, `reelscroll`
+and `spin` are the files every machine runs, and a reel lands on exactly the same stop: a symbol is
+24 rows tall to the 3x3's `reelscroll` and 16 to the 5x5's `spin`, and a row is drawn 2 or 3 pixels
+tall, so a symbol is 48 pixels either way.
+
+* **A sprite shows one symbol.** The 48x48 art sits in the middle of a 64x64 sprite (VERA's sprites
+  are 8, 16, 32 or 64 wide), so neighbouring sprites on a 48-pixel pitch overlap by their clear
+  margins. The art is stored at 48x48 (1,152 bytes a symbol, 4 bits a pixel, the left pixel in the high
+  nibble) and widened to 64x64 when it is uploaded; `tools/tiles` writes it (`<theme>-vera.8bs`) on the
+  theme's own fifteen colours, so a master drawn in them converts exactly.
+* **The mask.** A symbol that is entering or leaving shows above or below the window. Cells of the
+  text layer with an opaque black background (palette entry 11 is set to black) cover the rows the
+  overflow reaches, and the text layer draws over sprites at z-depth 2, so a sprite shows nowhere
+  outside its window. The title and the panel are printed over those cells and keep the black.
+* **The frame** is two rings of cells in two colours, with a divider in each gap between reels. The
+  bonus round pulses the outer ring.
+* **A payline flashes** by switching its symbols' sprites to a second palette block: the same art,
+  every colour but black turned white.
+* **The mouse pointer** (sprite 0, the KERNAL's) is hidden during play.
+
+Where things are in video memory: the symbols' pixels from `$04000` (2 KiB a symbol: 12,288 B for
+the 3x3's six, 18,432 B for the 5x5's nine); the sprite attributes at `$1FC00`, 8 bytes a sprite, reel
+sprites from sprite 1 (the 3x3 uses 12, the 5x5 30); palette entries 128-143 for the art and 144-159 for
+the lit copy; entry 11 for the mask. The bonus round's border bars take entries 64-83, so the two never
+meet.
+
+Two things measured under x16emu r50 that the code depends on (real VERA has not been checked):
+
+* **A sprite sits one line too high for the text grid.** x16emu draws a sprite's first line one line
+  above the picture's, and the text layer's first cell line is itself the picture's second line (the
+  screen package's scroll correction leaves one). So `vera.8bs` adds **2** lines when the picture is
+  inset (the graphics package adds 1, which aligns to the picture, not the cells). The test found it:
+  the best alignment of the art against the cells was one line off until this was set.
+* **The per-line sprite budget is not enforced.** `packages/cx16/AGENTS.md` gives VERA 798 cycles a line.
+  The 5x5 can put ten 64-pixel sprites on a line (two of each reel where the clear margins overlap),
+  which is 640 sprite pixels. `x16-sprite-limit` (`pnpm exec 8bs run cx16 --program x16-sprite-limit
+  --define N=20`) draws N overlapping sprites on one line: x16emu draws all twenty, so it cannot say
+  whether real hardware would drop any. The arithmetic says ten fit; that is unverified.
+
+**What it costs.** `x16-draw-cost` redraws the 3x3's three reels N times a frame and counts the frames
+that finish: up to N = 16 it keeps up, and above that an iteration takes 1.29, 1.91, 2.56 and 3.56
+frames at N = 32, 48, 64 and 90 — a slope of 0.039 frames, about **5,200 cycles, for a redraw of all
+three reels** (3.9% of a frame; the composer took about 0.8). The 5x5's six sprites a reel and five
+reels are about 2.5 times that, 9.8% of a frame, from the sprite count rather than a measurement.
+Program and RAM: the 3x3 15,353 B / 170 B (it was 9,517 / 198 with composed glyphs), the 5x5
+23,951 B / 197 B (20,240 / 197); most of the difference is the art, 6,912 and 10,368 bytes of it.
+
+**Testing it.** x16emu records in real time, so "frame N" of a capture wanders by several frames when
+the host is busy (the same frame, captured three times, gave three positions). The X16's captures are
+therefore taken from a game that stops changing the picture after its N-th frame
+(`--define FREEZE=N`, in both `game.8bs` files; unset it folds away and the other machines' builds are
+byte for byte the same). `test/support/sprites.mjs` reads the window back pixel for pixel, comparing
+colours, against what the strip and the art say.
+
 ### What a redraw costs, and what a hop saves
 
 `scripts/measure-redraw.mjs` redraws one reel N times under each machine's own
@@ -447,7 +517,7 @@ grid; then:
 
 - **exact** — four headless entries play from fixed seeds (a loss, a two-payline
   win, small wins, the jackpot) and each reel on the screen must equal, pixel for
-  pixel (C64, X16) or block for block (PET, VIC-20), the picture the oracle says
+  pixel (C64), sprite pixel by colour (X16) or block for block (PET, VIC-20), the picture the oracle says
   the drawn stop gives; WIN, CREDIT and BET must match digit for digit;
 - **scrolling** — frame after frame while a spin runs, each reel is at a real
   position on its strip and only ever moves down it (on the quadrant machines a frame may show one
@@ -467,7 +537,7 @@ Numbers are from `pnpm run test:machines` and `scripts/measure-redraw.mjs` on a 
 | machine | builds | program / RAM | reels = engine's evaluator | reel hop while spinning | eases to | what it is |
 | --- | :-: | --- | :-: | --- | --- | --- |
 | C64 | yes | 10,753 / 116 B (was 9,809 / 119) | exact, pixel for pixel | 32 px (a symbol) a pass far out, all three reels together, 8 within four symbols | 2 px | composed glyphs, 32×32 pixel art, double-buffered |
-| X16 | yes | 9,517 / 198 B | exact, pixel for pixel | 8 px every frame | 2 px | composed glyphs through VERA, 24×24 pixel art |
+| X16 | yes | 15,353 / 170 B | exact, every pixel by colour | 8 px every frame | 4 px | VERA sprites, 48x48 colour art |
 | PET | yes (4032, 32K) | 8,439 / 121 B (was 6,689 / 108) | exact, block for block | 8 px every frame (3 reels) | 4 px | 6×6-cell quadrant blocks, no colour; 44% of the screen (was 14%) |
 | VIC-20 | yes (8K) | 9,452 / 133 B (was 7,254 / 111) | exact, block for block | 16 px about every 3rd frame | 4 px | 6×6-cell quadrant blocks, coloured; 87% of the screen (was 28%) |
 | web | yes | 1,327 B const / 82 B (was 798 / 78) | exact, block for block | 8 px every frame | 4 px (over the last 32) | 6×6-cell blocks of the host font, coloured; 44% of a 40×25 grid (34% of the Modern host's) |
@@ -584,7 +654,8 @@ src/shared/glyphs.*.8bs          + the pre-composed strip buffer and the straigh
 src/labs/slot5x5/
   game.8bs                       the machine: spin, stop, ways, scatters, free spins, jackpots, pay, flash (no pixels)
   spin.8bs                       how a reel moves: the 3x3's schedule with a symbol 16 or 24 pixels tall
-  view.8bs                       the reels where glyphs can be redefined (C64, X16); a text fallback elsewhere
+  view.8bs                       the reels where glyphs can be redefined (C64); a text fallback elsewhere
+  view.cx16.8bs                  the reels on the X16: five reels of six VERA sprites showing 48x48 art
   view.pet/vic20/web.8bs         thin wrappers over quad.8bs
   quad.8bs  quadcode*.8bs  ink*.8bs   the quadrant-block composer, its block codes and its colours
 ```
@@ -599,7 +670,7 @@ of five symbols, 2 or 3 cells a symbol) in constants; everything that does not n
 | machine | how | one hop is | program / RAM |
 | --- | --- | --- | --- |
 | C64 | each reel is **20 redefined characters** (two cells by ten) holding a window of five 16x16 symbols. At start-up every reel's two glyph columns are laid out as whole strips of bytes in RAM (512 rows a column + the first 80 again), so a window at *any pixel offset* is ten glyphs' worth of **consecutive bytes**: a redraw is two straight copies in assembly, and the colours are copied the same way | 8 pixels | 10,899 B / 105 B |
-| X16 | the same, through VERA's data port, the colours written cell by cell (it is fast enough) | 8 pixels | 17,173 B / 176 B |
+| X16 | VERA hardware sprites: five reels of six 64x64 sprites showing 48x48 colour art, scrolled by writing their Y (see "The X16's reels are sprites") | 12 pixels (4 rows of 3) | 23,951 B / 197 B |
 | PET | the reel is built from the 16 quadrant blocks in the character ROM (a symbol is 6x6 of them, a reel 15 cells by 3), no colour | 12 pixels | 9,077 B / 95 B |
 | VIC-20 | the same, with a colour for every cell | 12 pixels | 9,686 B / 96 B |
 | web | the same quadrant composer on the host font's 2x2 blocks (codes 128-143, in the very order the composer works out), in colour | 8 pixels | 1,160 B const / 161 B |
@@ -664,7 +735,7 @@ headless entry's seed shows what the entry is for.
 the screenshot to the text grid and the 3x3's glyph sheet names the digits; then:
 
 - **exact** — three headless entries play one spin from a fixed seed (a loss; a 6,100-credit win on several ways at once;
-  the MINI jackpot) and each of the five reels on the screen must equal, pixel for pixel (C64, X16) or quadrant block for
+  the MINI jackpot) and each of the five reels on the screen must equal, pixel for pixel (C64), pixel by colour (X16) or quadrant block for
   block (PET, VIC-20, web), the picture the oracle says the drawn stop gives; CREDIT, BET, WIN and all four jackpot meters
   must match digit for digit;
 - **the bonus round** — from the entry whose first spin lands three scatters, the free-spin counter is read at five points of
@@ -685,7 +756,7 @@ Numbers are from `pnpm run test:machines` on a Mac, NTSC, CLI 0.24.0.
 | machine | builds | program / RAM | reels = the oracle's | bonus round (8 and 16 free spins) = the oracle's | reels move (measured) | what it is |
 | --- | :-: | --- | :-: | :-: | --- | --- |
 | C64 | yes | 10,899 / 105 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 2.7 px a frame | composed glyphs, pixel art, colour |
-| X16 | yes | 17,173 / 176 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 3.5 px a frame | composed glyphs through VERA, pixel art, colour |
+| X16 | yes | 23,951 / 197 B | exact, every pixel by colour | exact credit | 12-pixel hops far out, easing to 6 | VERA sprites, 48x48 colour art |
 | PET (4032, 32K) | yes | 9,077 / 95 B | exact, block for block | exact credit | 12-pixel hops, about 3.4 px a frame | quadrant blocks, no colour |
 | VIC-20 (8K) | yes | 9,686 / 96 B | exact, block for block | exact credit | 12-pixel hops, about 1 px a frame | quadrant blocks, coloured |
 | web | yes | 1,160 B const / 161 B | exact, block for block | exact credit | 8-pixel hops every frame, about 8 px a frame | quadrant blocks on the host font, coloured |

@@ -108,8 +108,13 @@ export namespace spin {
         let pixels: utinyint = feel.FAR;
         let wait: utinyint = feel.WAIT;
         if (glyphs.AVAILABLE) {
-            // 16-pixel symbols: 8 a redraw far out, then 4 within two symbols, then 2.
+            // 16-pixel symbols: 8 a redraw far out (fewer where the machine's own far step is smaller: the X16
+            // draws a row three pixels tall, so 8 rows would be 24 pixels a frame, half a symbol), then 4
+            // within two symbols, then 2.
             pixels = 8;
+            if (feel.FAR < 8) {
+                pixels = feel.FAR;
+            }
             if (left <= 32) {
                 pixels = 4;
             }
