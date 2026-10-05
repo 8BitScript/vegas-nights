@@ -43,6 +43,30 @@ let stripBuf: array<utinyint, 5920>;
 @address(0x9800)
 let colorBuf: array<utinyint, 740>;
 
+// ---- double buffering (glyphs.8bs) -------------------------------------------------------
+//
+// The VIC-II shows whichever of two complete character sets $D018 names. The home one is the
+// mixed-case half of the copy under the I/O area ($D800: the set @8bitscript/text selects on
+// every run of text, so it is the one that must hold the right picture whenever the program
+// prints). The other is a second copy in plain RAM at $C800 — inside the same 16K video bank, so
+// the VIC reads it, and outside the I/O area, so the CPU writes it without banking anything.
+// A reel is composed into the set that is NOT on the screen (about 0.8 of a frame, the beam
+// crossing the reels in a third of one), and the screen switches to it in one store, while the
+// beam is below the reels or above them: the picture changes between two frames, never during
+// one. The glyphs.8bs header lists what the lab does with these.
+//
+// …and the colours of the reels' cells, staged while composing, so that they can be written to
+// colour RAM straight after the switch (192 bytes, $C540: free between the strips and the table).
+@address(0xC540)
+let colorStage: array<utinyint, 192>;
+
+// Which set the screen shows: false the home set, true the one at $C800.
+let shownB: bool = false;
+
+// The raster lines the reels' glyph rows occupy (set by region()): the first, and the one past the last.
+let lineStart: utinyint = 83;
+let lineEnd: utinyint = 179;
+
 export namespace glyphs {
     const AVAILABLE: bool = true;
     const COLOR_STRIP: bool = true;
@@ -65,6 +89,7 @@ export namespace glyphs {
         // @8bitscript/text selects it on its first write; the reel cells are written raw (put),
         // which does not, so it is selected here.
         memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+        shownB = false;
     }
 
     // @8bitscript/text keeps the mixed-case set selected ($D018 = MEMORY_POINTER_LOWERCASE:
@@ -279,6 +304,175 @@ export namespace glyphs {
             beq 14f
             jmp 1b
         14:
+        }
+    }
+
+    const BUFFERED: bool = true;
+
+    // Where glyph `code` is composed: in the set the screen is NOT showing.
+    function target(code: utinyint): usmallint {
+        let offset: usmallint = code;
+        offset = offset * 8;
+        if (shownB) {
+            return Video.CHARSET + 2048 + offset;
+        }
+        return 0xC800 + offset;
+    }
+
+    // The hidden set, as a bit: 1 the home set, 2 the one at $C800.
+    function hiddenBit(): utinyint {
+        if (shownB) {
+            return 1;
+        }
+        return 2;
+    }
+
+    // The reel window covers text rows row .. row + rows - 1: the first of its raster lines is
+    // 51 + 8 * row (the C64's usual 25-row picture starts at line 51), and the beam leaves it at
+    // 51 + 8 * (row + rows).
+    function region(row: utinyint, rows: utinyint): void {
+        let start: utinyint = row << 3;
+        start = start + 51;
+        lineStart = start;
+        let height: utinyint = rows << 3;
+        lineEnd = start + height;
+    }
+
+    // `pages` whole pages and `rest` more bytes from `src` to `dst`, with the I/O area banked out
+    // (the home set lies under it).
+    function copyBytes(src: usmallint, dst: usmallint, pages: utinyint, rest: utinyint): void {
+        glyphs.open();
+        asm6502 {
+            ldx pages
+            beq 3f
+        1:
+            ldy #0
+        2:
+            lda (src),y
+            sta (dst),y
+            iny
+            bne 2b
+            inc src+1
+            inc dst+1
+            dex
+            bne 1b
+        3:
+            ldy #0
+            cpy rest
+            beq 5f
+        4:
+            lda (src),y
+            sta (dst),y
+            iny
+            cpy rest
+            bne 4b
+        5:
+        }
+        glyphs.close();
+    }
+
+    // Glyphs first .. first + count - 1 (at most 255) copied from the set on the screen to the other.
+    function mirror(first: utinyint, count: utinyint): void {
+        let offset: usmallint = first;
+        offset = offset * 8;
+        let bytes: usmallint = count;
+        bytes = bytes * 8;
+        let pages: utinyint = bytes >> 8;
+        let rest: utinyint = bytes & 255;
+        let homeSet: usmallint = Video.CHARSET + 2048 + offset;
+        let otherSet: usmallint = 0xC800 + offset;
+        if (shownB) {
+            glyphs.copyBytes(otherSet, homeSet, pages, rest);
+        } else {
+            glyphs.copyBytes(homeSet, otherSet, pages, rest);
+        }
+    }
+
+    // Show the hidden set. Waits first until the beam is not on the reels' rows and has time
+    // to finish the colour writes that follow before it gets back to them: it goes at once if
+    // the beam is in the 100 raster lines below the window, or in the vertical blank (bit 8 of the
+    // line set), or in the first lines of the next picture; otherwise it waits for the beam to
+    // come round to the window's bottom edge. An interrupt only delays it.
+    function flip(): void {
+        let endLine: utinyint = lineEnd;
+        let earlyLine: utinyint = 0;
+        if (lineStart > 50) {
+            earlyLine = lineStart - 50;
+        }
+        asm6502 {
+        1:
+            lda $D011
+            bmi 3f
+            lda $D012
+            sec
+            sbc endLine
+            cmp #100
+            bcc 3f
+            lda $D012
+            cmp earlyLine
+            bcc 3f
+            jmp 1b
+        3:
+        }
+        if (shownB) {
+            memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+            shownB = false;
+        } else {
+            memoryPointer = 0x82;
+            shownB = true;
+        }
+    }
+
+    // Show the home set again. The caller has made the two sets alike, so this is invisible at any line.
+    function home(): void {
+        if (shownB) {
+            memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+            shownB = false;
+        }
+    }
+
+    // Once, after the frame is defined: the second set becomes a duplicate of the home one.
+    function clone(): void {
+        glyphs.copyBytes(Video.CHARSET + 2048, 0xC800, 8, 0);
+        shownB = false;
+        memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+    }
+
+    function stageColor(index: usmallint, color: utinyint): void {
+        colorStage[index] = color;
+    }
+
+    // `rows` rows of `across` staged colours, from colorStage[source], into colour RAM from text
+    // cell `at`, a screen row (40 cells) apart. The I/O area is in.
+    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
+        let dest: usmallint = 0xD800 + at;
+        let src: usmallint = 0xC540 + source;
+        asm6502 {
+            ldx rows
+        1:
+            ldy #0
+        2:
+            lda (src),y
+            sta (dest),y
+            iny
+            cpy across
+            bne 2b
+            clc
+            lda src
+            adc across
+            sta src
+            bcc 3f
+            inc src+1
+        3:
+            clc
+            lda dest
+            adc #40
+            sta dest
+            bcc 4f
+            inc dest+1
+        4:
+            dex
+            bne 1b
         }
     }
 

@@ -46,6 +46,37 @@ let colorBuf: array<utinyint, 740>;
 export namespace glyphs {
     const AVAILABLE: bool = true;
     const COLOR_STRIP: bool = true;
+    const BUFFERED: bool = false;
+
+    // Double buffering (glyphs.8bs): this machine has one copy of the glyph block, so none of it does anything.
+    function target(code: utinyint): usmallint {
+        return glyphs.address(code);
+    }
+
+    function hiddenBit(): utinyint {
+        return 0;
+    }
+
+    function region(row: utinyint, rows: utinyint): void {
+    }
+
+    function mirror(first: utinyint, count: utinyint): void {
+    }
+
+    function flip(): void {
+    }
+
+    function home(): void {
+    }
+
+    function clone(): void {
+    }
+
+    function stageColor(index: usmallint, color: utinyint): void {
+    }
+
+    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
+    }
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
     // The same free range as the native twin: screen codes 91-127, unused by the text.

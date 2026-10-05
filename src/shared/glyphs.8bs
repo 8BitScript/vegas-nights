@@ -35,6 +35,21 @@
 //                  where the graphics sit) into letters, so a glyph block that starts there maps
 //                  its cells with this.
 //   begin()        once, before the first glyph write.
+//
+// Double buffering (BUFFERED): a machine that composes a reel window in more time than the
+// beam takes to cross it would show a reel half old, half new. A machine with TWO copies of
+// the glyph block (the C64 has two character sets in RAM) composes into the one that is not
+// on the screen and switches to it when the beam is outside the reel window:
+//   BUFFERED       true: there are two copies, and the members below do their work.
+//   target(code)   where glyph `code` is composed: the hidden copy if BUFFERED, else address().
+//   hiddenBit()    which copy is hidden, as a bit: 1 the home copy, 2 the other.
+//   region(row, rows)  the reel window's text rows, so a switch can wait for the beam to leave.
+//   mirror(first, count)  copy `count` glyphs from the shown copy to the hidden one.
+//   flip()         wait until the beam is outside the window, then show the hidden copy.
+//   home()         show the home copy (the one the text package selects); the copies are alike.
+//   clone()        make the other copy a duplicate of the home one (once, after the frame is defined).
+//   stageColor / putColors  the reels' cell colours, staged while composing and written to
+//                  colour RAM right after a flip, so a shape never shows in the last colours.
 export namespace glyphs {
     const AVAILABLE: bool = false;
     const FIRST: utinyint = 0;
@@ -47,8 +62,38 @@ export namespace glyphs {
     // Whether the colour of a reel's cells is pre-laid-out too (the 5x5 on the C64, where
     // recolouring a reel cell by cell in compiled code costs more than redrawing its glyphs).
     const COLOR_STRIP: bool = false;
+    const BUFFERED: bool = false;
 
     function begin(): void {
+    }
+
+    function target(code: utinyint): usmallint {
+        return glyphs.address(code);
+    }
+
+    function hiddenBit(): utinyint {
+        return 0;
+    }
+
+    function region(row: utinyint, rows: utinyint): void {
+    }
+
+    function mirror(first: utinyint, count: utinyint): void {
+    }
+
+    function flip(): void {
+    }
+
+    function home(): void {
+    }
+
+    function clone(): void {
+    }
+
+    function stageColor(index: usmallint, color: utinyint): void {
+    }
+
+    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
     }
 
     function address(code: utinyint): usmallint {

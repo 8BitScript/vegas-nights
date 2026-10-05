@@ -221,12 +221,17 @@ function frameSpinning(): void {
             any = true;
         }
     }
+    // The reels that moved were composed out of sight; show them all at once (nothing on a machine
+    // that draws straight to the screen).
+    view.flush();
     // One sound a frame: a reel coming to rest outranks the ticking (a new
     // effect cuts the old one off), and three reels ticking at once is one tick.
     // The frame the last reel rests settles the spin, and the result has its own
     // sound (a pay's jingle, or the stop itself for a loss), so no stop is struck
     // under it: a second tone started over the first on the SID would not retrigger.
     if (!any) {
+        // Both copies of the glyphs alike and the text package's copy on the screen, before it prints.
+        view.sync();
         settle();
     } else if (stopped) {
         sound.stop();

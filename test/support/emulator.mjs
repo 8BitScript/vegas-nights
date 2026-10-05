@@ -63,6 +63,8 @@ export function capture(machine, program, name, frames, defines = {}) {
     ? [CLI, 'run', 'c64', '--web', '--program', program, '--screenshot', out]
     : [CLI, 'run', machine, '--program', program, '--screenshot', out];
   if (CHECKOUT) args.push('--checkout', CHECKOUT);
+  // EIGHTBS_RUN_ARGS="--pal" adds options to every run (the C64 and VIC-20 timings differ in PAL: 312 lines a frame).
+  args.push(...(process.env.EIGHTBS_RUN_ARGS ?? '').split(' ').filter(Boolean));
   for (const [key, value] of Object.entries(defines)) args.push('--define', `${key}=${value}`);
   if (frames !== undefined) args.push('--frames', String(frames));
   return new Promise((resolve, reject) => {

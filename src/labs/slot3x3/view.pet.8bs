@@ -45,4 +45,11 @@ export namespace view {
     function flashLine(line: utinyint, on: bool): void {
         quad.flashLine(line, on);
     }
+
+    // The reels are drawn straight to the screen here: nothing is held back to show later.
+    function flush(): void {
+    }
+
+    function sync(): void {
+    }
 }

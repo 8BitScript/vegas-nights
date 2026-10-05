@@ -5,10 +5,16 @@
 // the reel would not land on its stop. test/glyph-budget.test.mjs checks REEL_FAR and EASE against
 // the tile data, so changing the art's size without changing them fails a test.
 // WAIT and FAR are the 5x5's (its glyph reels ignore FAR and hop 8: src/labs/slot5x5/spin.8bs).
+//
+// REEL_WAIT is 0: every reel that is spinning steps on every pass of the game loop. The 3x3 draws its reels
+// into a second copy of the character set and shows them all at once (glyphs.8bs, "Double buffering"), so a
+// reel that sits out a pass costs a copy of its glyphs into the hidden set (about 0.3 of a frame); with all the
+// reels stepping together none does, and each reel steps about as often as before — a pass is three redraws
+// long, and a redraw is most of a frame. The reels still start one pass apart.
 export namespace feel {
     const WAIT: utinyint = 1;
     const FAR: utinyint = 12;
-    const REEL_WAIT: utinyint = 1;
+    const REEL_WAIT: utinyint = 0;
     const REEL_FAR: utinyint = 32;
     const EASE: utinyint = 32; // a symbol (4 cells) here
 }
