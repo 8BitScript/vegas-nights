@@ -39,6 +39,10 @@ const BIG_WIN: usmallint = 2000; // credits at the base bet: twenty bets or more
 // Where everything goes is the view's (view.BLOCK_WIDTH, view.CREDIT_ROW, ...): the PET has room for a
 // reel window of 22 columns and four lines of text under it, the VIC-20 has 22 columns in all.
 
+// The frame after which the machine stops changing the picture (0: never); see play().
+const FREEZE: usmallint = #define("FREEZE", 0);
+let ticks: usmallint = 0;
+
 let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying
 let betIndex: utinyint = 0;
 let multiplier: utinyint = 1;
@@ -324,17 +328,25 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
 
     while (true) {
         waitFrame();
-        input.poll();
-        sound.update();
-        if (input.cancel()) {
-            sound.toggle();
-        }
-        if (state == 1) {
-            frameSpinning();
-        } else if (state == 2) {
-            framePaying();
-        } else {
-            frameIdle();
+        // `--define FREEZE=n` stops the machine changing the picture after its n-th frame (a headless
+        // capture from a real-time emulator cannot be timed to a frame; this makes one taken later show
+        // exactly that frame). Unset it is 0 and the test folds away.
+        if (FREEZE == 0 || ticks < FREEZE) {
+            if (FREEZE != 0) {
+                ticks = ticks + 1;
+            }
+            input.poll();
+            sound.update();
+            if (input.cancel()) {
+                sound.toggle();
+            }
+            if (state == 1) {
+                frameSpinning();
+            } else if (state == 2) {
+                framePaying();
+            } else {
+                frameIdle();
+            }
         }
     }
 }

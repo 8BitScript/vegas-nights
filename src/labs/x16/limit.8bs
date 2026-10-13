@@ -1,0 +1,56 @@
+// x16-sprite-limit — a measurement, not a game: how many 64x64 sprites does VERA draw on one
+// line? The 5x5's reels put up to ten on a line where two sprites of a reel overlap (a symbol's
+// 16 clear margin rows), and packages/cx16/AGENTS.md gives a budget of 798 cycles a line.
+//
+// N sprites (--define N=12) all show the same symbol, each 32 pixels further right than the
+// last, so each overlaps the one before and the highest-numbered sprite is drawn on top. If VERA
+// (here x16emu) draws all of them, the rightmost lit pixel is the last sprite's right edge; if it
+// stops drawing them after a budget, the picture ends where the last drawn one does.
+//   8bs run cx16 --program x16-sprite-limit --define N=14 --screenshot out.png
+import { screen } from "@8bitscript/screen";
+import { setVramAddress } from "@8bitscript/cx16";
+import { vera } from "@shared/vera.8bs";
+import { VERA_PALETTE, VERA_PIXELS } from "@generated/tiles/classic-vera.8bs";
+
+const N: utinyint = #define("N", 12);
+const SYMBOL: utinyint = #define("SYMBOL", 1);
+
+export function main(): void {
+    screen.blank();
+    vera.begin();
+    setVramAddress(1, vera.PALETTE, 1);
+    for (let i: utinyint = 0; i < 32; i++) {
+        memory.write(0x9F23, VERA_PALETTE[i]);
+    }
+    // the chosen symbol only, as a 64x64 sprite
+    let source: usmallint = SYMBOL;
+    source = source * 1152;
+    setVramAddress(0, vera.PIXELS, 1);
+    for (let i: usmallint = 0; i < 256; i++) {
+        memory.write(0x9F23, 0);
+    }
+    for (let row: utinyint = 0; row < 48; row++) {
+        for (let i: utinyint = 0; i < 4; i++) {
+            memory.write(0x9F23, 0);
+        }
+        for (let i: utinyint = 0; i < 24; i++) {
+            memory.write(0x9F23, VERA_PIXELS[source]);
+            source = source + 1;
+        }
+        for (let i: utinyint = 0; i < 4; i++) {
+            memory.write(0x9F23, 0);
+        }
+    }
+    for (let i: usmallint = 0; i < 256; i++) {
+        memory.write(0x9F23, 0);
+    }
+    for (let n: utinyint = 0; n < N; n++) {
+        let x: usmallint = n;
+        x = x * 32;
+        vera.seek(n, 0);
+        vera.put(0, x, 200, vera.ART);
+    }
+    while (true) {
+        waitFrame();
+    }
+}

@@ -1,0 +1,47 @@
+// Where things go on the X16's text grid (76 columns by 56 rows), for the sprite reels.
+//
+// The glyph machines draw a reel in cells: a 3x3 block is 13 columns by about 20 rows. The X16's
+// reels are VERA sprites, 48 pixels to a symbol, so the machine is bigger — 26 columns by 33 rows
+// for the 3x3, 42 by 44 for the 5x5 — and sits in the middle of a grid that has the room.
+//
+// A lab calls `layout.centre(width)` with the width of the block it draws: the 3x3's view says 26
+// (view.cx16.8bs) and the 5x5's says 42. The same call fixes how far down the block starts
+// (`top`), so a program that prints at `layout.cell(col, row)` lands in the block wherever it is.
+// The test programs that measure the grid (slot3x3-ruler, ...) use the same call, so everything
+// that is read back from a screenshot by block row and column is read in the right place.
+import { text } from "@8bitscript/text";
+
+let indent: utinyint = 0;
+let shift: utinyint = 0;
+
+export namespace layout {
+    function centre(width: utinyint): void {
+        // the 3x3's block (26 wide, 33 rows) and the 5x5's (42 wide, 44 rows), each in the middle of the 56 rows
+        if (width < 30) {
+            indent = (text.COLUMNS - width) >> 1;
+            shift = 11;
+        } else {
+            indent = (text.COLUMNS - width) >> 1;
+            shift = 6;
+        }
+    }
+
+    // The cell `col` columns in from the block's left edge on block row `row`.
+    function cell(col: utinyint, row: utinyint): usmallint {
+        let at: usmallint = row;
+        at = at + shift;
+        at = at * text.COLUMNS;
+        at = at + indent;
+        at = at + col;
+        return at;
+    }
+
+    // The grid column of the block's left edge, and the grid row of its top: where the view puts sprites.
+    function left(): utinyint {
+        return indent;
+    }
+
+    function top(): utinyint {
+        return shift;
+    }
+}

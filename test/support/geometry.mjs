@@ -12,6 +12,12 @@ export const QUAD = new Set(['pet', 'vic20', 'web']);
 
 /** The row of the frame's bottom border, and of its top border, for `lab` ('slot3x3' | 'slot5x5') on `machine`. */
 export function frame(lab, machine) {
+  if (machine === 'cx16') {
+    // the sprite reels' frame is drawn in the text layer around the window: two cells above, and one or two below it
+    const v = read(`src/labs/${lab}/view.cx16.8bs`);
+    const top = num(v, 'TOP');
+    return { top: top - 2, bottom: top + num(v, 'WINDOW_ROWS') + 1 };
+  }
   if (lab === 'slot3x3') {
     if (QUAD.has(machine)) {
       const top = num(read('src/labs/slot3x3/quad.8bs'), 'TOP');

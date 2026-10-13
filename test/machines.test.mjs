@@ -40,8 +40,9 @@ const PROGRAMS = {
 };
 
 // A frame well before the first spin starts (the VICE machines spend ~215 frames
-// booting; the spin starts 20 frames after the program does), per machine.
-const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
+// booting; the spin starts 20 frames after the program does), per machine. The X16 counts
+// from the program's own first frame (see FREEZE below), so its boot is not in it.
+const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 0, web: 5, c64web: 5 };
 // How much longer than the C64's a spin takes to come to rest (a reel redraw costs a
 // VIC-20 more of its frame, and its hops are smaller and less frequent).
 const SETTLE_SCALE = { c64: 1.3, vic20: 2, pet: 1.4, cx16: 1, web: 1, c64web: 1 };
@@ -56,7 +57,14 @@ for (const machine of MACHINES) {
     let ref;
     let adapter;
     let expectedAt;
-    const shoot = async (program, name, frames) => loadPng(await capture(machine, program, name, frames));
+    // x16emu records in real time, so "frame N" of a capture wanders by several frames when the host is busy
+    // (the same frame, captured three times, gave three positions). So the X16 is held to a logical frame
+    // instead: the game stops changing the picture after its N-th frame (`--define FREEZE=N`), and a capture
+    // taken a little later is exactly that frame — a little later enough that a recorder which falls behind a loaded host
+    // (it drops frames) still lands after the freeze. Frames are then counted from the game's start, not power-on.
+    const shoot = async (program, name, frames) => loadPng(machine === 'cx16'
+      ? await capture(machine, program, name, frames + 200 + Math.round(frames * 0.15), { FREEZE: frames })
+      : await capture(machine, program, name, frames));
     const creditOf = (png) => readNumber(png, geo, ref, L.creditCol, L.creditRow, L.numberWidth);
 
     test('reads the screen: cell size from the ruler, digits and fallback text from the glyph sheet', async () => {

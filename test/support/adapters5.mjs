@@ -5,15 +5,21 @@
 // build the reel from quadrant blocks (PET, VIC-20, web: 24 pixels, six rows a symbol).
 import { loadFile, loadTable } from './table.mjs';
 import { nibbleOf, quadCell } from './adapters.mjs';
+import { spriteAdapter } from './sprites.mjs';
 
 const table = loadTable('grid5x5');
 const c = table.consts;
 const a = table.arrays;
 
-export const KIND = { pet: 'quad', vic20: 'quad', web: 'quad', c64: 'pixel', cx16: 'pixel', c64web: 'pixel' };
+export const KIND = { pet: 'quad', vic20: 'quad', web: 'quad', c64: 'pixel', cx16: 'sprite', c64web: 'pixel' };
 
 // Where the game puts the window's first row (src/labs/slot5x5/view.8bs, view.pet.8bs).
 export const TOP = (machine) => (KIND[machine] === 'pixel' ? 3 : 1);
+
+/** The X16's 5x5: five reels of five 48-pixel sprites, counted as 16 rows a symbol. */
+export function x16Adapter() {
+  return spriteAdapter({ file: 'tiles/cosmic-vera.8bs', strips: a.STRIPS, stops: c.STOPS, rows: c.ROWS, logical: 16, reels: c.REELS });
+}
 
 export function pixelAdapter(machine) {
   const bitmap = loadFile(machine === 'cx16' ? 'tiles/cosmic.cx16.8bs' : 'tiles/cosmic.8bs').arrays.SYMBOL_BITMAP;

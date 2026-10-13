@@ -28,7 +28,7 @@ import { MACHINES, unavailable, capture } from './support/emulator.mjs';
 import { calibrate, reference, readNumber, loadPng, rowBlank } from './support/screen.mjs';
 import { frame } from './support/geometry.mjs';
 import { inkReader } from './support/adapters.mjs';
-import { KIND, pixelAdapter, quadAdapter } from './support/adapters5.mjs';
+import { KIND, pixelAdapter, quadAdapter, x16Adapter } from './support/adapters5.mjs';
 import { bestChain } from './support/chain.mjs';
 
 const table = loadTable('grid5x5');
@@ -38,13 +38,14 @@ const c = table.consts;
 // booting; the spin starts 20 frames after the program does), and a whole bonus round ends.
 const SPIN = { c64: 2400, vic20: 4000, pet: 3200, cx16: 2400, web: 2400, c64web: 2400 };
 // …and a whole bonus round: the base spin and its flash, then each free spin.
-const ROUND = { c64: [1700, 700], vic20: [3000, 1500], pet: [2400, 1100], cx16: [900, 400], web: [1700, 700], c64web: [1700, 700] };
+// (The X16's are logical frames, counted from the program's own start: see `shoot` below.)
+const ROUND = { c64: [1700, 700], vic20: [3000, 1500], pet: [2400, 1100], cx16: [-150, 340], web: [1700, 700], c64web: [1700, 700] };
 const roundFrames = (machine, granted) => ROUND[machine][0] + ROUND[machine][1] * granted;
 // The most a reel moves in one frame, in pixels: a reel hops 12 pixels every second frame on the
-// C64, 8 every frame on the X16, 12 every third frame (a quadrant row is 4) on the others.
-const MAX_PX_PER_FRAME = { c64: 12, cx16: 8, pet: 12, vic20: 12, web: 12, c64web: 12 };
+// C64, 12 every frame on the X16 (4 rows of 3 pixels), 12 every third frame (a quadrant row is 4) on the others.
+const MAX_PX_PER_FRAME = { c64: 12, cx16: 12, pet: 12, vic20: 12, web: 12, c64web: 12 };
 // A frame well before the first spin starts.
-const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 40, web: 5, c64web: 5 };
+const BEFORE_SPIN = { c64: 190, vic20: 190, pet: 150, cx16: 0, web: 5, c64web: 5 };
 const SAMPLES = { c64: 10, vic20: 8, pet: 8, cx16: 6, web: 10, c64web: 10 };
 
 // Where the game puts things (src/labs/slot5x5/game.8bs, view.8bs, view.pet.8bs).
@@ -64,7 +65,12 @@ for (const machine of MACHINES) {
     let ref;
     let adapter;
     let expectedAt;
-    const shoot = async (program, name, frames) => loadPng(await capture(machine, program, name, frames));
+    // x16emu records in real time, so "frame N" of a capture wanders by several frames when the host is busy; the X16
+    // is held to a logical frame instead: the game stops changing the picture after its N-th frame (`--define FREEZE=N`)
+    // and a capture a little later (15% and 200 frames later: a recorder that falls behind a loaded host drops frames) is exactly that frame. Its frames are counted from the program's own start.
+    const shoot = async (program, name, frames) => loadPng(machine === 'cx16'
+      ? await capture(machine, program, name, frames + 200 + Math.round(frames * 0.15), { FREEZE: frames })
+      : await capture(machine, program, name, frames));
     const panel = PANEL(machine);
     const num = (png, col, row, width) => readNumber(png, geo, ref, col, row, width);
     const credit = (png) => num(png, 7, panel, 9);
@@ -90,7 +96,7 @@ for (const machine of MACHINES) {
       geo = calibrate(loadPng(await capture(machine, 'slot5x5-ruler', 'ruler5')));
       const geo3 = calibrate(loadPng(await capture(machine, 'slot3x3-ruler', 'ruler3')));
       ref = reference(loadPng(await capture(machine, 'slot3x3-glyphs', 'glyphs3')), geo3, 6);
-      adapter = KIND[machine] === 'pixel' ? pixelAdapter(machine) : quadAdapter(machine);
+      adapter = KIND[machine] === 'sprite' ? x16Adapter() : KIND[machine] === 'pixel' ? pixelAdapter(machine) : quadAdapter(machine);
       expectedAt = Array.from({ length: c.REELS }, (_, reel) => Array.from({ length: adapter.positions }, (__, p) => adapter.expected(reel, p)));
       assert.ok(ref.digits.size === 10);
       log(`cell ${geo.pitchX}x${geo.pitchY} px, reel unit = ${adapter.unit}, ${adapter.positions} positions a reel`);

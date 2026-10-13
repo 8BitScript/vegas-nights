@@ -1,7 +1,8 @@
 // How each kind of machine draws a reel, and how to read it back.
 //
 // A reel's position is a number of "units" down its strip: pixels on the machines
-// that compose glyphs (C64, X16 and the web), pseudo-pixel rows of four pixels on the
+// that compose glyphs (C64 and the web; the X16 draws sprites, see sprites.mjs, and counts
+// 24 rows to a symbol like the others), pseudo-pixel rows of four pixels on the
 // ones that build the reel from the ROM's quadrant blocks (PET, VIC-20), and, on a
 // machine with neither, whole symbols (the text fallback). For each kind the adapter can
 //   expected(reel, position)  what a reel at that position looks like, computed
@@ -13,12 +14,13 @@ import { loadFile, loadTable } from './table.mjs';
 import { cellKey } from './screen.mjs';
 import { labConsts } from './table.mjs';
 import { quadAdapter as makeQuadAdapter } from './quadadapter.mjs';
+import { spriteAdapter } from './sprites.mjs';
 
 const table = loadTable();
 const c = table.consts;
 const strip = table.arrays.STRIPS;
 
-export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'pixel', web: 'quad', c64web: 'pixel' };
+export const KINDS = { pet: 'quad', vic20: 'quad', c64: 'pixel', cx16: 'sprite', web: 'quad', c64web: 'pixel' };
 
 /** A background-aware reader of logical pixels of a screenshot. */
 export function inkReader(png) {
@@ -149,6 +151,7 @@ function textAdapter(reference) {
 export function adapterFor(machine, textReference) {
   const kind = KINDS[machine];
   if (kind === 'pixel') return pixelAdapter(machine);
+  if (kind === 'sprite') return spriteAdapter({ file: 'tiles/classic-vera.8bs', strips: strip, stops: c.STOPS, rows: c.ROWS, logical: 24, reels: c.REELS });
   if (kind === 'quad') return quadAdapter(machine);
   return textAdapter(textReference);
 }

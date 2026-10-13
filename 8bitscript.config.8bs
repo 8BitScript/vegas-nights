@@ -44,6 +44,10 @@ export default {
     // The reels walked up the strip HOPS times, STEP pixels each, drawn by the spin's own path or by full redraws (FULL=1):
     // what test/hops.test.mjs compares.
     'slot3x3-hops': { entry: 'src/labs/slot3x3/hops.8bs' },
+    // How many 64x64 sprites VERA draws on one line (--define N=12): the 5x5's reels put up to ten there.
+    'x16-sprite-limit': { entry: 'src/labs/x16/limit.8bs', targets: ['cx16'] },
+    // How much of a frame the 3x3's sprite reels take (--define N=20 redraws of three reels a frame).
+    'x16-draw-cost': { entry: 'src/labs/x16/cost.8bs', targets: ['cx16'] },
   },
   // The machine the labs are designed on: every fact they test is true on
   // it, and `8bs build --release` reports what each other build is short of

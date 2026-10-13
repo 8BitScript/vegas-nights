@@ -1,9 +1,12 @@
-// The X16 redraws a reel in ~0.25 of a frame: every reel, every frame, 8 pixels
-// each — 480 pixels a second, smooth.
+// The X16's reels are VERA sprites: moving one is writing a few attribute bytes, a small
+// fraction of a frame, so every reel moves every frame. A step is counted in the labs' own rows
+// (24 to a symbol in the 3x3, 16 in the 5x5) and drawn at two or three pixels a row, so 4 rows is
+// 8 pixels a frame in the 3x3 and 12 in the 5x5 — 480 to 720 a second, a blur you can still read
+// as a reel. FAR must divide both 24 and 16.
 export namespace feel {
     const WAIT: utinyint = 0;
-    const FAR: utinyint = 8;
+    const FAR: utinyint = 4;
     const REEL_WAIT: utinyint = 0;
-    const REEL_FAR: utinyint = 8;
+    const REEL_FAR: utinyint = 4;
     const EASE: utinyint = 24; // a symbol (3 cells) here
 }

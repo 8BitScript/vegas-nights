@@ -65,6 +65,10 @@ const WIN_ROW: utinyint = 2;
 const MESSAGE_ROW: utinyint = 3;
 const JACKPOT_ROW: utinyint = 4;
 
+// The frame after which the machine stops changing the picture (0: never); see play().
+const FREEZE: usmallint = #define("FREEZE", 0);
+let ticks: usmallint = 0;
+
 let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying, 3 waiting for the next free spin
 let betIndex: utinyint = 0;
 let multiplier: utinyint = 1;
@@ -619,36 +623,44 @@ export function play(autoSpins: utinyint, seed: usmallint): void {
 
     while (true) {
         waitFrame();
-        input.poll();
-        // The sounds count their frames in calls of update(): a loop that never calls it never
-        // closes the gate of the first note it opens, and the machine drones for ever.
-        sound.update();
-        if (input.cancel()) {
-            sound.toggle();
-        }
-        frameBonusPulse();
-        frameFx();
-        if (state == 1) {
-            frameSpinning();
-        } else if (state == 2) {
-            framePaying();
-        } else if (state == 3) {
-            if (pauseLeft != 0) {
-                pauseLeft = pauseLeft - 1;
-            } else {
-                startSpin(true);
+        // `--define FREEZE=n` stops the machine changing the picture after its n-th frame (a headless
+        // capture from a real-time emulator cannot be timed to a frame; this makes one taken later show
+        // exactly that frame). Unset it is 0 and the test folds away.
+        if (FREEZE == 0 || ticks < FREEZE) {
+            if (FREEZE != 0) {
+                ticks = ticks + 1;
             }
-        } else if (state == 4) {
-            if (pauseLeft != 0) {
-                pauseLeft = pauseLeft - 1;
-            } else {
-                drawWin(purse.WIN);
-                message(0);
-                state = 0;
-                idleFrames = 0;
+            input.poll();
+            // The sounds count their frames in calls of update(): a loop that never calls it never
+            // closes the gate of the first note it opens, and the machine drones for ever.
+            sound.update();
+            if (input.cancel()) {
+                sound.toggle();
             }
-        } else {
-            frameIdle();
+            frameBonusPulse();
+            frameFx();
+            if (state == 1) {
+                frameSpinning();
+            } else if (state == 2) {
+                framePaying();
+            } else if (state == 3) {
+                if (pauseLeft != 0) {
+                    pauseLeft = pauseLeft - 1;
+                } else {
+                    startSpin(true);
+                }
+            } else if (state == 4) {
+                if (pauseLeft != 0) {
+                    pauseLeft = pauseLeft - 1;
+                } else {
+                    drawWin(purse.WIN);
+                    message(0);
+                    state = 0;
+                    idleFrames = 0;
+                }
+            } else {
+                frameIdle();
+            }
         }
     }
 }

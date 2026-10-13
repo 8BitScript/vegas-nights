@@ -38,7 +38,7 @@ export function loadTable(game = 'classic3x3') {
 /** The number constants a lab's view (twin first, then the base) and its quadrant composer declare: where the game puts things. */
 export function labConsts(lab, machine) {
   const dir = join(ROOT, 'src', 'labs', lab);
-  const twins = { pet: 'view.pet.8bs', vic20: 'view.vic20.8bs', web: 'view.web.8bs' };
+  const twins = { pet: 'view.pet.8bs', vic20: 'view.vic20.8bs', web: 'view.web.8bs', cx16: 'view.cx16.8bs' };
   const file = existsSync(join(dir, twins[machine] ?? '-')) ? twins[machine] : 'view.8bs';
   const read = (name) => {
     const out = {};
@@ -46,7 +46,7 @@ export function labConsts(lab, machine) {
     return out;
   };
   const consts = read(file);
-  // view.8bs serves the C64 and the X16, whose machines differ in size; their layout numbers are
+  // view.8bs serves the C64 (the X16 has its own, view.cx16.8bs), whose layout numbers are
   // block.8bs's (block.c64.8bs for the C64 and its wasm build), which view.8bs aliases
   if (file === 'view.8bs' && lab === 'slot3x3') {
     const block = blockFor(machine);
