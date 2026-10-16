@@ -13,6 +13,23 @@ headless runs, and the decisions at the end are the owner's.*
 *Green border: a real capture of a program built and run for this note. Amber border: a mock drawn from the
 real tile conversion (`tools/tiles`) — the art is what the hardware would get, the text is a stand-in font.*
 
+## What has landed since (2026-10-15)
+
+This note is the record of the measurement; the routes it recommends have since been built in the shipped labs,
+so "today" below means before them. The owner's picks, and where each went:
+
+| machine | 3x3 | 5x5 |
+| --- | --- | --- |
+| PET | #20: 6x6-cell quadrant symbols and the whole-cell hop, **44%** | #28: 4x4-cell symbols, the hop, the panel in the margin, **57%** |
+| VIC-20 | #20: the same, coloured, **87%** | unchanged (its 22 columns hold no bigger block) |
+| C64 | #21: route A, 32x32 symbols in the glyph composer, **22%**; #23 composes them out of sight | unchanged |
+| X16 | #24: VERA sprite reels (48x48 art in 64x64 sprites, 1x scale), no composer | #24: the same |
+| web | #20: route A, the PET's composer on the host's block glyphs, no runtime change | #28: as the PET, **44%** |
+
+Not taken: the C64's sprite reels (B), the X16's 2x scale, and the web's sprite layer. The `proto-*` programs and
+`tools/size` stay as the way to reproduce the numbers here; the shipped labs supersede them, and they can go in a
+later change (they add six builds to every `8bs build --release`).
+
 ## The short version
 
 | machine | 3x3 today → proposed | 5x5 today → proposed | how | built? | effort |
