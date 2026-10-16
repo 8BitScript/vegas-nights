@@ -109,9 +109,17 @@ function checkWav(machine, analysis, effect) {
   const wantNotes = (longEnough.length > 0 ? longEnough : want).map((s) => s.note).filter((n, i, all) => i === 0 || n !== all[i - 1]);
   const heard = plateaus(analysis, Math.max(0, last.end - total - 0.6), last.end + 0.02);
   const tail = heard.slice(-wantNotes.length);
-  const same = tail.length === wantNotes.length && tail.every((n, i) => n === wantNotes[i]);
-  if (!same) bad += 1;
-  lines.push(`  last sound: ${effect}  heard notes ${tail.join(' ')}  composed ${wantNotes.join(' ')}  ${same ? 'ok' : 'FAIL'}`);
+  if (longEnough.length === 0) {
+    // Every note is under three frames (the stop): too short for a recording to hold a pitch on (the
+    // X16's WAV shows none). Ask only that the last thing heard was a sound that short.
+    const short = last.seconds <= total + 0.1;
+    if (!short) bad += 1;
+    lines.push(`  last sound: ${effect}  a ${last.seconds.toFixed(2)} s sound (composed ${wantNotes.join(' ')}, ${total.toFixed(2)} s: too short to read a pitch)  ${short ? 'ok' : 'FAIL'}`);
+  } else {
+    const same = tail.length === wantNotes.length && tail.every((n, i) => n === wantNotes[i]);
+    if (!same) bad += 1;
+    lines.push(`  last sound: ${effect}  heard notes ${tail.join(' ')}  composed ${wantNotes.join(' ')}  ${same ? 'ok' : 'FAIL'}`);
+  }
   // Reel sounds came before it: there was an earlier sound, or the last one is longer than the effect alone.
   const earlier = segments.length >= 2 || last.seconds > total + 0.3 || last.start > 0.5;
   if (!earlier) { lines.push('  FAIL no reel sounds before the last'); bad += 1; }
