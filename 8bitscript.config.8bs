@@ -33,6 +33,13 @@ export default {
     'slot5x5-ruler': { entry: 'src/labs/slot5x5/ruler.8bs' },
     // The 5x5's reels held at one pixel offset (--define ROW=0..7, STOP=n): what the composer-offset test draws.
     'slot5x5-offset': { entry: 'src/labs/slot5x5/offsets.8bs' },
+    // Design prototypes for docs/reel-size.md (bigger reels): not games, no odds. The X16's reels as VERA hardware sprites.
+    'proto-x16-3x3': { entry: 'src/labs/proto-x16-3x3/main.8bs', targets: ['cx16'] },
+    'proto-x16-3x3-2x': { entry: 'src/labs/proto-x16-3x3-2x/main.8bs', targets: ['cx16'] },
+    'proto-x16-5x5': { entry: 'src/labs/proto-x16-5x5/main.8bs', targets: ['cx16'] },
+    // The PET and VIC-20 reels from bigger quadrant symbols (6x6 cells on the 3x3, 4x4 on the 5x5): redraw cost is what the proto measures.
+    'proto-quad-3x3': { entry: 'src/labs/proto-quad-3x3/main.8bs', targets: ['pet', 'vic20'] },
+    'proto-quad-5x5': { entry: 'src/labs/proto-quad-5x5/main.8bs', targets: ['pet'] },
     // Test support, not games: a ruler that prints two letters a known number
     // of cells apart (so a screenshot's cell size can be measured), and a
     // sheet of every symbol and digit exactly as the game draws them.
