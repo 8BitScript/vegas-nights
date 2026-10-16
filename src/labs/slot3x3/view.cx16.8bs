@@ -39,6 +39,10 @@ export namespace view {
     const MESSAGE_ROW: utinyint = 30;
     const MESSAGE_COL: utinyint = 1;
     const MESSAGE_WIDTH: utinyint = 20;
+    // Where the volume setting goes (beside "SLOT 3X3").
+    const VOLUME: bool = true;
+    const VOLUME_COL: utinyint = 10;
+    const VOLUME_ROW: utinyint = 2;
     // The block row of the window's first row, and its height in cells (3 symbols of 48 pixels).
     const TOP: utinyint = 5;
     const WINDOW_ROWS: utinyint = 18;
