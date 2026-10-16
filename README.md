@@ -751,15 +751,15 @@ the screenshot to the text grid and the 3x3's glyph sheet names the digits; then
 
 ### Per machine, as measured
 
-Numbers are from `pnpm run test:machines` on a Mac, NTSC, CLI 0.24.0.
+Numbers are from `pnpm run test:machines` on a Mac, NTSC, the 8BitScript trunk CLI (`EIGHTBS_CHECKOUT`); program bytes from `8bs build`.
 
 | machine | builds | program / RAM | reels = the oracle's | bonus round (8 and 16 free spins) = the oracle's | reels move (measured) | what it is |
 | --- | :-: | --- | :-: | :-: | --- | --- |
-| C64 | yes | 10,899 / 105 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 2.7 px a frame | composed glyphs, pixel art, colour |
-| X16 | yes | 23,951 / 197 B | exact, every pixel by colour | exact credit | 12-pixel hops far out, easing to 6 | VERA sprites, 48x48 colour art |
+| C64 | yes | 13,492 / 130 B | exact, pixel for pixel | exact credit | 8-pixel hops, about 2.7 px a frame | composed glyphs, pixel art, colour |
+| X16 | yes | 23,836 / 197 B | exact, every pixel by colour | exact credit | 12-pixel hops far out, easing to 6 | VERA sprites, 48x48 colour art |
 | PET (4032, 32K) | yes | 12,547 / 113 B | exact, block for block | exact credit | 8-pixel hops (a block copy), about 6.7 px a frame | quadrant blocks, 32-pixel symbols, no colour; 57% of the screen |
 | VIC-20 (8K) | yes | 11,060 / 111 B | exact, block for block | exact credit | 12-pixel steps (recomposed), about 1.2 px a frame | quadrant blocks, 24-pixel symbols, coloured; unchanged: 22 columns hold no bigger block |
-| web | yes | 1,535 B const / 178 B | exact, block for block | exact credit | 8-pixel steps every frame, 8 px a frame | quadrant blocks on the host font, 32-pixel symbols, coloured; 44% of the Modern 48x27 grid |
+| web | yes | 1,535 B const / 180 B | exact, block for block | exact credit | 8-pixel steps every frame, 8 px a frame | quadrant blocks on the host font, 32-pixel symbols, coloured; 44% of the Modern 48x27 grid |
 
 Every cell above passed in one full run of `test/slot5x5.machines.test.mjs` on each machine against the code in this change
 (8 tests a machine; the PET and web rows against the bigger layout below).
