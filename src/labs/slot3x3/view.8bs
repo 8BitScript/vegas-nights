@@ -444,9 +444,9 @@ export namespace view {
                     glyphs.stage(i, SYMBOL_BITMAP[i]);
                 }
                 glyphs.symbols(ART_SYMBOLS, SYMBOL_BYTES);
-                let stops: usmallint = REELS;
-                stops = stops * STOPS;
-                for (let i: usmallint = 0; i < stops; i++) {
+                let strips: usmallint = REELS;
+                strips = strips * STOPS;
+                for (let i: usmallint = 0; i < strips; i++) {
                     glyphs.stageStrip(i, STRIPS[i]);
                 }
             }
