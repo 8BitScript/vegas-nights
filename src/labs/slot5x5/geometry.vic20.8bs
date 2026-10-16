@@ -1,0 +1,12 @@
+// Where the 5x5 sits on the VIC-20: symbols of three cells (QUAD_S = 3, 24 pixels), five reels, the block 21 columns
+// of the screen's 22, 15 rows of window with a frame row above and below, and the panel under it in the six
+// rows that are left. No spare row for a gap: the panel starts the row after the frame (test/panel.test.mjs lists
+// the VIC-20's 5x5 as the one layout without one).
+export namespace geometry {
+    const TOP: utinyint = 1;
+    const WIDTH: utinyint = 21;
+    const PANEL: utinyint = 17;
+    const PANEL_COL: utinyint = 0;
+    const HOP: bool = false;
+    const STACKED: bool = false;
+}
