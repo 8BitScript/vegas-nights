@@ -1,5 +1,5 @@
 // The PET: screen codes at $8000 (40 or 80 columns), no colour.
-export namespace scr {
+pub mod scr {
     const COPY: bool = true;
     const SCREEN: usmallint = 0x8000;
     const COLOR: usmallint = 0;

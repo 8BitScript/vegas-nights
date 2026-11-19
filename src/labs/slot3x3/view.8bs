@@ -23,44 +23,39 @@
 //
 // The data — the strips, the bitmaps, the colours, how big a symbol is — is
 // imported by name; the logic below has no game in it.
-import { text, TextColor } from "@8bitscript/text";
-import { glyphs } from "@shared/glyphs.8bs";
-import { layout } from "@shared/layout.8bs";
-import { block } from "./block.8bs";
-import { reelscroll } from "@shared/reelscroll.8bs";
-import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
-import {
-    ART_SYMBOLS, SYMBOL_BYTES, SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS_W, SYMBOL_CELLS_H, SYMBOL_CELLS,
-    FRAME_CELLS, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
-    FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R,
-    FRAME_BITMAP, FRAME_COLOR
-} from "@generated/tiles/classic.8bs";
+use @8bitscript::text::{text, TextColor};
+use "@shared/glyphs.8bs"::glyphs;
+use "@shared/layout.8bs"::layout;
+use self::block::block;
+use "@shared/reelscroll.8bs"::reelscroll;
+use "@generated/classic3x3.8bs"::{REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES};
+use "@generated/tiles/classic.8bs"::{ART_SYMBOLS, SYMBOL_BYTES, SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS_W, SYMBOL_CELLS_H, SYMBOL_CELLS, FRAME_CELLS, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR, FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R, FRAME_BITMAP, FRAME_COLOR};
 
 // The fallback's symbols: three characters each, as the first renderer drew them.
-const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
-const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
-const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
+const GLYPH_LEFT: [utinyint; 6] = [32, 66, 66, 66, 32, 32];
+const GLYPH_MID: [utinyint; 6] = [55, 66, 66, 32, 67, 46];
+const GLYPH_RIGHT: [utinyint; 6] = [32, 66, 32, 32, 32, 32];
 
 // The geometry is block.8bs's (literals, checked against the tile data by test/glyph-budget.test.mjs).
 
 // The colours of a reel's cells depend only on which stop is on top and which
 // source cell row dominates; remember them and skip the pass when neither moved.
-let inkKey: array<usmallint, 5>;
+let mut inkKey: [usmallint; 5];
 
 // Where each symbol's colours start in SYMBOL_COLOR (symbol * SYMBOL_CELLS), added up once: the
 // reel-colour pass would otherwise multiply for every cell row it draws.
-let colorBase: array<utinyint, 16>;
+let mut colorBase: [utinyint; 16];
 
 // Where the machine keeps TWO copies of the glyph block (glyphs.BUFFERED, the C64), a reel is composed into the
 // copy the screen is not showing and the screen switches to it once, after every reel that moved has been composed
 // (view.flush). `latest` says which copy holds each reel's current picture (bit 0 the home copy, bit 1 the other,
 // 3 both), `inkDirty` which reels have staged colours not yet written to colour RAM, `pending` whether anything
 // has been composed that the screen does not show yet. See the C64 glyph layer for how the two copies work.
-let latest: array<utinyint, 5>;
-let inkDirty: array<utinyint, 5>;
-let pending: bool = false;
+let mut latest: [utinyint; 5];
+let mut inkDirty: [utinyint; 5];
+let mut pending: bool = false;
 
-export namespace view {
+pub mod view {
     // The block, in cells: a frame cell, then the reels, SYMBOL_CELLS_W across, with a divider
     // between each pair, then a frame cell. 13 wide for 3-cell symbols, 16 for 4-cell ones
     // (block.8bs says so to the layout); the reels' rows start at row 4.
@@ -69,139 +64,139 @@ export namespace view {
     // ---- where everything else goes, in cells from the block's left edge (game.8bs asks) ----
     // The machine's size is block.8bs's (block.c64.8bs for the C64, whose symbols are 4 cells square),
     // so the rows below it move with it.
-    const BLOCK_WIDTH: utinyint = block.WIDTH;
-    const CREDIT_ROW: utinyint = block.CREDIT;
+    const BLOCK_WIDTH: utinyint = block::WIDTH;
+    const CREDIT_ROW: utinyint = block::CREDIT;
     const CREDIT_NUM: utinyint = 8;
-    const BET_ROW: utinyint = block.BET;
+    const BET_ROW: utinyint = block::BET;
     const BET_NUM: utinyint = 8;
-    const WIN_ROW: utinyint = block.WIN;
+    const WIN_ROW: utinyint = block::WIN;
     const WIN_NUM: utinyint = 8;
-    const MESSAGE_ROW: utinyint = block.MESSAGE;
+    const MESSAGE_ROW: utinyint = block::MESSAGE;
     const MESSAGE_COL: utinyint = 1;
     const MESSAGE_WIDTH: utinyint = 20;
 
     // The words that never change: the title, the labels of the three numbers and the key hint.
-    function statics(): void {
-        text.print(layout.cell(1, 1), "VEGAS NIGHTS");
-        text.print(layout.cell(1, 2), "SLOT 3X3");
-        text.print(layout.cell(1, block.CREDIT), "CREDIT");
-        text.print(layout.cell(1, block.BET), "BET");
-        text.print(layout.cell(1, block.WIN), "WIN");
-        text.print(layout.cell(1, block.HINT), "UP DOWN: BET");
+    fn statics() {
+        text::print(layout::cell(1, 1), "VEGAS NIGHTS");
+        text::print(layout::cell(1, 2), "SLOT 3X3");
+        text::print(layout::cell(1, block::CREDIT), "CREDIT");
+        text::print(layout::cell(1, block::BET), "BET");
+        text::print(layout::cell(1, block::WIN), "WIN");
+        text::print(layout::cell(1, block::HINT), "UP DOWN: BET");
     }
 
     // The first glyph code of the block: FIRST on a machine with exactly the codes it needs,
     // a few below it where the machine has spare codes under FIRST (glyphs.EXTRA).
-    function base(): utinyint {
-        return glyphs.FIRST - glyphs.EXTRA;
+    fn base() -> utinyint {
+        return glyphs::FIRST - glyphs::EXTRA;
     }
 
     // ---- the fallback: one character a symbol -----------------------------
 
-    function drawText(reel: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
-        for (let row: utinyint = 0; row < ROWS; row++) {
-            let symbol: utinyint = STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
-            let at: usmallint = layout.cell(1 + reel * 4, 7 + row);
-            text.putChar(at, GLYPH_LEFT[symbol]);
-            text.putChar(at + 1, GLYPH_MID[symbol]);
-            text.putChar(at + 2, GLYPH_RIGHT[symbol]);
+    fn drawText(reel: utinyint) {
+        let stop: utinyint = reelscroll::stop(reel);
+        for row: utinyint in 0..ROWS {
+            let symbol: utinyint = STRIPS[reel * STOPS + (stop + row & STOP_MASK)];
+            let at: usmallint = layout::cell(1 + reel * 4, 7 + row);
+            text::putChar(at, GLYPH_LEFT[symbol]);
+            text::putChar(at + 1, GLYPH_MID[symbol]);
+            text::putChar(at + 2, GLYPH_RIGHT[symbol]);
             // putChar leaves the cell's colour as it was; on the web that is black.
-            text.putColor(at, TextColor.WHITE);
-            text.putColor(at + 1, TextColor.WHITE);
-            text.putColor(at + 2, TextColor.WHITE);
+            text::putColor(at, TextColor::WHITE);
+            text::putColor(at + 1, TextColor::WHITE);
+            text::putColor(at + 2, TextColor::WHITE);
         }
     }
 
     // ---- the composer ------------------------------------------------------
 
     // Copy `count` rows of the tileset into glyph bytes at `to` (or the port).
-    function copyRun(dest: usmallint, source: usmallint, count: utinyint): void {
-        for (let i: utinyint = 0; i < count; i++) {
-            if (glyphs.PORT) {
-                memory.write(glyphs.PORT_ADDRESS, SYMBOL_BITMAP[source + i]);
+    fn copyRun(dest: usmallint, source: usmallint, count: utinyint) {
+        for i: utinyint in 0..count {
+            if glyphs::PORT {
+                memory::write(glyphs::PORT_ADDRESS, SYMBOL_BITMAP[source + i]);
             } else {
-                memory.write(dest + i, SYMBOL_BITMAP[source + i]);
+                memory::write(dest + i, SYMBOL_BITMAP[source + i]);
             }
         }
     }
 
     // Where symbol `symbol`'s tile starts in SYMBOL_BITMAP (the port path reads the const array
     // directly). Added up, not multiplied: at most eight symbols, and this is the X16's path.
-    function tileAt(symbol: utinyint): usmallint {
-        let at: usmallint = 0;
-        for (let i: utinyint = 0; i < symbol; i++) {
+    fn tileAt(symbol: utinyint) -> usmallint {
+        let mut at: usmallint = 0;
+        for i: utinyint in 0..symbol {
             at = at + SYMBOL_BYTES;
         }
         return at;
     }
 
     // The frame cell codes that go in the block's cells, and their glyph bytes.
-    function defineFrame(): void {
-        glyphs.open();
-        for (let cell: utinyint = 0; cell < FRAME_CELLS; cell++) {
-            let code: utinyint = view.base() + block.FRAME_AT + cell;
-            let to: usmallint = glyphs.address(code);
-            if (glyphs.PORT) {
-                glyphs.seek(code);
+    fn defineFrame() {
+        glyphs::open();
+        for cell: utinyint in 0..FRAME_CELLS {
+            let code: utinyint = view::base() + block::FRAME_AT + cell;
+            let to: usmallint = glyphs::address(code);
+            if glyphs::PORT {
+                glyphs::seek(code);
             }
-            for (let i: utinyint = 0; i < 8; i++) {
-                if (glyphs.PORT) {
-                    memory.write(glyphs.PORT_ADDRESS, FRAME_BITMAP[cell * 8 + i]);
+            for i: utinyint in 0..8 {
+                if glyphs::PORT {
+                    memory::write(glyphs::PORT_ADDRESS, FRAME_BITMAP[cell * 8 + i]);
                 } else {
-                    memory.write(to + i, FRAME_BITMAP[cell * 8 + i]);
+                    memory::write(to + i, FRAME_BITMAP[cell * 8 + i]);
                 }
             }
         }
-        glyphs.close();
+        glyphs::close();
     }
 
-    function putFrame(col: utinyint, row: utinyint, cell: utinyint): void {
-        let at: usmallint = layout.cell(col, row);
-        glyphs.put(at, view.base() + block.FRAME_AT + cell);
-        text.putColor(at, FRAME_COLOR[cell]);
+    fn putFrame(col: utinyint, row: utinyint, cell: utinyint) {
+        let at: usmallint = layout::cell(col, row);
+        glyphs::put(at, view::base() + block::FRAME_AT + cell);
+        text::putColor(at, FRAME_COLOR[cell]);
     }
 
-    function drawFrame(): void {
-        for (let col: utinyint = 0; col <= block.RIGHT; col++) {
-            let top: utinyint = FRAME_T;
-            let low: utinyint = FRAME_B;
-            if (col == 0) {
+    fn drawFrame() {
+        for col: utinyint in 0..=block::RIGHT {
+            let mut top: utinyint = FRAME_T;
+            let mut low: utinyint = FRAME_B;
+            if col == 0 {
                 top = FRAME_TL;
                 low = FRAME_BL;
-            } else if (col == block.RIGHT) {
+            } else if col == block::RIGHT {
                 top = FRAME_TR;
                 low = FRAME_BR;
             }
-            view.putFrame(col, view.TOP - 1, top);
-            view.putFrame(col, block.END, low);
+            view::putFrame(col, view::TOP - 1, top);
+            view::putFrame(col, block::END, low);
         }
-        for (let divider: utinyint = 1; divider < REELS; divider++) {
-            view.putFrame(divider * block.PITCH, view.TOP - 1, FRAME_DIVT);
-            view.putFrame(divider * block.PITCH, block.END, FRAME_DIVB);
+        for divider: utinyint in 1..REELS {
+            view::putFrame(divider * block::PITCH, view::TOP - 1, FRAME_DIVT);
+            view::putFrame(divider * block::PITCH, block::END, FRAME_DIVB);
         }
-        for (let row: utinyint = view.TOP; row < block.END; row++) {
-            let left: utinyint = FRAME_L;
-            let right: utinyint = FRAME_R;
-            if (row == block.ARROW) {
+        for row: utinyint in view::TOP..block::END {
+            let mut left: utinyint = FRAME_L;
+            let mut right: utinyint = FRAME_R;
+            if row == block::ARROW {
                 left = FRAME_ARROW_L;
                 right = FRAME_ARROW_R;
             }
-            view.putFrame(0, row, left);
-            view.putFrame(block.RIGHT, row, right);
-            for (let divider: utinyint = 1; divider < REELS; divider++) {
-                view.putFrame(divider * block.PITCH, row, FRAME_DIV);
+            view::putFrame(0, row, left);
+            view::putFrame(block::RIGHT, row, right);
+            for divider: utinyint in 1..REELS {
+                view::putFrame(divider * block::PITCH, row, FRAME_DIV);
             }
         }
     }
 
     // Tell the screen which character each cell of every reel shows, once.
-    function mapCells(): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            for (let down: utinyint = 0; down < block.DOWN; down++) {
-                for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
-                    let code: utinyint = view.base() + reel * block.PER_REEL + down * SYMBOL_CELLS_W + across;
-                    glyphs.put(layout.cell(1 + reel * block.PITCH + across, view.TOP + down), code);
+    fn mapCells() {
+        for reel: utinyint in 0..REELS {
+            for down: utinyint in 0..block::DOWN {
+                for across: utinyint in 0..SYMBOL_CELLS_W {
+                    let code: utinyint = view::base() + reel * block::PER_REEL + down * SYMBOL_CELLS_W + across;
+                    glyphs::put(layout::cell(1 + reel * block::PITCH + across, view::TOP + down), code);
                 }
             }
         }
@@ -209,48 +204,48 @@ export namespace view {
 
     // Compose reel `reel` at its current pixel offset into its glyphs: the
     // bytes first, in one run of writes with the C64's I/O area banked out…
-    function drawBytes(reel: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
-        let row: utinyint = reelscroll.row(reel);
-        let strip: usmallint = reel;
+    fn drawBytes(reel: utinyint) {
+        let mut stop: utinyint = reelscroll::stop(reel);
+        let mut row: utinyint = reelscroll::row(reel);
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
-        glyphs.open();
-        if (glyphs.PORT) {
-            for (let down: utinyint = 0; down < block.DOWN; down++) {
+        glyphs::open();
+        if glyphs::PORT {
+            for down: utinyint in 0..block::DOWN {
                 // The symbol under the top of this cell row and the one after it, as
                 // byte offsets into the tileset, and where in the symbol the window's
                 // next eight rows start.
-                let nextStop: utinyint = (stop + 1) & STOP_MASK;
-                let here: usmallint = view.tileAt(STRIPS[strip + stop]);
-                let after: usmallint = view.tileAt(STRIPS[strip + nextStop]);
+                let nextStop: utinyint = stop + 1 & STOP_MASK;
+                let here: usmallint = view::tileAt(STRIPS[strip + stop]);
+                let after: usmallint = view::tileAt(STRIPS[strip + nextStop]);
                 let cellRow: utinyint = row >> 3;
                 let within: utinyint = row & 7;
-                for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
-                    let code: utinyint = view.base() + reel * block.PER_REEL + down * SYMBOL_CELLS_W + across;
-                    glyphs.seek(code);
+                for across: utinyint in 0..SYMBOL_CELLS_W {
+                    let code: utinyint = view::base() + reel * block::PER_REEL + down * SYMBOL_CELLS_W + across;
+                    glyphs::seek(code);
                     // The first run is the rest of the symbol cell the window starts in…
-                    view.copyRun(0, here + (cellRow * SYMBOL_CELLS_W + across) * 8 + within, 8 - within);
+                    view::copyRun(0, here + (cellRow * SYMBOL_CELLS_W + across) * 8 + within, 8 - within);
                     // …and the second, the top of the next cell down (or the next symbol).
-                    if (within != 0) {
-                        if (cellRow < SYMBOL_CELLS_H - 1) {
-                            view.copyRun(0, here + ((cellRow + 1) * SYMBOL_CELLS_W + across) * 8, within);
+                    if within != 0 {
+                        if cellRow < SYMBOL_CELLS_H - 1 {
+                            view::copyRun(0, here + ((cellRow + 1) * SYMBOL_CELLS_W + across) * 8, within);
                         } else {
-                            view.copyRun(0, after + across * 8, within);
+                            view::copyRun(0, after + across * 8, within);
                         }
                     }
                 }
                 // on to the next cell row
                 row = row + 8;
-                if (row >= block.PIXELS) {
-                    row = row - block.PIXELS;
+                if row >= block::PIXELS {
+                    row = row - block::PIXELS;
                     stop = nextStop;
                 }
             }
         } else {
             // Memory-mapped glyphs: the whole reel in one assembly call.
-            glyphs.drawReel(glyphs.STRIP_RAM + strip, stop, row, glyphs.target(view.base() + reel * block.PER_REEL), STOP_MASK, SYMBOL_CELLS_W, SYMBOL_CELLS_H, block.DOWN);
+            glyphs::drawReel(glyphs::STRIP_RAM + strip, stop, row, glyphs::target(view::base() + reel * block::PER_REEL), STOP_MASK, SYMBOL_CELLS_W, SYMBOL_CELLS_H, block::DOWN);
         }
-        glyphs.close();
+        glyphs::close();
     }
 
     // …then the colour of every cell: the ink of whichever symbol cell supplies
@@ -258,133 +253,133 @@ export namespace view {
     // symbol's colour, and a colour never pops for a sliver). After the glyph
     // bytes, not during: on the C64 the colour RAM and the character RAM share
     // addresses, and the I/O area decides which one a write reaches.
-    function drawColors(reel: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
-        let row: utinyint = reelscroll.row(reel);
-        let band: utinyint = row >> 3;
-        if ((row & 7) > 4) {
+    fn drawColors(reel: utinyint) {
+        let mut stop: utinyint = reelscroll::stop(reel);
+        let mut row: utinyint = reelscroll::row(reel);
+        let mut band: utinyint = row >> 3;
+        if (row & 7) > 4 {
             band = band + 1;
         }
-        let key: usmallint = stop;
+        let mut key: usmallint = stop;
         key = key * (SYMBOL_CELLS_H + 1);
         key = key + band;
-        if (inkKey[reel] == key) {
+        if inkKey[reel] == key {
             return;
         }
         inkKey[reel] = key;
-        let strip: usmallint = reel;
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
         // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
-        let at: usmallint = layout.cell(1 + reel * block.PITCH, view.TOP);
-        for (let down: utinyint = 0; down < block.DOWN; down++) {
-            let symbol: utinyint = STRIPS[strip + stop];
-            let inkRow: utinyint = row >> 3;
-            if ((row & 7) > 4) {
+        let mut at: usmallint = layout::cell(1 + reel * block::PITCH, view::TOP);
+        for down: utinyint in 0..block::DOWN {
+            let mut symbol: utinyint = STRIPS[strip + stop];
+            let mut inkRow: utinyint = row >> 3;
+            if (row & 7) > 4 {
                 // mostly the cell below: the next cell row, or the next symbol's first
-                if (inkRow < SYMBOL_CELLS_H - 1) {
+                if inkRow < SYMBOL_CELLS_H - 1 {
                     inkRow = inkRow + 1;
                 } else {
                     inkRow = 0;
-                    symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
+                    symbol = STRIPS[strip + (stop + 1 & STOP_MASK)];
                 }
             }
             let index: utinyint = colorBase[symbol] + inkRow * SYMBOL_CELLS_W;
-            for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
-                text.putColor(at + across, SYMBOL_COLOR[index + across]);
+            for across: utinyint in 0..SYMBOL_CELLS_W {
+                text::putColor(at + across, SYMBOL_COLOR[index + across]);
             }
-            at = at + text.COLUMNS;
+            at = at + text::COLUMNS;
             row = row + 8;
-            if (row >= block.PIXELS) {
-                row = row - block.PIXELS;
-                stop = (stop + 1) & STOP_MASK;
+            if row >= block::PIXELS {
+                row = row - block::PIXELS;
+                stop = stop + 1 & STOP_MASK;
             }
         }
     }
 
     // The colours of reel `reel`'s cells, worked out as drawColors does but staged (glyphs.stageColor) instead of
     // written, so that they can go to colour RAM in the same breath as the switch to the new shapes.
-    function stageInk(reel: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
-        let row: utinyint = reelscroll.row(reel);
-        let band: utinyint = row >> 3;
-        if ((row & 7) > 4) {
+    fn stageInk(reel: utinyint) {
+        let mut stop: utinyint = reelscroll::stop(reel);
+        let mut row: utinyint = reelscroll::row(reel);
+        let mut band: utinyint = row >> 3;
+        if (row & 7) > 4 {
             band = band + 1;
         }
-        let key: usmallint = stop;
+        let mut key: usmallint = stop;
         key = key * (SYMBOL_CELLS_H + 1);
         key = key + band;
-        if (inkKey[reel] == key) {
+        if inkKey[reel] == key {
             return;
         }
         inkKey[reel] = key;
         inkDirty[reel] = 1;
-        let strip: usmallint = reel;
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
-        let slot: usmallint = reel;
-        slot = slot * block.PER_REEL;
-        for (let down: utinyint = 0; down < block.DOWN; down++) {
-            let symbol: utinyint = STRIPS[strip + stop];
-            let inkRow: utinyint = row >> 3;
-            if ((row & 7) > 4) {
-                if (inkRow < SYMBOL_CELLS_H - 1) {
+        let mut slot: usmallint = reel;
+        slot = slot * block::PER_REEL;
+        for down: utinyint in 0..block::DOWN {
+            let mut symbol: utinyint = STRIPS[strip + stop];
+            let mut inkRow: utinyint = row >> 3;
+            if (row & 7) > 4 {
+                if inkRow < SYMBOL_CELLS_H - 1 {
                     inkRow = inkRow + 1;
                 } else {
                     inkRow = 0;
-                    symbol = STRIPS[strip + ((stop + 1) & STOP_MASK)];
+                    symbol = STRIPS[strip + (stop + 1 & STOP_MASK)];
                 }
             }
             let index: utinyint = colorBase[symbol] + inkRow * SYMBOL_CELLS_W;
-            for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
-                glyphs.stageColor(slot + across, SYMBOL_COLOR[index + across]);
+            for across: utinyint in 0..SYMBOL_CELLS_W {
+                glyphs::stageColor(slot + across, SYMBOL_COLOR[index + across]);
             }
             slot = slot + SYMBOL_CELLS_W;
             row = row + 8;
-            if (row >= block.PIXELS) {
-                row = row - block.PIXELS;
-                stop = (stop + 1) & STOP_MASK;
+            if row >= block::PIXELS {
+                row = row - block::PIXELS;
+                stop = stop + 1 & STOP_MASK;
             }
         }
     }
 
     // Write reel `reel`'s staged colours to colour RAM, now.
-    function paintInk(reel: utinyint): void {
+    fn paintInk(reel: utinyint) {
         inkDirty[reel] = 0;
-        let slot: usmallint = reel;
-        slot = slot * block.PER_REEL;
-        glyphs.putColors(layout.cell(1 + reel * block.PITCH, view.TOP), slot, SYMBOL_CELLS_W, block.DOWN);
+        let mut slot: usmallint = reel;
+        slot = slot * block::PER_REEL;
+        glyphs::putColors(layout::cell(1 + reel * block::PITCH, view::TOP), slot, SYMBOL_CELLS_W, block::DOWN);
     }
 
     // Compose reel `reel` at its current offset into the glyph copy the screen is not showing. The screen does not change
     // until view.flush().
-    function composeReel(reel: utinyint): void {
-        view.drawBytes(reel);
-        latest[reel] = glyphs.hiddenBit();
-        view.stageInk(reel);
+    fn composeReel(reel: utinyint) {
+        view::drawBytes(reel);
+        latest[reel] = glyphs::hiddenBit();
+        view::stageInk(reel);
         pending = true;
     }
 
     // Show what composeReel has composed since the last flush: every reel whose hidden copy is out of date (it did not
     // move this time, but an earlier move left its newest picture only in the copy being shown) is first copied across, then
     // the screen switches copies when the beam is clear of the window, and the colours that go with the new shapes follow.
-    function flush(): void {
-        if (!glyphs.BUFFERED) {
+    fn flush() {
+        if !glyphs::BUFFERED {
             return;
         }
-        if (!pending) {
+        if !pending {
             return;
         }
         pending = false;
-        let bit: utinyint = glyphs.hiddenBit();
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            if ((latest[reel] & bit) == 0) {
-                glyphs.mirror(view.base() + reel * block.PER_REEL, block.PER_REEL);
+        let bit: utinyint = glyphs::hiddenBit();
+        for reel: utinyint in 0..REELS {
+            if (latest[reel] & bit) == 0 {
+                glyphs::mirror(view::base() + reel * block::PER_REEL, block::PER_REEL);
                 latest[reel] = 3;
             }
         }
-        glyphs.flip();
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            if (inkDirty[reel] != 0) {
-                view.paintInk(reel);
+        glyphs::flip();
+        for reel: utinyint in 0..REELS {
+            if inkDirty[reel] != 0 {
+                view::paintInk(reel);
             }
         }
     }
@@ -392,133 +387,133 @@ export namespace view {
     // Leave both copies holding every reel's current picture and the home copy on the screen, which is where the text
     // package expects it to be: the game calls this when the reels have stopped, before it prints anything. Invisible
     // by construction: the two copies are alike when the screen goes back.
-    function sync(): void {
-        if (!glyphs.BUFFERED) {
+    fn sync() {
+        if !glyphs::BUFFERED {
             return;
         }
-        view.flush();
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            if (latest[reel] != 3) {
-                glyphs.mirror(view.base() + reel * block.PER_REEL, block.PER_REEL);
+        view::flush();
+        for reel: utinyint in 0..REELS {
+            if latest[reel] != 3 {
+                glyphs::mirror(view::base() + reel * block::PER_REEL, block::PER_REEL);
                 latest[reel] = 3;
             }
         }
-        glyphs.home();
+        glyphs::home();
     }
 
-    function drawGlyphs(reel: utinyint): void {
-        if (glyphs.BUFFERED) {
+    fn drawGlyphs(reel: utinyint) {
+        if glyphs::BUFFERED {
             // One reel, shown at once, and both copies left alike.
-            view.composeReel(reel);
-            view.flush();
-            view.sync();
+            view::composeReel(reel);
+            view::flush();
+            view::sync();
         } else {
-            view.drawBytes(reel);
-            view.drawColors(reel);
+            view::drawBytes(reel);
+            view::drawColors(reel);
         }
     }
 
     // ---- what the game calls ---------------------------------------------
 
     // Once, after the screen is blank: glyphs, the frame, the cell map.
-    function begin(): void {
-        let colors: utinyint = 0;
-        for (let symbol: utinyint = 0; symbol < ART_SYMBOLS; symbol++) {
+    fn begin() {
+        let mut colors: utinyint = 0;
+        for symbol: utinyint in 0..ART_SYMBOLS {
             colorBase[symbol] = colors;
             colors = colors + SYMBOL_CELLS;
         }
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
+        for reel: utinyint in 0..REELS {
             inkKey[reel] = 65535;
         }
-        if (glyphs.AVAILABLE) {
-            glyphs.begin();
-            if (!glyphs.PORT) {
+        if glyphs::AVAILABLE {
+            glyphs::begin();
+            if !glyphs::PORT {
                 // The assembly row-composer reads the tileset from RAM it can name.
-                let total: usmallint = ART_SYMBOLS;
+                let mut total: usmallint = ART_SYMBOLS;
                 total = total * SYMBOL_BYTES;
-                for (let i: usmallint = 0; i < total; i++) {
-                    glyphs.stage(i, SYMBOL_BITMAP[i]);
+                for i: usmallint in 0..total {
+                    glyphs::stage(i, SYMBOL_BITMAP[i]);
                 }
-                glyphs.symbols(ART_SYMBOLS, SYMBOL_BYTES);
-                let stops: usmallint = REELS;
+                glyphs::symbols(ART_SYMBOLS, SYMBOL_BYTES);
+                let mut stops: usmallint = REELS;
                 stops = stops * STOPS;
-                for (let i: usmallint = 0; i < stops; i++) {
-                    glyphs.stageStrip(i, STRIPS[i]);
+                for i: usmallint in 0..stops {
+                    glyphs::stageStrip(i, STRIPS[i]);
                 }
             }
-            view.defineFrame();
-            view.mapCells();
-            view.drawFrame();
-            if (glyphs.BUFFERED) {
+            view::defineFrame();
+            view::mapCells();
+            view::drawFrame();
+            if glyphs::BUFFERED {
                 // The frame and the cell map are in the home copy; the second copy starts as a duplicate of it.
-                glyphs.region(view.TOP, block.DOWN);
-                for (let reel: utinyint = 0; reel < REELS; reel++) {
+                glyphs::region(view::TOP, block::DOWN);
+                for reel: utinyint in 0..REELS {
                     latest[reel] = 3;
                     inkDirty[reel] = 0;
                 }
-                glyphs.clone();
+                glyphs::clone();
             }
         } else {
-            text.print(layout.cell(1, 6), "-----------");
-            text.print(layout.cell(1, 10), "-----------");
+            text::print(layout::cell(1, 6), "-----------");
+            text::print(layout::cell(1, 10), "-----------");
         }
     }
 
     // Redraw `reel` at its current position.
-    function draw(reel: utinyint): void {
-        if (glyphs.AVAILABLE) {
-            view.drawGlyphs(reel);
+    fn draw(reel: utinyint) {
+        if glyphs::AVAILABLE {
+            view::drawGlyphs(reel);
         } else {
-            view.drawText(reel);
+            view::drawText(reel);
         }
     }
 
-    function drawAll(): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            view.draw(reel);
+    fn drawAll() {
+        for reel: utinyint in 0..REELS {
+            view::draw(reel);
         }
     }
 
     // A reel moved `pixels` down. The composer redraws on every move; the
     // fallback only when a whole symbol went by.
-    function moved(reel: utinyint, pixels: utinyint): void {
-        if (glyphs.BUFFERED) {
-            view.composeReel(reel);
-        } else if (glyphs.AVAILABLE) {
-            view.drawGlyphs(reel);
-        } else if (reelscroll.row(reel) < pixels) {
-            view.drawText(reel);
+    fn moved(reel: utinyint, pixels: utinyint) {
+        if glyphs::BUFFERED {
+            view::composeReel(reel);
+        } else if glyphs::AVAILABLE {
+            view::drawGlyphs(reel);
+        } else if reelscroll::row(reel) < pixels {
+            view::drawText(reel);
         }
     }
 
     // Show payline `line` lit (or put the reels back as they were).
-    function flashLine(line: utinyint, on: bool): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
+    fn flashLine(line: utinyint, on: bool) {
+        for reel: utinyint in 0..REELS {
             let row: utinyint = LINES[line * REELS + reel];
-            if (glyphs.AVAILABLE) {
-                if (on) {
-                    for (let down: utinyint = 0; down < SYMBOL_CELLS_H; down++) {
-                        for (let across: utinyint = 0; across < SYMBOL_CELLS_W; across++) {
-                            text.putColor(layout.cell(1 + reel * block.PITCH + across, view.TOP + row * SYMBOL_CELLS_H + down), TextColor.WHITE);
+            if glyphs::AVAILABLE {
+                if on {
+                    for down: utinyint in 0..SYMBOL_CELLS_H {
+                        for across: utinyint in 0..SYMBOL_CELLS_W {
+                            text::putColor(layout::cell(1 + reel * block::PITCH + across, view::TOP + row * SYMBOL_CELLS_H + down), TextColor::WHITE);
                         }
                     }
                 } else {
                     inkKey[reel] = 65535;
-                    if (glyphs.BUFFERED) {
+                    if glyphs::BUFFERED {
                         // The shapes were never touched by the flash, only the colours.
-                        view.stageInk(reel);
-                        view.paintInk(reel);
+                        view::stageInk(reel);
+                        view::paintInk(reel);
                     } else {
-                        view.drawGlyphs(reel);
+                        view::drawGlyphs(reel);
                     }
                 }
-            } else if (on) {
-                let at: usmallint = layout.cell(1 + reel * 4, 7 + row);
-                text.putChar(at, 32);
-                text.putChar(at + 1, 32);
-                text.putChar(at + 2, 32);
+            } else if on {
+                let at: usmallint = layout::cell(1 + reel * 4, 7 + row);
+                text::putChar(at, 32);
+                text::putChar(at + 1, 32);
+                text::putChar(at + 2, 32);
             } else {
-                view.drawText(reel);
+                view::drawText(reel);
             }
         }
     }

@@ -2,18 +2,18 @@
 // otherwise empty screen, at the block's cell (0, 1) and (10, 15). A screenshot
 // of this program is how the test measures, on each machine, exactly where a text
 // cell is in pixels and how big: the bounding box of a solid block IS the cell.
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { layout } from "@shared/layout.8bs";
-import { view } from "./view.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use "@shared/layout.8bs"::layout;
+use self::view::view;
 
-export function main(): void {
-    screen.blank();
-    layout.centre(view.BLOCK_WIDTH);
-    text.setReverse(true);
-    text.print(layout.cell(0, 1), " ");
-    text.print(layout.cell(10, 15), " ");
-    while (true) {
+pub fn main() {
+    screen::blank();
+    layout::centre(view::BLOCK_WIDTH);
+    text::setReverse(true);
+    text::print(layout::cell(0, 1), " ");
+    text::print(layout::cell(10, 15), " ");
+    loop {
         waitFrame();
     }
 }

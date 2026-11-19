@@ -16,15 +16,15 @@
 //           (registers, colours, raster list), so the normal look returns exactly.
 //
 // An empty function a program calls folds to no code, so this file costs nothing.
-export namespace fx {
+pub mod fx {
     const RASTER: bool = false;
 
-    function begin(): void {
+    fn begin() {
     }
 
-    function frame(tick: utinyint): void {
+    fn frame(tick: utinyint) {
     }
 
-    function end(): void {
+    fn end() {
     }
 }

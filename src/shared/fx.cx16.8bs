@@ -30,58 +30,58 @@
 // before the handler is taken off, so the screen is exactly what it was before the round.
 //
 // Bytes (8bs build cx16 --program slot5x5 --size, program / RAM): see docs/fx.md.
-import { raster, Slot } from "@8bitscript/raster";
-import { setVramAddress } from "@8bitscript/cx16";
+use @8bitscript::raster::{raster, Slot};
+use @8bitscript::cx16::setVramAddress;
 
 // The gold table: 24 steps, VERA palette format. GB is GGGGBBBB, R is 0000RRRR. A triangle from
 // black up through brown, orange, amber and gold to a cream peak at step 12 and back down.
-const GOLD_GB: array<utinyint, 24> = [
+const GOLD_GB: [utinyint; 24] = [
     0x00, 0x10, 0x10, 0x20, 0x30, 0x50, 0x60, 0x81,
     0xA1, 0xC2, 0xD5, 0xE8, 0xFB, 0xE8, 0xD5, 0xC2,
     0xA1, 0x81, 0x60, 0x50, 0x30, 0x20, 0x10, 0x10,
 ];
-const GOLD_R: array<utinyint, 24> = [
+const GOLD_R: [utinyint; 24] = [
     0x00, 0x02, 0x03, 0x05, 0x07, 0x0A, 0x0C, 0x0D,
     0x0E, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F,
     0x0E, 0x0D, 0x0C, 0x0A, 0x07, 0x05, 0x03, 0x02,
 ];
 
-const STRIPES: utinyint = 12;      // border stripes, one raster entry each
-const PITCH: utinyint = 20;        // picture lines per stripe: 0, 20, ... 220
-const FIRST: utinyint = 64;        // the first palette entry the stripes use (nothing else does)
+const STRIPES: utinyint = 12; // border stripes, one raster entry each
+const PITCH: utinyint = 20; // picture lines per stripe: 0, 20, ... 220
+const FIRST: utinyint = 64; // the first palette entry the stripes use (nothing else does)
 const PALETTE_BYTES: utinyint = 24; // two bytes an entry
-const STEP: utinyint = 4;          // video frames to a step of the glow
+const STEP: utinyint = 4; // video frames to a step of the glow
 
 // VERA palette entry FIRST: video memory $1FA00 + 2 * FIRST.
 const PALETTE_AT: usmallint = 0xFA80;
 
-let savedPalette: array<utinyint, 24>;
-let savedBorder: utinyint = 0;
-let phase: utinyint = 0;           // how far along the table stripe 0 is, 0..23
-let banked: utinyint = 0;          // video frames counted towards the next step
-let lastFrame: utinyint = 0;       // raster.frame() at the last look
+let mut savedPalette: [utinyint; 24];
+let mut savedBorder: utinyint = 0;
+let mut phase: utinyint = 0; // how far along the table stripe 0 is, 0..23
+let mut banked: utinyint = 0; // video frames counted towards the next step
+let mut lastFrame: utinyint = 0; // raster.frame() at the last look
 
 // Write the twelve stripes' palette entries for the current phase.
-function paint(): void {
+fn paint() {
     setVramAddress(1, PALETTE_AT, 1);
-    for (let k: utinyint = 0; k < STRIPES; k++) {
-        let step: utinyint = k * 2 + 24 - phase;
-        if (step >= 24) {
+    for k: utinyint in 0..STRIPES {
+        let mut step: utinyint = k * 2 + 24 - phase;
+        if step >= 24 {
             step = step - 24;
         }
-        memory.write(0x9F23, GOLD_GB[step]);
-        memory.write(0x9F23, GOLD_R[step]);
+        memory::write(0x9F23, GOLD_GB[step]);
+        memory::write(0x9F23, GOLD_R[step]);
     }
 }
 
-export namespace fx {
-    const RASTER: bool = #fact(video.raster);
+pub mod fx {
+    const RASTER: bool = #fact(video::raster);
 
-    function begin(): void {
-        savedBorder = memory.read(0x9F2C);
+    fn begin() {
+        savedBorder = memory::read(0x9F2C);
         setVramAddress(1, PALETTE_AT, 1);
-        for (let i: utinyint = 0; i < PALETTE_BYTES; i++) {
-            savedPalette[i] = memory.read(0x9F23);
+        for i: utinyint in 0..PALETTE_BYTES {
+            savedPalette[i] = memory::read(0x9F23);
         }
         phase = 0;
         banked = 0;
@@ -89,47 +89,47 @@ export namespace fx {
 
         // The list, written once, in line order: a black background at line 0 and a border
         // stripe every PITCH lines naming its own palette entry.
-        raster.clear();
-        raster.at(0, Slot.BACKGROUND, 0);
-        for (let k: utinyint = 0; k < STRIPES; k++) {
-            raster.at(k * PITCH, Slot.BORDER, FIRST + k);
+        raster::clear();
+        raster::at(0, Slot::BACKGROUND, 0);
+        for k: utinyint in 0..STRIPES {
+            raster::at(k * PITCH, Slot::BORDER, FIRST + k);
         }
-        raster.commit();
-        raster.enable();
-        lastFrame = raster.frame();
+        raster::commit();
+        raster::enable();
+        lastFrame = raster::frame();
     }
 
-    function frame(tick: utinyint): void {
+    fn frame(tick: utinyint) {
         // The raster handler counts every video frame (raster.frame()), so a game-loop pass
         // that spans two frames still banks two.
-        let now: utinyint = raster.frame();
+        let now: utinyint = raster::frame();
         banked = banked + (now - lastFrame);
         lastFrame = now;
-        if (banked >= STEP) {
+        if banked >= STEP {
             banked = banked - STEP;
             phase = phase + 1;
-            if (phase >= 24) {
+            if phase >= 24 {
                 phase = 0;
             }
             paint();
         }
     }
 
-    function end(): void {
+    fn end() {
         // One more frame with a single plain entry, so the handler leaves the border and the
         // background's palette entry exactly as they were; then the handler goes.
-        raster.clear();
-        raster.at(0, Slot.BORDER, savedBorder);
-        raster.at(0, Slot.BACKGROUND, 0);
-        raster.commit();
+        raster::clear();
+        raster::at(0, Slot::BORDER, savedBorder);
+        raster::at(0, Slot::BACKGROUND, 0);
+        raster::commit();
         waitFrame();
         waitFrame();
-        raster.disable();
-        memory.write(0x9F25, 0x00);
-        memory.write(0x9F2C, savedBorder);
+        raster::disable();
+        memory::write(0x9F25, 0x00);
+        memory::write(0x9F2C, savedBorder);
         setVramAddress(1, PALETTE_AT, 1);
-        for (let i: utinyint = 0; i < PALETTE_BYTES; i++) {
-            memory.write(0x9F23, savedPalette[i]);
+        for i: utinyint in 0..PALETTE_BYTES {
+            memory::write(0x9F23, savedPalette[i]);
         }
     }
 }

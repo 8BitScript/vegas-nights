@@ -7,14 +7,14 @@
 //
 // Codes 128-255 are the ISO set's upper half (accented letters and symbols
 // this game never prints); the reels and the frame take 128-222.
-import { setVramAddress } from "@8bitscript/cx16";
-import { text } from "@8bitscript/text";
+use @8bitscript::cx16::setVramAddress;
+use @8bitscript::text::text;
 
 // The 5x5's pre-composed strips (see glyphs.c64.8bs): in RAM, copied to the tiles
 // through VERA's data port.
-let stripBuf: array<utinyint, 5920>;
+let mut stripBuf: [utinyint; 5920];
 
-export namespace glyphs {
+pub mod glyphs {
     const AVAILABLE: bool = true;
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
@@ -28,92 +28,92 @@ export namespace glyphs {
     const BUFFERED: bool = false;
 
     // Double buffering (glyphs.8bs): this machine has one copy of the glyph block, so none of it does anything.
-    function target(code: utinyint): usmallint {
-        return glyphs.address(code);
+    fn target(code: utinyint) -> usmallint {
+        return glyphs::address(code);
     }
 
-    function hiddenBit(): utinyint {
+    fn hiddenBit() -> utinyint {
         return 0;
     }
 
-    function region(row: utinyint, rows: utinyint): void {
+    fn region(row: utinyint, rows: utinyint) {
     }
 
-    function mirror(first: utinyint, count: utinyint): void {
+    fn mirror(first: utinyint, count: utinyint) {
     }
 
-    function flip(): void {
+    fn flip() {
     }
 
-    function home(): void {
+    fn home() {
     }
 
-    function clone(): void {
+    fn clone() {
     }
 
-    function stageColor(index: usmallint, color: utinyint): void {
+    fn stageColor(index: usmallint, color: utinyint) {
     }
 
-    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
+    fn putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint) {
     }
 
-    function begin(): void {
+    fn begin() {
     }
 
-    function address(code: utinyint): usmallint {
+    fn address(code: utinyint) -> usmallint {
         return 0;
     }
 
     // Point DATA0 at the first byte of tile `code`, stepping by 1.
     // L1_TILEBASE ($9F36): bits 7:2 are the tileset address bits 16:11.
-    function seek(code: utinyint): void {
-        let base: utinyint = memory.read(0x9F36) >> 2;
-        let low: usmallint = base & 31;
+    fn seek(code: utinyint) {
+        let base: utinyint = memory::read(0x9F36) >> 2;
+        let mut low: usmallint = base & 31;
         low = low * 2048;
-        let offset: usmallint = code;
+        let mut offset: usmallint = code;
         offset = offset * 8;
         low = low + offset;
         setVramAddress(base >> 5, low, 1);
     }
 
-    function stage(index: usmallint, value: utinyint): void {
+    fn stage(index: usmallint, value: utinyint) {
     }
 
-    function symbols(count: utinyint, bytes: usmallint): void {
+    fn symbols(count: utinyint, bytes: usmallint) {
     }
 
     // Every code the X16's glyph block uses is 128 or more, which text.putChar passes through.
-    function put(at: usmallint, code: utinyint): void {
-        text.putChar(at, code);
+    fn put(at: usmallint, code: utinyint) {
+        text::putChar(at, code);
     }
 
-    function stageStrip(index: usmallint, value: utinyint): void {
+    fn stageStrip(index: usmallint, value: utinyint) {
     }
 
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
+    fn drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint) {
     }
 
-    function putStrip(index: usmallint, value: utinyint): void {
+    fn putStrip(index: usmallint, value: utinyint) {
         stripBuf[index] = value;
     }
 
     // `count` bytes from the strip buffer at `source` into the tiles from `code` on.
-    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
-        glyphs.seek(code);
-        for (let i: utinyint = 0; i < count; i++) {
-            memory.write(0x9F23, stripBuf[source + i]);
+    fn copyOut(code: utinyint, source: usmallint, count: utinyint) {
+        glyphs::seek(code);
+        for i: utinyint in 0..count {
+            memory::write(0x9F23, stripBuf[source + i]);
         }
     }
 
-    function putColorStrip(index: usmallint, value: utinyint): void {
+    fn putColorStrip(index: usmallint, value: utinyint) {
     }
 
-    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
+    fn copyColors(cell: usmallint, source: usmallint, count: utinyint) {
     }
 
-    function open(): void {
+    fn open() {
     }
 
-    function close(): void {
+    fn close() {
     }
 }

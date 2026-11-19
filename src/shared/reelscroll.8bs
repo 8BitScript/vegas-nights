@@ -15,8 +15,8 @@
 // apart and step every third frame, one at a time.
 //
 // Up to five reels, so the 5x5 uses the same file.
-import { feel } from "@shared/feel.8bs";
-import { symbolpx } from "@shared/symbolpx.8bs";
+use "@shared/feel.8bs"::feel;
+use "@shared/symbolpx.8bs"::symbolpx;
 
 // A symbol's height in pixels is the tile data's cell height times eight (24 for
 // three cells, 16 on the web's two), and the speed schedule below is cut from it:
@@ -24,14 +24,14 @@ import { symbolpx } from "@shared/symbolpx.8bs";
 // so a reel always lands on its stop. (A const is a literal or a const here, so the
 // arithmetic is written where it is used and folded.)
 
-let stops: array<utinyint, 5>;
-let rows: array<utinyint, 5>;
-let remaining: array<usmallint, 5>;
-let waits: array<utinyint, 5>;
-let gaps: array<utinyint, 5>;
+let mut stops: [utinyint; 5];
+let mut rows: [utinyint; 5];
+let mut remaining: [usmallint; 5];
+let mut waits: [utinyint; 5];
+let mut gaps: [utinyint; 5];
 
-export namespace reelscroll {
-    function place(reel: utinyint, stop: utinyint): void {
+pub mod reelscroll {
+    fn place(reel: utinyint, stop: utinyint) {
         stops[reel] = stop;
         rows[reel] = 0;
         remaining[reel] = 0;
@@ -42,7 +42,7 @@ export namespace reelscroll {
     // Put `reel` at `stop` with `row` pixels already scrolled into that symbol and no
     // spin under way: a reel held at any pixel offset, for the offset probes that check
     // the composers (src/labs/slot3x3/offsets.8bs). Nothing in a game calls it.
-    function pin(reel: utinyint, stop: utinyint, row: utinyint): void {
+    fn pin(reel: utinyint, stop: utinyint, row: utinyint) {
         stops[reel] = stop;
         rows[reel] = row;
         remaining[reel] = 0;
@@ -50,37 +50,37 @@ export namespace reelscroll {
         gaps[reel] = 0;
     }
 
-    function stop(reel: utinyint): utinyint {
+    fn stop(reel: utinyint) -> utinyint {
         return stops[reel];
     }
 
-    function row(reel: utinyint): utinyint {
+    fn row(reel: utinyint) -> utinyint {
         return rows[reel];
     }
 
-    function moving(reel: utinyint): bool {
+    fn moving(reel: utinyint) -> bool {
         return remaining[reel] != 0;
     }
 
     // Start `reel` toward stop `target` on a strip of `count` stops: at least
     // `minimum` pixels (a multiple of a symbol's pixels), then however many more it takes to
     // land on the target. The reel is at rest when this is called (row 0).
-    function start(reel: utinyint, target: utinyint, minimum: usmallint, count: utinyint): void {
-        let around: usmallint = count;
-        around = around * (symbolpx.CELLS_H * 8);
-        let origin: usmallint = stops[reel];
-        origin = origin * (symbolpx.CELLS_H * 8);
-        let goal: usmallint = target;
-        goal = goal * (symbolpx.CELLS_H * 8);
+    fn start(reel: utinyint, target: utinyint, minimum: usmallint, count: utinyint) {
+        let mut around: usmallint = count;
+        around = around * (symbolpx::CELLS_H * 8);
+        let mut origin: usmallint = stops[reel];
+        origin = origin * (symbolpx::CELLS_H * 8);
+        let mut goal: usmallint = target;
+        goal = goal * (symbolpx::CELLS_H * 8);
         // distance down the strip from `origin` to `goal`, wrapping
-        let extra: usmallint = origin + around;
+        let mut extra: usmallint = origin + around;
         extra = extra - goal;
-        while (extra >= around) {
+        while extra >= around {
             extra = extra - around;
         }
         // …and enough more laps' worth to reach `minimum`
-        let total: usmallint = extra;
-        while (total < minimum) {
+        let mut total: usmallint = extra;
+        while total < minimum {
             total = total + around;
         }
         remaining[reel] = total;
@@ -97,32 +97,32 @@ export namespace reelscroll {
     // boundary a multiple of the step before it, so the last step lands exactly on the
     // stop. Between redraws a reel waits feel.WAIT frames (the machine's measured
     // redraw budget), one more in the last steps so it settles.
-    function step(reel: utinyint, count: utinyint): utinyint {
-        if (remaining[reel] == 0) {
+    fn step(reel: utinyint, count: utinyint) -> utinyint {
+        if remaining[reel] == 0 {
             return 0;
         }
-        if (waits[reel] != 0) {
+        if waits[reel] != 0 {
             waits[reel] = waits[reel] - 1;
             return 0;
         }
         let left: usmallint = remaining[reel];
-        let pixels: utinyint = feel.REEL_FAR;
-        let wait: utinyint = feel.REEL_WAIT;
-        if (pixels > 8 && left <= symbolpx.CELLS_H * 32) {
+        let mut pixels: utinyint = feel::REEL_FAR;
+        let mut wait: utinyint = feel::REEL_WAIT;
+        if pixels > 8 && left <= symbolpx::CELLS_H * 32 {
             pixels = 8;
         }
-        if (left <= feel.EASE) {
+        if left <= feel::EASE {
             pixels = 4;
         }
-        if (left <= 8) {
+        if left <= 8 {
             pixels = 2;
-            wait = feel.REEL_WAIT + 1;
+            wait = feel::REEL_WAIT + 1;
         }
         // slide the window up the strip by `pixels`
-        let at: utinyint = rows[reel];
-        if (at < pixels) {
-            at = at + symbolpx.CELLS_H * 8;
-            stops[reel] = (stops[reel] - 1) & (count - 1);
+        let mut at: utinyint = rows[reel];
+        if at < pixels {
+            at = at + symbolpx::CELLS_H * 8;
+            stops[reel] = stops[reel] - 1 & count - 1;
         }
         rows[reel] = at - pixels;
         remaining[reel] = left - pixels;

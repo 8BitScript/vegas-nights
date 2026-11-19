@@ -9,39 +9,39 @@
 // (`top`), so a program that prints at `layout.cell(col, row)` lands in the block wherever it is.
 // The test programs that measure the grid (slot3x3-ruler, ...) use the same call, so everything
 // that is read back from a screenshot by block row and column is read in the right place.
-import { text } from "@8bitscript/text";
+use @8bitscript::text::text;
 
-let indent: utinyint = 0;
-let shift: utinyint = 0;
+let mut indent: utinyint = 0;
+let mut shift: utinyint = 0;
 
-export namespace layout {
-    function centre(width: utinyint): void {
+pub mod layout {
+    fn centre(width: utinyint) {
         // the 3x3's block (26 wide, 33 rows) and the 5x5's (42 wide, 44 rows), each in the middle of the 56 rows
-        if (width < 30) {
-            indent = (text.COLUMNS - width) >> 1;
+        if width < 30 {
+            indent = text::COLUMNS - width >> 1;
             shift = 11;
         } else {
-            indent = (text.COLUMNS - width) >> 1;
+            indent = text::COLUMNS - width >> 1;
             shift = 6;
         }
     }
 
     // The cell `col` columns in from the block's left edge on block row `row`.
-    function cell(col: utinyint, row: utinyint): usmallint {
-        let at: usmallint = row;
+    fn cell(col: utinyint, row: utinyint) -> usmallint {
+        let mut at: usmallint = row;
         at = at + shift;
-        at = at * text.COLUMNS;
+        at = at * text::COLUMNS;
         at = at + indent;
         at = at + col;
         return at;
     }
 
     // The grid column of the block's left edge, and the grid row of its top: where the view puts sprites.
-    function left(): utinyint {
+    fn left() -> utinyint {
         return indent;
     }
 
-    function top(): utinyint {
+    fn top() -> utinyint {
         return shift;
     }
 }

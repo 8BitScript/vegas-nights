@@ -13,255 +13,250 @@
 //
 // A machine's `cells` writes the raw screen code (and, where there is colour, an ink) down; `view` wraps
 // this with the interface the game calls.
-import { text } from "@8bitscript/text";
-import { cells } from "@shared/cells.8bs";
-import { layout } from "@shared/layout.8bs";
-import { move } from "@shared/move.8bs";
-import { reelscroll } from "@shared/reelscroll.8bs";
-import { scr } from "@shared/scr.8bs";
-import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
-import {
-    QUAD_S, QUAD_P, QUAD_SYMBOLS, QUAD_C0, QUAD_C1, QUAD_CX, QUAD_K
-} from "@generated/tiles/classic.quad.8bs";
-import {
-    FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
-    FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R
-} from "@generated/tiles/classic.pet.8bs";
+use @8bitscript::text::text;
+use "@shared/cells.8bs"::cells;
+use "@shared/layout.8bs"::layout;
+use "@shared/move.8bs"::move;
+use "@shared/reelscroll.8bs"::reelscroll;
+use "@shared/scr.8bs"::scr;
+use "@generated/classic3x3.8bs"::{REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES};
+use "@generated/tiles/classic.quad.8bs"::{QUAD_S, QUAD_P, QUAD_SYMBOLS, QUAD_C0, QUAD_C1, QUAD_CX, QUAD_K};
+use "@generated/tiles/classic.pet.8bs"::{FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR, FRAME_DIV, FRAME_DIVT, FRAME_DIVB, FRAME_ARROW_L, FRAME_ARROW_R};
 
 // Per reel: the stop and pseudo-pixel row last drawn (so a 2-pixel step that does not reach the next row costs
 // nothing, and a whole-cell move is told from a jump), and which of its symbol rows are shown inverted (the
 // win flash).
-let drawnRow: array<utinyint, 3>;
-let drawnStop: array<utinyint, 3>;
-let inverted: array<utinyint, 3>;
+let mut drawnRow: [utinyint; 3];
+let mut drawnStop: [utinyint; 3];
+let mut inverted: [utinyint; 3];
 
 // 1 << n, as a table: the 6502 backends take no run-time shift amount.
-const BIT: array<utinyint, 3> = [1, 2, 4];
+const BIT: [utinyint; 3] = [1, 2, 4];
 
-export namespace quad {
+pub mod quad {
     // The window's first text row (block rows); the frame is the row above and the row below the window.
     const TOP: utinyint = 2;
 
-    function drawFrame(): void {
+    fn drawFrame() {
         let width: utinyint = REELS * (QUAD_S + 1) + 1;
-        let bottom: utinyint = quad.TOP + ROWS * QUAD_S;
-        for (let col: utinyint = 0; col < width; col++) {
-            let top: utinyint = FRAME_T;
-            let low: utinyint = FRAME_B;
-            if (col == 0) {
+        let bottom: utinyint = quad::TOP + ROWS * QUAD_S;
+        for col: utinyint in 0..width {
+            let mut top: utinyint = FRAME_T;
+            let mut low: utinyint = FRAME_B;
+            if col == 0 {
                 top = FRAME_TL;
                 low = FRAME_BL;
-            } else if (col == width - 1) {
+            } else if col == width - 1 {
                 top = FRAME_TR;
                 low = FRAME_BR;
-            } else if ((col % (QUAD_S + 1)) == 0) {
+            } else if col % (QUAD_S + 1) == 0 {
                 top = FRAME_DIVT;
                 low = FRAME_DIVB;
             }
-            let above: usmallint = layout.cell(col, quad.TOP - 1);
-            let below: usmallint = layout.cell(col, bottom);
-            cells.put(above, cells.frameCode(top));
-            cells.put(below, cells.frameCode(low));
-            cells.tint(above, 7);
-            cells.tint(below, 7);
+            let above: usmallint = layout::cell(col, quad::TOP - 1);
+            let below: usmallint = layout::cell(col, bottom);
+            cells::put(above, cells::frameCode(top));
+            cells::put(below, cells::frameCode(low));
+            cells::tint(above, 7);
+            cells::tint(below, 7);
         }
         // the payline arrows point at the middle of the middle symbol row
-        let arrow: utinyint = quad.TOP + QUAD_S + (QUAD_S >> 1);
-        for (let row: utinyint = quad.TOP; row < bottom; row++) {
-            let left: utinyint = FRAME_L;
-            let right: utinyint = FRAME_R;
-            if (row == arrow) {
+        let arrow: utinyint = quad::TOP + QUAD_S + (QUAD_S >> 1);
+        for row: utinyint in quad::TOP..bottom {
+            let mut left: utinyint = FRAME_L;
+            let mut right: utinyint = FRAME_R;
+            if row == arrow {
                 left = FRAME_ARROW_L;
                 right = FRAME_ARROW_R;
             }
-            let side: usmallint = layout.cell(0, row);
-            cells.put(side, cells.frameCode(left));
-            cells.put(side + width - 1, cells.frameCode(right));
-            cells.tint(side, 7);
-            cells.tint(side + width - 1, 7);
-            for (let reel: utinyint = 1; reel < REELS; reel++) {
-                cells.put(side + reel * (QUAD_S + 1), cells.frameCode(FRAME_DIV));
-                cells.tint(side + reel * (QUAD_S + 1), 2);
+            let side: usmallint = layout::cell(0, row);
+            cells::put(side, cells::frameCode(left));
+            cells::put(side + width - 1, cells::frameCode(right));
+            cells::tint(side, 7);
+            cells::tint(side + width - 1, 7);
+            for reel: utinyint in 1..REELS {
+                cells::put(side + reel * (QUAD_S + 1), cells::frameCode(FRAME_DIV));
+                cells::tint(side + reel * (QUAD_S + 1), 2);
             }
         }
     }
 
     // One display row: QUAD_S cells at `at`, from pseudo-pixel row `r` of the strip symbol at stop `i` (`strip` is
     // the reel's offset into STRIPS). `flip` inverts the cells (the win flash).
-    function drawRow(strip: usmallint, i: utinyint, r: utinyint, at: usmallint, flip: bool): void {
+    fn drawRow(strip: usmallint, i: utinyint, r: utinyint, at: usmallint, flip: bool) {
         let symbol: usmallint = STRIPS[strip + i];
         let k: usmallint = r >> 1;
-        let base: usmallint = 0;
-        if (cells.COLORED) {
+        let mut base: usmallint = 0;
+        if cells::COLORED {
             // The ink: the symbol cell the row's upper pseudo-pixel row is in; where that cell has no ink (0) and the
             // row's lower half is in the next cell down (an odd start), that cell's.
-            let inkRow: usmallint = symbol * QUAD_S + k;
+            let mut inkRow: usmallint = symbol * QUAD_S + k;
             inkRow = inkRow * QUAD_S;
-            for (let c: utinyint = 0; c < QUAD_S; c++) {
-                let ink: utinyint = QUAD_K[inkRow + c];
-                if (ink == 0 && (r & 1) == 1) {
-                    if (r < QUAD_P - 1) {
+            for c: utinyint in 0..QUAD_S {
+                let mut ink: utinyint = QUAD_K[inkRow + c];
+                if ink == 0 && (r & 1) == 1 {
+                    if r < QUAD_P - 1 {
                         ink = QUAD_K[inkRow + QUAD_S + c];
                     } else {
-                        let after: usmallint = STRIPS[strip + ((i + 1) & STOP_MASK)];
+                        let mut after: usmallint = STRIPS[strip + (i + 1 & STOP_MASK)];
                         after = after * QUAD_S;
                         ink = QUAD_K[after * QUAD_S + c];
                     }
                 }
-                cells.tint(at + c, ink);
+                cells::tint(at + c, ink);
             }
         }
-        if ((r & 1) == 0) {
+        if (r & 1) == 0 {
             base = symbol * QUAD_S + k;
             base = base * QUAD_S;
-            for (let c: utinyint = 0; c < QUAD_S; c++) {
-                let code: utinyint = QUAD_C0[base + c];
-                if (flip) {
-                    code = cells.invert(code);
+            for c: utinyint in 0..QUAD_S {
+                let mut code: utinyint = QUAD_C0[base + c];
+                if flip {
+                    code = cells::invert(code);
                 }
-                cells.put(at + c, code);
+                cells::put(at + c, code);
             }
-        } else if (r < QUAD_P - 1) {
+        } else if r < QUAD_P - 1 {
             base = symbol * (QUAD_S - 1) + k;
             base = base * QUAD_S;
-            for (let c: utinyint = 0; c < QUAD_S; c++) {
-                let code: utinyint = QUAD_C1[base + c];
-                if (flip) {
-                    code = cells.invert(code);
+            for c: utinyint in 0..QUAD_S {
+                let mut code: utinyint = QUAD_C1[base + c];
+                if flip {
+                    code = cells::invert(code);
                 }
-                cells.put(at + c, code);
+                cells::put(at + c, code);
             }
         } else {
-            let next: usmallint = STRIPS[strip + ((i + 1) & STOP_MASK)];
+            let next: usmallint = STRIPS[strip + (i + 1 & STOP_MASK)];
             base = symbol * QUAD_SYMBOLS + next;
             base = base * QUAD_S;
-            for (let c: utinyint = 0; c < QUAD_S; c++) {
-                let code: utinyint = QUAD_CX[base + c];
-                if (flip) {
-                    code = cells.invert(code);
+            for c: utinyint in 0..QUAD_S {
+                let mut code: utinyint = QUAD_CX[base + c];
+                if flip {
+                    code = cells::invert(code);
                 }
-                cells.put(at + c, code);
+                cells::put(at + c, code);
             }
         }
     }
 
     // Draw `reel` at its current position: ROWS * QUAD_S cell rows of QUAD_S cells.
-    function drawReel(reel: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
+    fn drawReel(reel: utinyint) {
+        let mut stop: utinyint = reelscroll::stop(reel);
         // The window's top row within its symbol: QUAD_P rows of 4 pixels each.
-        let line: utinyint = reelscroll.row(reel) >> 2;
+        let mut line: utinyint = reelscroll::row(reel) >> 2;
         drawnRow[reel] = line;
         drawnStop[reel] = stop;
-        let strip: usmallint = reel;
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
         // The cell address walks down a row (text.COLUMNS) at a time: no multiply.
-        let at: usmallint = layout.cell(1 + reel * (QUAD_S + 1), quad.TOP);
-        let band: utinyint = 0;  // which symbol row of the window this cell row belongs to
-        let third: utinyint = 0;
-        for (let down: utinyint = 0; down < ROWS * QUAD_S; down++) {
-            quad.drawRow(strip, stop, line, at, (inverted[reel] & BIT[band]) != 0);
-            at = at + text.COLUMNS;
+        let mut at: usmallint = layout::cell(1 + reel * (QUAD_S + 1), quad::TOP);
+        let mut band: utinyint = 0; // which symbol row of the window this cell row belongs to
+        let mut third: utinyint = 0;
+        for down: utinyint in 0..ROWS * QUAD_S {
+            quad::drawRow(strip, stop, line, at, (inverted[reel] & BIT[band]) != 0);
+            at = at + text::COLUMNS;
             third = third + 1;
-            if (third == QUAD_S) {
+            if third == QUAD_S {
                 third = 0;
                 band = band + 1;
             }
             // two pseudo-pixel rows on
             line = line + 2;
-            if (line >= QUAD_P) {
+            if line >= QUAD_P {
                 line = line - QUAD_P;
-                stop = (stop + 1) & STOP_MASK;
+                stop = stop + 1 & STOP_MASK;
             }
         }
     }
 
     // `by` whole cell rows (8 or 16 pixels) of scroll, the window's phase unchanged: every row of the reel moves down
     // `by` and the new top rows are composed. `line` and `stop` are the window's new top row and stop.
-    function hop(reel: utinyint, stop: utinyint, line: utinyint, by: utinyint): void {
-        let strip: usmallint = reel;
+    fn hop(reel: utinyint, stop: utinyint, line: utinyint, by: utinyint) {
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
-        let top: usmallint = layout.cell(1 + reel * (QUAD_S + 1), quad.TOP);
-        move.down(scr.SCREEN + top, ROWS * QUAD_S, QUAD_S, text.COLUMNS, by);
-        if (cells.COLORED) {
-            move.down(scr.COLOR + top, ROWS * QUAD_S, QUAD_S, text.COLUMNS, by);
+        let mut top: usmallint = layout::cell(1 + reel * (QUAD_S + 1), quad::TOP);
+        move::down(scr::SCREEN + top, ROWS * QUAD_S, QUAD_S, text::COLUMNS, by);
+        if cells::COLORED {
+            move::down(scr::COLOR + top, ROWS * QUAD_S, QUAD_S, text::COLUMNS, by);
         }
         drawnRow[reel] = line;
         drawnStop[reel] = stop;
-        let l: utinyint = line;
-        let s: utinyint = stop;
-        for (let i: utinyint = 0; i < by; i++) {
-            quad.drawRow(strip, s, l, top, false);
-            top = top + text.COLUMNS;
+        let mut l: utinyint = line;
+        let mut s: utinyint = stop;
+        for i: utinyint in 0..by {
+            quad::drawRow(strip, s, l, top, false);
+            top = top + text::COLUMNS;
             l = l + 2;
-            if (l >= QUAD_P) {
+            if l >= QUAD_P {
                 l = l - QUAD_P;
-                s = (s + 1) & STOP_MASK;
+                s = s + 1 & STOP_MASK;
             }
         }
     }
 
     // ---- what the game calls ---------------------------------------------
 
-    function begin(): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
+    fn begin() {
+        for reel: utinyint in 0..REELS {
             inverted[reel] = 0;
             drawnRow[reel] = 255;
             drawnStop[reel] = 255;
         }
-        quad.drawFrame();
+        quad::drawFrame();
     }
 
-    function draw(reel: utinyint): void {
-        quad.drawReel(reel);
+    fn draw(reel: utinyint) {
+        quad::drawReel(reel);
     }
 
-    function drawAll(): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            quad.drawReel(reel);
+    fn drawAll() {
+        for reel: utinyint in 0..REELS {
+            quad::drawReel(reel);
         }
     }
 
     // A reel moved `pixels` down. Nothing to do until it has moved a whole pseudo-pixel row (four pixels); a move of
     // one or two cell rows (two or four pseudo-pixel rows, the same phase) is a hop where the screen can be copied;
     // anything else is a full redraw.
-    function moved(reel: utinyint, pixels: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
-        let line: utinyint = reelscroll.row(reel) >> 2;
-        if (drawnRow[reel] == line && drawnStop[reel] == stop) {
+    fn moved(reel: utinyint, pixels: utinyint) {
+        let stop: utinyint = reelscroll::stop(reel);
+        let line: utinyint = reelscroll::row(reel) >> 2;
+        if drawnRow[reel] == line && drawnStop[reel] == stop {
             return;
         }
-        if (scr.COPY && drawnRow[reel] != 255 && inverted[reel] == 0) {
+        if scr::COPY && drawnRow[reel] != 255 && inverted[reel] == 0 {
             // how many pseudo-pixel rows up the strip the window went: positions are stop * QUAD_P + row
-            let was: usmallint = drawnStop[reel];
+            let mut was: usmallint = drawnStop[reel];
             was = was * QUAD_P + drawnRow[reel];
-            let now: usmallint = stop;
+            let mut now: usmallint = stop;
             now = now * QUAD_P + line;
-            let gone: usmallint = was + STOPS * QUAD_P - now;
-            if (gone >= STOPS * QUAD_P) {
+            let mut gone: usmallint = was + STOPS * QUAD_P - now;
+            if gone >= STOPS * QUAD_P {
                 gone = gone - STOPS * QUAD_P;
             }
-            if (gone == 2) {
-                quad.hop(reel, stop, line, 1);
+            if gone == 2 {
+                quad::hop(reel, stop, line, 1);
                 return;
             }
-            if (gone == 4) {
-                quad.hop(reel, stop, line, 2);
+            if gone == 4 {
+                quad::hop(reel, stop, line, 2);
                 return;
             }
         }
-        quad.drawReel(reel);
+        quad::drawReel(reel);
     }
 
     // Light payline `line` by inverting the symbols on it, or put them back.
-    function flashLine(line: utinyint, on: bool): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
+    fn flashLine(line: utinyint, on: bool) {
+        for reel: utinyint in 0..REELS {
             let bit: utinyint = BIT[LINES[line * REELS + reel]];
-            if (on) {
+            if on {
                 inverted[reel] = inverted[reel] | bit;
             } else {
-                inverted[reel] = inverted[reel] & (255 - bit);
+                inverted[reel] = inverted[reel] & 255 - bit;
             }
-            quad.drawReel(reel);
+            quad::drawReel(reel);
         }
     }
 }

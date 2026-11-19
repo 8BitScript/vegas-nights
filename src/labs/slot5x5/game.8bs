@@ -22,41 +22,34 @@
 // States: IDLE (waiting for confirm) -> SPINNING (reels scrolling, stopping one after
 // another) -> PAYING (the winning cells flash) -> IDLE, or, when the bonus round is
 // running, -> WAITING (the next free spin) -> SPINNING …
-import { screen } from "@8bitscript/screen";
-import { text, TextColor } from "@8bitscript/text";
-import { input } from "@8bitscript/input";
-import { pointer } from "@8bitscript/pointer";
-import { random } from "@8bitscript/random";
-import { purse } from "@shared/purse.8bs";
-import { layout } from "@shared/layout.8bs";
-import { sound } from "@shared/sound.8bs";
-import { fx } from "@shared/fx.8bs";
-import { spin } from "./spin.8bs";
-import { view } from "./view.8bs";
-import {
-    REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS,
-    PAY_WIDTH, PAY_SYMBOLS, WILD_SYMBOL, SCATTER_SYMBOL,
-    FREE_SPIN_MULTIPLIER, FREE_SPIN_CAP, FREE_SPIN_RETRIGGER,
-    JACKPOT_COUNT, JACKPOT_DRAW_MASK,
-    STRIPS, BET_LEVELS, PAYS, SCATTER_PAYS, FREE_SPIN_AWARD,
-    JACKPOT_CONTRIB_Q8, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO
-} from "@generated/grid5x5.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::{text, TextColor};
+use @8bitscript::input::input;
+use @8bitscript::pointer::pointer;
+use @8bitscript::random::random;
+use "@shared/purse.8bs"::purse;
+use "@shared/layout.8bs"::layout;
+use "@shared/sound.8bs"::sound;
+use "@shared/fx.8bs"::fx;
+use self::spin::spin;
+use self::view::view;
+use "@generated/grid5x5.8bs"::{REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS, PAY_WIDTH, PAY_SYMBOLS, WILD_SYMBOL, SCATTER_SYMBOL, FREE_SPIN_MULTIPLIER, FREE_SPIN_CAP, FREE_SPIN_RETRIGGER, JACKPOT_COUNT, JACKPOT_DRAW_MASK, STRIPS, BET_LEVELS, PAYS, SCATTER_PAYS, FREE_SPIN_AWARD, JACKPOT_CONTRIB_Q8, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO};
 
 // The seed a person at the keyboard plays from; a headless run names its own, so a
 // screenshot reproduces the same spins on every machine (the test computes the same
 // draws in JavaScript).
-export const DEFAULT_SEED: usmallint = 2026;
+pub const DEFAULT_SEED: usmallint = 2026;
 
 // The jackpot seeds in credits at the base bet — JACKPOT_SEED in the generated file,
 // which is 32-bit and so unreadable to the 6502 backends; test/odds5.test.mjs holds
 // these to it.
-const SEED_MILLIONS: array<usmallint, 4> = [0, 0, 0, 1];
-const SEED_THOUSANDS: array<usmallint, 4> = [10, 50, 250, 0];
+const SEED_MILLIONS: [usmallint; 4] = [0, 0, 0, 1];
+const SEED_THOUSANDS: [usmallint; 4] = [10, 50, 250, 0];
 
 // The credits the player starts with, and is re-staked to when broke: 100 base bets.
 const START_THOUSANDS: usmallint = 100;
 
-const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
+const BIT: [utinyint; 5] = [1, 2, 4, 8, 16];
 
 // Cells from the block's left edge on each panel row (rows count from view.PANEL).
 const CREDIT_ROW: utinyint = 0;
@@ -67,159 +60,159 @@ const JACKPOT_ROW: utinyint = 4;
 
 // The frame after which the machine stops changing the picture (0: never); see play().
 const FREEZE: usmallint = #define("FREEZE", 0);
-let ticks: usmallint = 0;
+let mut ticks: usmallint = 0;
 
-let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying, 3 waiting for the next free spin
-let betIndex: utinyint = 0;
-let multiplier: utinyint = 1;
-let targets: array<utinyint, 5>;
-let grid: array<utinyint, 25>;       // grid[reel * 5 + row]: the symbol on screen
-let rowMask: array<utinyint, 5>;     // per reel, the symbol rows that took part in a win
-let scatters: utinyint = 0;
-let jackpotHit: utinyint = 255;      // which jackpot this spin won (255 = none)
-let inBonus: bool = false;
-let fsLeft: utinyint = 0;
-let fsGranted: utinyint = 0;
-let autoLeft: utinyint = 0;
-let idleFrames: utinyint = 0;
-let flashLeft: utinyint = 0;
-let flashWait: utinyint = 0;
-let pauseLeft: utinyint = 0;
+let mut state: utinyint = 0; // 0 idle, 1 spinning, 2 paying, 3 waiting for the next free spin
+let mut betIndex: utinyint = 0;
+let mut multiplier: utinyint = 1;
+let mut targets: [utinyint; 5];
+let mut grid: [utinyint; 25]; // grid[reel * 5 + row]: the symbol on screen
+let mut rowMask: [utinyint; 5]; // per reel, the symbol rows that took part in a win
+let mut scatters: utinyint = 0;
+let mut jackpotHit: utinyint = 255; // which jackpot this spin won (255 = none)
+let mut inBonus: bool = false;
+let mut fsLeft: utinyint = 0;
+let mut fsGranted: utinyint = 0;
+let mut autoLeft: utinyint = 0;
+let mut idleFrames: utinyint = 0;
+let mut flashLeft: utinyint = 0;
+let mut flashWait: utinyint = 0;
+let mut pauseLeft: utinyint = 0;
 let pulsePhase: utinyint = 0;
-let fxTick: utinyint = 0;            // frames since the bonus round began, for fx.frame
-let pulseWait: utinyint = 0;
-let glowPhase: utinyint = 0;         // where the FREE SPINS banner is in its glow
-let glowWait: utinyint = 0;
-let freeSpin: bool = false;          // the spin on the reels is a free one
+let mut fxTick: utinyint = 0; // frames since the bonus round began, for fx.frame
+let mut pulseWait: utinyint = 0;
+let mut glowPhase: utinyint = 0; // where the FREE SPINS banner is in its glow
+let mut glowWait: utinyint = 0;
+let mut freeSpin: bool = false; // the spin on the reels is a free one
 
 // ---- the panels ------------------------------------------------------------------
 
-function cellAt(col: utinyint, row: utinyint): usmallint {
-    return layout.cell(col, view.PANEL + row);
+fn cellAt(col: utinyint, row: utinyint) -> usmallint {
+    return layout::cell(col, view::PANEL + row);
 }
 
-function printReg(col: utinyint, row: utinyint, reg: utinyint): void {
-    text.printNumber(cellAt(col, row), purse.millions(reg), 3);
-    text.printNumber(cellAt(col + 3, row), purse.thousands(reg), 3);
-    text.printNumber(cellAt(col + 6, row), purse.units(reg), 3);
+fn printReg(col: utinyint, row: utinyint, reg: utinyint) {
+    text::printNumber(cellAt(col, row), purse::millions(reg), 3);
+    text::printNumber(cellAt(col + 3, row), purse::thousands(reg), 3);
+    text::printNumber(cellAt(col + 6, row), purse::units(reg), 3);
 }
 
-function drawCredit(): void {
-    text.print(cellAt(0, CREDIT_ROW), "CREDIT");
-    printReg(7, CREDIT_ROW, purse.BALANCE);
+fn drawCredit() {
+    text::print(cellAt(0, CREDIT_ROW), "CREDIT");
+    printReg(7, CREDIT_ROW, purse::BALANCE);
 }
 
-function drawBet(): void {
-    text.print(cellAt(0, BET_ROW), "BET");
-    let bet: usmallint = BET_CREDITS;
-    for (let i: utinyint = 1; i < multiplier; i++) {
+fn drawBet() {
+    text::print(cellAt(0, BET_ROW), "BET");
+    let mut bet: usmallint = BET_CREDITS;
+    for i: utinyint in 1..multiplier {
         bet = bet + BET_CREDITS;
     }
-    text.printNumber(cellAt(4, BET_ROW), bet, 4);
+    text::printNumber(cellAt(4, BET_ROW), bet, 4);
 }
 
-function drawFree(): void {
-    if (inBonus) {
-        text.print(cellAt(10, BET_ROW), "FS");
-        text.printNumber(cellAt(13, BET_ROW), fsLeft, 2);
-        text.print(cellAt(16, BET_ROW), "X3");
+fn drawFree() {
+    if inBonus {
+        text::print(cellAt(10, BET_ROW), "FS");
+        text::printNumber(cellAt(13, BET_ROW), fsLeft, 2);
+        text::print(cellAt(16, BET_ROW), "X3");
     } else {
-        text.print(cellAt(10, BET_ROW), "         ");
+        text::print(cellAt(10, BET_ROW), "         ");
     }
 }
 
-function drawWin(reg: utinyint): void {
-    text.print(cellAt(0, WIN_ROW), "WIN");
+fn drawWin(reg: utinyint) {
+    text::print(cellAt(0, WIN_ROW), "WIN");
     printReg(4, WIN_ROW, reg);
 }
 
-function clearMessage(): void {
-    text.print(cellAt(0, MESSAGE_ROW), "                     ");
+fn clearMessage() {
+    text::print(cellAt(0, MESSAGE_ROW), "                     ");
 }
 
-function message(which: utinyint): void {
+fn message(which: utinyint) {
     clearMessage();
     let at: usmallint = cellAt(0, MESSAGE_ROW);
-    if (which == 1) {
-        text.print(at, "SPINNING");
-    } else if (which == 2) {
-        text.print(at, "WINNER!");
-    } else if (which == 3) {
-        text.print(at, "JACKPOT!");
-    } else if (which == 4) {
-        text.print(at, "NO WIN");
-    } else if (which == 5) {
-        text.print(at, "NEED CREDIT");
-    } else if (which == 6) {
-        text.print(at, "FREE SPINS!");
-    } else if (which == 7) {
-        text.print(at, "BONUS TOTAL");
-    } else if (which == 8) {
-        text.print(at, "FREE SPIN");
+    if which == 1 {
+        text::print(at, "SPINNING");
+    } else if which == 2 {
+        text::print(at, "WINNER!");
+    } else if which == 3 {
+        text::print(at, "JACKPOT!");
+    } else if which == 4 {
+        text::print(at, "NO WIN");
+    } else if which == 5 {
+        text::print(at, "NEED CREDIT");
+    } else if which == 6 {
+        text::print(at, "FREE SPINS!");
+    } else if which == 7 {
+        text::print(at, "BONUS TOTAL");
+    } else if which == 8 {
+        text::print(at, "FREE SPIN");
     } else {
-        text.print(at, "PRESS KEY");
+        text::print(at, "PRESS KEY");
     }
 }
 
 // One jackpot meter: its two-letter name, then seven digits.
-function drawMeter(col: utinyint, row: utinyint, reg: utinyint): void {
-    text.printNumber(cellAt(col, row), purse.millions(reg), 1);
-    text.printNumber(cellAt(col + 1, row), purse.thousands(reg), 3);
-    text.printNumber(cellAt(col + 4, row), purse.units(reg), 3);
+fn drawMeter(col: utinyint, row: utinyint, reg: utinyint) {
+    text::printNumber(cellAt(col, row), purse::millions(reg), 1);
+    text::printNumber(cellAt(col + 1, row), purse::thousands(reg), 3);
+    text::printNumber(cellAt(col + 4, row), purse::units(reg), 3);
 }
 
-function drawJackpots(): void {
-    text.print(cellAt(0, JACKPOT_ROW), "MI");
-    drawMeter(3, JACKPOT_ROW, purse.MINI);
-    text.print(cellAt(11, JACKPOT_ROW), "MN");
-    drawMeter(14, JACKPOT_ROW, purse.MINOR);
-    text.print(cellAt(0, JACKPOT_ROW + 1), "MJ");
-    drawMeter(3, JACKPOT_ROW + 1, purse.MAJOR);
-    text.print(cellAt(11, JACKPOT_ROW + 1), "GR");
-    drawMeter(14, JACKPOT_ROW + 1, purse.GRAND);
+fn drawJackpots() {
+    text::print(cellAt(0, JACKPOT_ROW), "MI");
+    drawMeter(3, JACKPOT_ROW, purse::MINI);
+    text::print(cellAt(11, JACKPOT_ROW), "MN");
+    drawMeter(14, JACKPOT_ROW, purse::MINOR);
+    text::print(cellAt(0, JACKPOT_ROW + 1), "MJ");
+    drawMeter(3, JACKPOT_ROW + 1, purse::MAJOR);
+    text::print(cellAt(11, JACKPOT_ROW + 1), "GR");
+    drawMeter(14, JACKPOT_ROW + 1, purse::GRAND);
 }
 
-function drawStatic(): void {
-    if (view.TITLE) {
-        text.print(layout.cell(0, 0), "VEGAS NIGHTS");
-        text.print(layout.cell(0, 1), "COSMIC 5X5");
+fn drawStatic() {
+    if view::TITLE {
+        text::print(layout::cell(0, 0), "VEGAS NIGHTS");
+        text::print(layout::cell(0, 1), "COSMIC 5X5");
     }
 }
 
 // The banner's glow: one brightness after another along the Gold ramp, orange, light red,
 // yellow, white, yellow, light red (a pulse every 6 steps, a step every GLOW_STEP passes).
 // The text never moves.
-const GLOW: array<utinyint, 6> = [8, 10, 7, 1, 7, 10];
+const GLOW: [utinyint; 6] = [8, 10, 7, 1, 7, 10];
 const GLOW_STEP: utinyint = 5;
 const BANNER_CELLS: utinyint = 16;
 
-function paintBanner(color: utinyint): void {
-    for (let col: utinyint = 0; col < BANNER_CELLS; col++) {
-        text.putColor(layout.cell(col, 1), color);
+fn paintBanner(color: utinyint) {
+    for col: utinyint in 0..BANNER_CELLS {
+        text::putColor(layout::cell(col, 1), color);
     }
 }
 
 // The bonus round's banner, where the machine has a row above the frame for one.
-function banner(on: bool): void {
-    if (view.TITLE) {
-        if (on) {
-            text.print(layout.cell(0, 1), "-- FREE SPINS --");
+fn banner(on: bool) {
+    if view::TITLE {
+        if on {
+            text::print(layout::cell(0, 1), "-- FREE SPINS --");
             glowPhase = 0;
             glowWait = 0;
         } else {
-            text.print(layout.cell(0, 1), "COSMIC 5X5      ");
-            paintBanner(TextColor.WHITE);
+            text::print(layout::cell(0, 1), "COSMIC 5X5      ");
+            paintBanner(TextColor::WHITE);
         }
     }
 }
 
 // Glow the FREE SPINS banner: colour only, never a pixel of movement.
-function glowBanner(): void {
-    if (view.TITLE) {
-        if (glowWait == 0) {
+fn glowBanner() {
+    if view::TITLE {
+        if glowWait == 0 {
             glowWait = GLOW_STEP - 1;
             glowPhase = glowPhase + 1;
-            if (glowPhase >= 6) {
+            if glowPhase >= 6 {
                 glowPhase = 0;
             }
             paintBanner(GLOW[glowPhase]);
@@ -231,69 +224,69 @@ function glowBanner(): void {
 
 // ---- play ------------------------------------------------------------------------
 
-function setBet(index: utinyint): void {
+fn setBet(index: utinyint) {
     betIndex = index;
     multiplier = BET_LEVELS[index];
     drawBet();
 }
 
-function resetMeter(j: utinyint): void {
-    purse.set(purse.MINI + j, SEED_MILLIONS[j], SEED_THOUSANDS[j], 0);
+fn resetMeter(j: utinyint) {
+    purse::set(purse::MINI + j, SEED_MILLIONS[j], SEED_THOUSANDS[j], 0);
 }
 
 // Start the reels toward their drawn stops. A base spin also takes the jackpot draw.
-function startSpin(free: bool): void {
+fn startSpin(free: bool) {
     freeSpin = free;
     pulseWait = 0;
-    if (free) {
+    if free {
         fsLeft = fsLeft - 1;
         message(8);
         drawFree();
     } else {
         // Charge the bet, and feed the meters: each grows by its contribution for every
         // base bet, so a bigger bet feeds it more.
-        for (let i: utinyint = 0; i < multiplier; i++) {
-            purse.take(purse.BALANCE, BET_CREDITS);
-            for (let j: utinyint = 0; j < JACKPOT_COUNT; j++) {
-                purse.addSmall(purse.MINI + j, JACKPOT_CONTRIB_Q8[j] >> 8);
+        for i: utinyint in 0..multiplier {
+            purse::take(purse::BALANCE, BET_CREDITS);
+            for j: utinyint in 0..JACKPOT_COUNT {
+                purse::addSmall(purse::MINI + j, JACKPOT_CONTRIB_Q8[j] >> 8);
             }
         }
-        purse.clear(purse.WIN);
+        purse::clear(purse::WIN);
         message(1);
     }
     // The draw plan, in the order tools/slotmath documents: one byte per reel.
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        let byte: utinyint = random.next();
+    for reel: utinyint in 0..REELS {
+        let byte: utinyint = random::next();
         targets[reel] = byte & STOP_MASK;
         // Each reel runs at least six more symbols than the one before.
-        let minimum: usmallint = reel;
+        let mut minimum: usmallint = reel;
         minimum = minimum + 1;
-        if (spin.size() == 16) {
+        if spin::size() == 16 {
             minimum = minimum * 96;
         } else {
             minimum = minimum * 144;
         }
-        spin.start(reel, targets[reel], minimum, STOPS);
+        spin::start(reel, targets[reel], minimum, STOPS);
     }
     jackpotHit = 255;
-    if (!free) {
-        let low: utinyint = random.next();
-        let high: utinyint = random.next();
-        let draw: usmallint = high;
+    if !free {
+        let low: utinyint = random::next();
+        let high: utinyint = random::next();
+        let mut draw: usmallint = high;
         draw = draw << 8;
         draw = draw | low;
         draw = draw & JACKPOT_DRAW_MASK;
-        for (let j: utinyint = 0; j < JACKPOT_COUNT; j++) {
-            if (draw >= JACKPOT_RANGE_FROM[j]) {
-                if (draw < JACKPOT_RANGE_TO[j]) {
-                    if (multiplier >= JACKPOT_MIN_BET[j]) {
+        for j: utinyint in 0..JACKPOT_COUNT {
+            if draw >= JACKPOT_RANGE_FROM[j] {
+                if draw < JACKPOT_RANGE_TO[j] {
+                    if multiplier >= JACKPOT_MIN_BET[j] {
                         jackpotHit = j;
                     }
                 }
             }
         }
         drawCredit();
-        drawWin(purse.WIN);
+        drawWin(purse::WIN);
         drawJackpots();
     }
     state = 1;
@@ -301,38 +294,38 @@ function startSpin(free: bool): void {
 
 // Read the screen: fill grid, rowMask and scatters, and leave the spin's base win, in
 // credits at the base bet (ways pays plus the scatter pay), in purse.SCRATCH.
-function evaluate(): void {
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        let stop: utinyint = spin.stop(reel);
+fn evaluate() {
+    for reel: utinyint in 0..REELS {
+        let stop: utinyint = spin::stop(reel);
         rowMask[reel] = 0;
-        for (let row: utinyint = 0; row < ROWS; row++) {
-            grid[reel * 5 + row] = STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
+        for row: utinyint in 0..ROWS {
+            grid[reel * 5 + row] = STRIPS[reel * STOPS + (stop + row & STOP_MASK)];
         }
     }
-    purse.clear(purse.SCRATCH);
-    for (let p: utinyint = 0; p < PAY_SYMBOLS; p++) {
+    purse::clear(purse::SCRATCH);
+    for p: utinyint in 0..PAY_SYMBOLS {
         // The longest run of reels from the first that show `p` (or a wild), and the
         // ways: how many cells match on each reel, multiplied.
-        let ways: usmallint = 1;
-        let run: utinyint = 0;
-        let alive: bool = true;
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            if (alive) {
-                let count: utinyint = 0;
-                for (let row: utinyint = 0; row < ROWS; row++) {
+        let mut ways: usmallint = 1;
+        let mut run: utinyint = 0;
+        let mut alive: bool = true;
+        for reel: utinyint in 0..REELS {
+            if alive {
+                let mut count: utinyint = 0;
+                for row: utinyint in 0..ROWS {
                     let symbol: utinyint = grid[reel * 5 + row];
-                    if (symbol == p) {
+                    if symbol == p {
                         count = count + 1;
-                    } else if (symbol == WILD_SYMBOL) {
+                    } else if symbol == WILD_SYMBOL {
                         count = count + 1;
                     }
                 }
-                if (count == 0) {
+                if count == 0 {
                     alive = false;
                 } else {
                     // ways * count, by addition: the 6502 backends have no 16-bit multiply
-                    let sum: usmallint = 0;
-                    for (let i: utinyint = 0; i < count; i++) {
+                    let mut sum: usmallint = 0;
+                    for i: utinyint in 0..count {
                         sum = sum + ways;
                     }
                     ways = sum;
@@ -341,16 +334,16 @@ function evaluate(): void {
             }
         }
         let pay: usmallint = PAYS[p * PAY_WIDTH + run];
-        if (pay != 0) {
-            for (let i: usmallint = 0; i < ways; i++) {
-                purse.addSmall(purse.SCRATCH, pay);
+        if pay != 0 {
+            for i: usmallint in 0..ways {
+                purse::addSmall(purse::SCRATCH, pay);
             }
-            for (let reel: utinyint = 0; reel < run; reel++) {
-                for (let row: utinyint = 0; row < ROWS; row++) {
+            for reel: utinyint in 0..run {
+                for row: utinyint in 0..ROWS {
                     let symbol: utinyint = grid[reel * 5 + row];
-                    if (symbol == p) {
+                    if symbol == p {
                         rowMask[reel] = rowMask[reel] | BIT[row];
-                    } else if (symbol == WILD_SYMBOL) {
+                    } else if symbol == WILD_SYMBOL {
                         rowMask[reel] = rowMask[reel] | BIT[row];
                     }
                 }
@@ -359,16 +352,16 @@ function evaluate(): void {
     }
     // The scatters, anywhere on the grid.
     scatters = 0;
-    for (let i: utinyint = 0; i < 25; i++) {
-        if (grid[i] == SCATTER_SYMBOL) {
+    for i: utinyint in 0..25 {
+        if grid[i] == SCATTER_SYMBOL {
             scatters = scatters + 1;
         }
     }
-    purse.addSmall(purse.SCRATCH, SCATTER_PAYS[scatters]);
-    if (FREE_SPIN_AWARD[scatters] != 0) {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            for (let row: utinyint = 0; row < ROWS; row++) {
-                if (grid[reel * 5 + row] == SCATTER_SYMBOL) {
+    purse::addSmall(purse::SCRATCH, SCATTER_PAYS[scatters]);
+    if FREE_SPIN_AWARD[scatters] != 0 {
+        for reel: utinyint in 0..REELS {
+            for row: utinyint in 0..ROWS {
+                if grid[reel * 5 + row] == SCATTER_SYMBOL {
                     rowMask[reel] = rowMask[reel] | BIT[row];
                 }
             }
@@ -377,55 +370,55 @@ function evaluate(): void {
 }
 
 // The reels are at rest: pay.
-function settle(): void {
+fn settle() {
     evaluate();
     // The win is the base win times the bet — and times three in a free spin — in
     // credits that are exact (the purse holds nine digits).
-    let factor: utinyint = multiplier;
-    if (freeSpin) {
+    let mut factor: utinyint = multiplier;
+    if freeSpin {
         factor = multiplier * FREE_SPIN_MULTIPLIER;
     }
-    if (freeSpin) {
-        purse.clear(purse.SPIN);
+    if freeSpin {
+        purse::clear(purse::SPIN);
     } else {
-        purse.clear(purse.WIN);
+        purse::clear(purse::WIN);
     }
-    let into: utinyint = purse.WIN;
-    if (freeSpin) {
-        into = purse.SPIN;
+    let mut into: utinyint = purse::WIN;
+    if freeSpin {
+        into = purse::SPIN;
     }
-    for (let i: utinyint = 0; i < factor; i++) {
-        purse.addReg(into, purse.SCRATCH);
+    for i: utinyint in 0..factor {
+        purse::addReg(into, purse::SCRATCH);
     }
-    if (jackpotHit != 255) {
-        purse.addReg(into, purse.MINI + jackpotHit);
+    if jackpotHit != 255 {
+        purse::addReg(into, purse::MINI + jackpotHit);
         resetMeter(jackpotHit);
     }
-    if (freeSpin) {
-        purse.copy(purse.WIN, purse.SPIN);
-        purse.addReg(purse.SESSION, purse.SPIN);
+    if freeSpin {
+        purse::copy(purse::WIN, purse::SPIN);
+        purse::addReg(purse::SESSION, purse::SPIN);
     }
-    purse.addReg(purse.BALANCE, purse.WIN);
+    purse::addReg(purse::BALANCE, purse::WIN);
     // The bonus round: a base spin with three scatters starts it; inside it, scatters
     // award more, up to the cap.
     let award: utinyint = FREE_SPIN_AWARD[scatters];
-    let started: bool = false;
-    if (award != 0) {
-        if (!inBonus) {
+    let mut started: bool = false;
+    if award != 0 {
+        if !inBonus {
             inBonus = true;
             started = true;
             fsLeft = award;
             fsGranted = award;
-            purse.clear(purse.SESSION);
+            purse::clear(purse::SESSION);
             pulseWait = 0;
             banner(true);
-            fx.begin();
-            if (fx.RASTER) {
+            fx::begin();
+            if fx::RASTER {
                 fxTick = 0;
             }
-        } else if (FREE_SPIN_RETRIGGER != 0) {
-            let extra: utinyint = award;
-            if (fsGranted + extra > FREE_SPIN_CAP) {
+        } else if FREE_SPIN_RETRIGGER != 0 {
+            let mut extra: utinyint = award;
+            if fsGranted + extra > FREE_SPIN_CAP {
                 extra = FREE_SPIN_CAP - fsGranted;
             }
             fsLeft = fsLeft + extra;
@@ -433,23 +426,23 @@ function settle(): void {
         }
     }
     drawCredit();
-    drawWin(purse.WIN);
+    drawWin(purse::WIN);
     drawJackpots();
     drawFree();
     flashLeft = 0;
-    if (jackpotHit != 255) {
+    if jackpotHit != 255 {
         message(3);
-        sound.bonus();
-    } else if (started) {
+        sound::bonus();
+    } else if started {
         message(6);
-        sound.bonus();
-    } else if (!purse.isZero(purse.WIN)) {
+        sound::bonus();
+    } else if !purse::isZero(purse::WIN) {
         message(2);
-        sound.win();
-    } else if (!inBonus) {
+        sound::win();
+    } else if !inBonus {
         message(4);
     }
-    if (!purse.isZero(purse.WIN) || scatters >= 3) {
+    if !purse::isZero(purse::WIN) || scatters >= 3 {
         flashLeft = 8;
         flashWait = 0;
         state = 2;
@@ -459,20 +452,20 @@ function settle(): void {
 }
 
 // After the win has been shown: the next free spin, the end of the round, or idle.
-function finishSpin(): void {
-    if (inBonus) {
-        if (fsLeft != 0) {
+fn finishSpin() {
+    if inBonus {
+        if fsLeft != 0 {
             pauseLeft = 40;
             state = 3;
         } else {
             // the round is over: show its total
             inBonus = false;
             banner(false);
-            fx.end();
+            fx::end();
             message(7);
             drawFree();
-            drawWin(purse.SESSION);
-            view.unpulse();
+            drawWin(purse::SESSION);
+            view::unpulse();
             pauseLeft = 150;
             state = 4;
         }
@@ -482,40 +475,40 @@ function finishSpin(): void {
     }
 }
 
-function frameSpinning(): void {
-    let any: bool = false;
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        let moved: utinyint = spin.step(reel, STOPS);
-        if (moved != 0) {
-            view.moved(reel, moved);
-            sound.tick();
-            if (!spin.moving(reel)) {
-                sound.stop();
+fn frameSpinning() {
+    let mut any: bool = false;
+    for reel: utinyint in 0..REELS {
+        let moved: utinyint = spin::step(reel, STOPS);
+        if moved != 0 {
+            view::moved(reel, moved);
+            sound::tick();
+            if !spin::moving(reel) {
+                sound::stop();
             }
         }
-        if (spin.moving(reel)) {
+        if spin::moving(reel) {
             any = true;
         }
     }
-    if (!any) {
+    if !any {
         settle();
     }
 }
 
-function lightRows(on: bool): void {
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        if (rowMask[reel] != 0) {
-            view.flashRows(reel, rowMask[reel], on);
+fn lightRows(on: bool) {
+    for reel: utinyint in 0..REELS {
+        if rowMask[reel] != 0 {
+            view::flashRows(reel, rowMask[reel], on);
         }
     }
 }
 
-function framePaying(): void {
-    if (flashWait != 0) {
+fn framePaying() {
+    if flashWait != 0 {
         flashWait = flashWait - 1;
         return;
     }
-    if (flashLeft == 0) {
+    if flashLeft == 0 {
         finishSpin();
         return;
     }
@@ -524,12 +517,12 @@ function framePaying(): void {
     lightRows((flashLeft & 1) != 0);
 }
 
-function frameBonusPulse(): void {
-    if (inBonus) {
+fn frameBonusPulse() {
+    if inBonus {
         // The reel frame holds its gold (view.pulse sets it); it is put back about once a second
         // and at every spin start, in case a win's flash redrew a frame cell.
-        if (pulseWait == 0) {
-            view.pulse(pulsePhase);
+        if pulseWait == 0 {
+            view::pulse(pulsePhase);
             pulseWait = 60;
         } else {
             pulseWait = pulseWait - 1;
@@ -540,51 +533,51 @@ function frameBonusPulse(): void {
 
 // The bonus round's full-screen look (fx.8bs), once a frame while the round runs. On a
 // machine whose fx twin is the portable stub, RASTER is false and this folds away.
-function frameFx(): void {
-    if (fx.RASTER) {
-        if (inBonus) {
+fn frameFx() {
+    if fx::RASTER {
+        if inBonus {
             fxTick = fxTick + 1;
-            fx.frame(fxTick);
+            fx::frame(fxTick);
         }
     }
 }
 
-function frameIdle(): void {
-    if (idleFrames < 255) {
+fn frameIdle() {
+    if idleFrames < 255 {
         idleFrames = idleFrames + 1;
     }
-    let go: bool = false;
-    if (input.confirm()) {
+    let mut go: bool = false;
+    if input::confirm() {
         go = true;
     }
-    if (autoLeft != 0) {
-        if (idleFrames > 20) {
+    if autoLeft != 0 {
+        if idleFrames > 20 {
             go = true;
         }
     }
-    if (input.up()) {
-        if (betIndex + 1 < 4) {
+    if input::up() {
+        if betIndex + 1 < 4 {
             setBet(betIndex + 1);
         }
     }
-    if (input.down()) {
-        if (betIndex != 0) {
+    if input::down() {
+        if betIndex != 0 {
             setBet(betIndex - 1);
         }
     }
-    if (go) {
-        let cost: usmallint = BET_CREDITS;
-        for (let i: utinyint = 1; i < multiplier; i++) {
+    if go {
+        let mut cost: usmallint = BET_CREDITS;
+        for i: utinyint in 1..multiplier {
             cost = cost + BET_CREDITS;
         }
-        if (!purse.canPay(purse.BALANCE, cost)) {
+        if !purse::canPay(purse::BALANCE, cost) {
             // Out of credit: the lab reloads rather than ending the session.
-            purse.set(purse.BALANCE, 0, START_THOUSANDS, 0);
+            purse::set(purse::BALANCE, 0, START_THOUSANDS, 0);
             drawCredit();
             message(5);
             idleFrames = 0;
         } else {
-            if (autoLeft != 0) {
+            if autoLeft != 0 {
                 autoLeft = autoLeft - 1;
             }
             startSpin(false);
@@ -595,65 +588,65 @@ function frameIdle(): void {
 // Play forever from `seed`. `autoSpins` is the number of base spins the machine takes by
 // itself right after it starts (0 for a person at the keyboard): headless screenshots
 // cannot press a key. Free spins always run by themselves.
-export function play(autoSpins: utinyint, seed: usmallint): void {
-    screen.blank();
-    layout.centre(view.WIDTH);
-    random.seed(seed);
-    input.begin();
-    pointer.hide();
-    purse.set(purse.BALANCE, 0, START_THOUSANDS, 0);
-    purse.clear(purse.WIN);
-    purse.clear(purse.SESSION);
-    for (let j: utinyint = 0; j < JACKPOT_COUNT; j++) {
+pub fn play(autoSpins: utinyint, seed: usmallint) {
+    screen::blank();
+    layout::centre(view::WIDTH);
+    random::seed(seed);
+    input::begin();
+    pointer::hide();
+    purse::set(purse::BALANCE, 0, START_THOUSANDS, 0);
+    purse::clear(purse::WIN);
+    purse::clear(purse::SESSION);
+    for j: utinyint in 0..JACKPOT_COUNT {
         resetMeter(j);
     }
     autoLeft = autoSpins;
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        spin.place(reel, 0);
+    for reel: utinyint in 0..REELS {
+        spin::place(reel, 0);
     }
-    view.begin();
+    view::begin();
     drawStatic();
-    view.drawAll();
+    view::drawAll();
     setBet(0);
     drawCredit();
-    drawWin(purse.WIN);
+    drawWin(purse::WIN);
     drawJackpots();
     drawFree();
     message(0);
 
-    while (true) {
+    loop {
         waitFrame();
         // `--define FREEZE=n` stops the machine changing the picture after its n-th frame (a headless
         // capture from a real-time emulator cannot be timed to a frame; this makes one taken later show
         // exactly that frame). Unset it is 0 and the test folds away.
-        if (FREEZE == 0 || ticks < FREEZE) {
-            if (FREEZE != 0) {
+        if FREEZE == 0 || ticks < FREEZE {
+            if FREEZE != 0 {
                 ticks = ticks + 1;
             }
-            input.poll();
+            input::poll();
             // The sounds count their frames in calls of update(): a loop that never calls it never
             // closes the gate of the first note it opens, and the machine drones for ever.
-            sound.update();
-            if (input.cancel()) {
-                sound.toggle();
+            sound::update();
+            if input::cancel() {
+                sound::toggle();
             }
             frameBonusPulse();
             frameFx();
-            if (state == 1) {
+            if state == 1 {
                 frameSpinning();
-            } else if (state == 2) {
+            } else if state == 2 {
                 framePaying();
-            } else if (state == 3) {
-                if (pauseLeft != 0) {
+            } else if state == 3 {
+                if pauseLeft != 0 {
                     pauseLeft = pauseLeft - 1;
                 } else {
                     startSpin(true);
                 }
-            } else if (state == 4) {
-                if (pauseLeft != 0) {
+            } else if state == 4 {
+                if pauseLeft != 0 {
                     pauseLeft = pauseLeft - 1;
                 } else {
-                    drawWin(purse.WIN);
+                    drawWin(purse::WIN);
                     message(0);
                     state = 0;
                     idleFrames = 0;

@@ -20,7 +20,7 @@
 //   ARROW      the row of the payline arrows: the middle of the middle symbol.
 //   END        the row of the frame's bottom edge (the window starts on row 4).
 //   CREDIT, BET, WIN, MESSAGE, HINT   the text rows below the machine.
-export namespace block {
+pub mod block {
     const WIDTH: utinyint = 13;
     const PITCH: utinyint = 4;
     const RIGHT: utinyint = 12;

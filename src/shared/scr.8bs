@@ -6,7 +6,7 @@
 //   COPY    cells can be block-copied within screen memory.
 //   SCREEN  the address of text cell 0.
 //   COLOR   the address of cell 0's colour (0 where there is none).
-export namespace scr {
+pub mod scr {
     const COPY: bool = false;
     const SCREEN: usmallint = 0;
     const COLOR: usmallint = 0;

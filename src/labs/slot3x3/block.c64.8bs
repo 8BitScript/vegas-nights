@@ -4,7 +4,7 @@
 // reel, 144 for the three, the frame's 14 after them (158 in all, of the 164 codes the C64
 // has: glyphs.c64.8bs); and the credit, bet and win rows sit three
 // rows lower. See block.8bs for what each number is; test/glyph-budget.test.mjs checks them.
-export namespace block {
+pub mod block {
     const WIDTH: utinyint = 16;
     const PITCH: utinyint = 5;
     const RIGHT: utinyint = 15;

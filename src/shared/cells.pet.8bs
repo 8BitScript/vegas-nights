@@ -1,26 +1,26 @@
 // The PET: 40 (or 80) columns of screen codes at $8000, no colour.
-import { FRAME_CODE } from "@generated/tiles/classic.pet.8bs";
+use "@generated/tiles/classic.pet.8bs"::FRAME_CODE;
 
-export namespace cells {
+pub mod cells {
     const COLORED: bool = false;
 
-    function put(at: usmallint, code: utinyint): void {
-        memory.write(0x8000 + at, code);
+    fn put(at: usmallint, code: utinyint) {
+        memory::write(0x8000 + at, code);
     }
 
-    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
+    fn ink(at: usmallint, symbol: utinyint, cell: utinyint) {
     }
 
-    function tint(at: usmallint, color: utinyint): void {
+    fn tint(at: usmallint, color: utinyint) {
     }
 
     // Reverse video is the block with its pattern complemented: the screen code plus 128.
-    function invert(code: utinyint): utinyint {
+    fn invert(code: utinyint) -> utinyint {
         return code ^ 128;
     }
 
     // The screen code to print for frame cell `cell` (FRAME_TL ... in the tile data).
-    function frameCode(cell: utinyint): utinyint {
+    fn frameCode(cell: utinyint) -> utinyint {
         return FRAME_CODE[cell];
     }
 }

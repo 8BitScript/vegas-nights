@@ -34,69 +34,69 @@
 // end() disables the interrupt, empties the list and puts the border and background back to black.
 //
 // Bytes (8bs build c64 --program slot5x5 --size): see docs/fx.md.
-import { raster, Register } from "@8bitscript/c64/raster";
-import { screen } from "@8bitscript/c64/screen";
+use @8bitscript::c64::raster::{raster, Register};
+use @8bitscript::c64::screen::screen;
 
 // The ramp, in C64 colour numbers: brown, brown, orange, light red, yellow, white, yellow, light
 // red, orange, brown. Ten notches; the seven stripes show seven of them at a time.
-const GOLD: array<utinyint, 10> = [9, 9, 8, 10, 7, 1, 7, 10, 8, 9];
+const GOLD: [utinyint; 10] = [9, 9, 8, 10, 7, 1, 7, 10, 8, 9];
 
-const STRIPES: utinyint = 7;      // border stripes, one raster entry each
-const FIRST: utinyint = 15;       // the first stripe's line (the top of the visible border)
-const PITCH: utinyint = 36;       // lines to a stripe: lines 15, 51, ... 231
-const STEP: utinyint = 5;         // video frames to a step of the glow
-const NOTCHES: utinyint = 10;     // length of the ramp
-const ENTRY: utinyint = 4;        // bytes to a list entry (raster.STRIDE)
+const STRIPES: utinyint = 7; // border stripes, one raster entry each
+const FIRST: utinyint = 15; // the first stripe's line (the top of the visible border)
+const PITCH: utinyint = 36; // lines to a stripe: lines 15, 51, ... 231
+const STEP: utinyint = 5; // video frames to a step of the glow
+const NOTCHES: utinyint = 10; // length of the ramp
+const ENTRY: utinyint = 4; // bytes to a list entry (raster.STRIDE)
 
-let phase: utinyint = 0;          // how far along the ramp stripe 0 is
-let banked: utinyint = 0;         // video frames counted towards the next step
-let lastFrame: utinyint = 0;      // raster.frame() at the last look
+let mut phase: utinyint = 0; // how far along the ramp stripe 0 is
+let mut banked: utinyint = 0; // video frames counted towards the next step
+let mut lastFrame: utinyint = 0; // raster.frame() at the last look
 
 // The ramp's colour for stripe `k`: the glow moves down the frame as the phase grows.
-function colourOf(k: utinyint): utinyint {
-    let at: utinyint = k + NOTCHES - phase;
-    if (at >= NOTCHES) {
+fn colourOf(k: utinyint) -> utinyint {
+    let mut at: utinyint = k + NOTCHES - phase;
+    if at >= NOTCHES {
         at = at - NOTCHES;
     }
     return GOLD[at];
 }
 
-export namespace fx {
-    const RASTER: bool = #fact(video.raster);
+pub mod fx {
+    const RASTER: bool = #fact(video::raster);
 
-    function begin(): void {
+    fn begin() {
         phase = 0;
         banked = 0;
-        raster.clear();
-        for (let k: utinyint = 0; k < STRIPES; k++) {
-            raster.at(FIRST + k * PITCH, Register.BORDER, colourOf(k));
+        raster::clear();
+        for k: utinyint in 0..STRIPES {
+            raster::at(FIRST + k * PITCH, Register::BORDER, colourOf(k));
         }
-        raster.enable();
-        lastFrame = raster.frame();
+        raster::enable();
+        lastFrame = raster::frame();
     }
 
-    function frame(tick: utinyint): void {
+    fn frame(tick: utinyint) {
         // The handler counts every video frame, so a pass of the game loop that took two
         // still banks two.
-        let now: utinyint = raster.frame();
+        let now: utinyint = raster::frame();
         banked = banked + (now - lastFrame);
         lastFrame = now;
-        if (banked >= STEP) {
+        if banked >= STEP {
             banked = banked - STEP;
             phase = phase + 1;
-            if (phase >= NOTCHES) {
+            if phase >= NOTCHES {
                 phase = 0;
             }
-            for (let k: utinyint = 0; k < STRIPES; k++) {
-                raster.setValue(k * ENTRY, colourOf(k));
+            for k: utinyint in 0..STRIPES {
+                raster::setValue(k * ENTRY, colourOf(k));
             }
         }
     }
 
-    function end(): void {
-        raster.disable();
-        raster.clear();
-        raster.commit();
-        screen.setColors(0, 0);
+    fn end() {
+        raster::disable();
+        raster::clear();
+        raster::commit();
+        screen::setColors(0, 0);
     }
 }

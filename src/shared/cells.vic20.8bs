@@ -1,33 +1,33 @@
 // The VIC-20: screen codes at Video.SCREEN (which moves with the RAM fitted) and
 // a colour nybble a cell at Video.COLOR, three bits of it ink. The colours are the
 // tileset's own (the VIC-20 twin of the tiles file holds the 0-7 values).
-import { Video } from "@8bitscript/vic20/geometry";
-import { SYMBOL_COLOR } from "@generated/tiles/classic.8bs";
+use @8bitscript::vic20::geometry::Video;
+use "@generated/tiles/classic.8bs"::SYMBOL_COLOR;
 
-import { FRAME_CODE } from "@generated/tiles/classic.pet.8bs";
+use "@generated/tiles/classic.pet.8bs"::FRAME_CODE;
 
-export namespace cells {
+pub mod cells {
     const COLORED: bool = true;
 
-    function put(at: usmallint, code: utinyint): void {
-        memory.write(Video.SCREEN + at, code);
+    fn put(at: usmallint, code: utinyint) {
+        memory::write(Video::SCREEN + at, code);
     }
 
-    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
-        memory.write(Video.COLOR + at, SYMBOL_COLOR[symbol * 9 + cell] & 7);
+    fn ink(at: usmallint, symbol: utinyint, cell: utinyint) {
+        memory::write(Video::COLOR + at, SYMBOL_COLOR[symbol * 9 + cell] & 7);
     }
 
-    function tint(at: usmallint, color: utinyint): void {
-        memory.write(Video.COLOR + at, color & 7);
+    fn tint(at: usmallint, color: utinyint) {
+        memory::write(Video::COLOR + at, color & 7);
     }
 
     // Reverse video is the block with its pattern complemented: the screen code plus 128.
-    function invert(code: utinyint): utinyint {
+    fn invert(code: utinyint) -> utinyint {
         return code ^ 128;
     }
 
     // The screen code to print for frame cell `cell` (FRAME_TL ... in the tile data).
-    function frameCode(cell: utinyint): utinyint {
+    fn frameCode(cell: utinyint) -> utinyint {
         return FRAME_CODE[cell];
     }
 }

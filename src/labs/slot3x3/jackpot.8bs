@@ -1,7 +1,7 @@
 // slot3x3 for the screenshot tests: one spin that hits the fixed-odds jackpot. It takes 1 spin by itself,
 // from seed 315, because a headless capture cannot press a key. See game.8bs.
-import { play } from "./game.8bs";
+use self::game::play;
 
-export function main(): void {
+pub fn main() {
     play(1, 315);
 }

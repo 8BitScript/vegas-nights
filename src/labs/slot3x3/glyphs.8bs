@@ -3,29 +3,29 @@
 // reference the screenshot test matches the machine's own digits and text cells
 // against, in its font and colours. (The pixel and quadrant machines need no
 // symbol reference: the test renders those pictures itself from the tile data.)
-import { screen } from "@8bitscript/screen";
-import { text, TextColor } from "@8bitscript/text";
-import { layout } from "@shared/layout.8bs";
-import { view } from "./view.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::{text, TextColor};
+use "@shared/layout.8bs"::layout;
+use self::view::view;
 
-const GLYPH_LEFT: array<utinyint, 6> = [32, 66, 66, 66, 32, 32];
-const GLYPH_MID: array<utinyint, 6> = [55, 66, 66, 32, 67, 46];
-const GLYPH_RIGHT: array<utinyint, 6> = [32, 66, 32, 32, 32, 32];
+const GLYPH_LEFT: [utinyint; 6] = [32, 66, 66, 66, 32, 32];
+const GLYPH_MID: [utinyint; 6] = [55, 66, 66, 32, 67, 46];
+const GLYPH_RIGHT: [utinyint; 6] = [32, 66, 32, 32, 32, 32];
 
-export function main(): void {
-    screen.blank();
-    layout.centre(view.BLOCK_WIDTH);
-    for (let symbol: utinyint = 0; symbol < 6; symbol++) {
-        let at: usmallint = layout.cell(1, 2 + symbol);
-        text.putChar(at, GLYPH_LEFT[symbol]);
-        text.putChar(at + 1, GLYPH_MID[symbol]);
-        text.putChar(at + 2, GLYPH_RIGHT[symbol]);
-        text.putColor(at, TextColor.WHITE);
-        text.putColor(at + 1, TextColor.WHITE);
-        text.putColor(at + 2, TextColor.WHITE);
+pub fn main() {
+    screen::blank();
+    layout::centre(view::BLOCK_WIDTH);
+    for symbol: utinyint in 0..6 {
+        let at: usmallint = layout::cell(1, 2 + symbol);
+        text::putChar(at, GLYPH_LEFT[symbol]);
+        text::putChar(at + 1, GLYPH_MID[symbol]);
+        text::putChar(at + 2, GLYPH_RIGHT[symbol]);
+        text::putColor(at, TextColor::WHITE);
+        text::putColor(at + 1, TextColor::WHITE);
+        text::putColor(at + 2, TextColor::WHITE);
     }
-    text.print(layout.cell(1, 10), "0123456789");
-    while (true) {
+    text::print(layout::cell(1, 10), "0123456789");
+    loop {
         waitFrame();
     }
 }

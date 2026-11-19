@@ -6,13 +6,13 @@
 // What "confirm" is depends on the machine (Return, Space or fire — see
 // @8bitscript/input). `--screenshot` cannot press anything, so a headless
 // capture shows the first draw, from a fixed seed.
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { input } from "@8bitscript/input";
-import { random } from "@8bitscript/random";
-import { reels } from "@shared/reels.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use @8bitscript::input::input;
+use @8bitscript::random::random;
+use "@shared/reels.8bs"::reels;
 
-const ROW: usmallint = text.COLUMNS;
+const ROW: usmallint = text::COLUMNS;
 
 // Three reel cells with a blank between each, four columns apart.
 const REEL_SPACING: utinyint = 4;
@@ -23,41 +23,41 @@ const SEED: usmallint = 777;
 // written out rather than computed.
 const SPAN: utinyint = 9;
 
-let firstReel: usmallint = 0;
+let mut firstReel: usmallint = 0;
 
 // The layout depends on how wide this machine's text screen is, which is a
 // build fact but not a literal, so it is worked out once at run time (the
 // same way examples/joystick centres its map).
-function computeLayout(): void {
-    let indent: utinyint = 0;
-    if (text.COLUMNS > SPAN) {
-        indent = (text.COLUMNS - SPAN) >> 1;
+fn computeLayout() {
+    let mut indent: utinyint = 0;
+    if text::COLUMNS > SPAN {
+        indent = text::COLUMNS - SPAN >> 1;
     }
-    let origin: usmallint = 10;
+    let mut origin: usmallint = 10;
     origin = origin * ROW + indent;
     firstReel = origin;
 }
 
-function spin(): void {
-    for (let i: utinyint = 0; i < REEL_COUNT; i++) {
-        reels.draw(firstReel + i * REEL_SPACING, reels.pick());
+fn spin() {
+    for i: utinyint in 0..REEL_COUNT {
+        reels::draw(firstReel + i * REEL_SPACING, reels::pick());
     }
 }
 
-export function main(): void {
-    screen.blank();
+pub fn main() {
+    screen::blank();
     computeLayout();
-    random.seed(SEED);
-    input.begin();
+    random::seed(SEED);
+    input::begin();
 
-    text.print(3 * ROW + 1, "HELLO REELS");
-    text.print(5 * ROW + 1, "PRESS CONFIRM");
+    text::print(3 * ROW + 1, "HELLO REELS");
+    text::print(5 * ROW + 1, "PRESS CONFIRM");
     spin();
 
-    while (true) {
+    loop {
         waitFrame();
-        input.poll();
-        if (input.confirm()) {
+        input::poll();
+        if input::confirm() {
             spin();
         }
     }

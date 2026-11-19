@@ -11,7 +11,7 @@
 // reel that sits out a pass costs a copy of its glyphs into the hidden set (about 0.3 of a frame); with all the
 // reels stepping together none does, and each reel steps about as often as before — a pass is three redraws
 // long, and a redraw is most of a frame. The reels still start one pass apart.
-export namespace feel {
+pub mod feel {
     const WAIT: utinyint = 1;
     const FAR: utinyint = 12;
     const REEL_WAIT: utinyint = 0;

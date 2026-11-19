@@ -5,10 +5,10 @@
 //
 // Text only on purpose. `text.print` works on all five machines this release
 // builds for, so the first lab proves the toolchain before any graphics do.
-import { text } from "@8bitscript/text";
-import { random } from "@8bitscript/random";
+use @8bitscript::text::text;
+use @8bitscript::random::random;
 
-export namespace reels {
+pub mod reels {
     // How many different symbols a reel can show. A lab's random draw is
     // `random.range(reels.SYMBOLS)`.
     const SYMBOLS: utinyint = 4;
@@ -25,24 +25,24 @@ export namespace reels {
     // wants a bound that is not a power of two needs a rejection-sampled draw
     // built the same way — tools/slotmath's tables are indexed by power-of-two
     // stop counts for exactly this reason.
-    function pick(): utinyint {
-        let byte: utinyint = random.next();
+    fn pick() -> utinyint {
+        let byte: utinyint = random::next();
         return byte >> 6;
     }
 
     // Draw `symbol` (0..SYMBOLS-1) into the cell at `cell`. Anything past the
     // last symbol draws a question mark rather than corrupting the screen.
-    function draw(cell: usmallint, symbol: utinyint): void {
-        if (symbol == 0) {
-            text.print(cell, "7");
-        } else if (symbol == 1) {
-            text.print(cell, "B");
-        } else if (symbol == 2) {
-            text.print(cell, "C");
-        } else if (symbol == 3) {
-            text.print(cell, "L");
+    fn draw(cell: usmallint, symbol: utinyint) {
+        if symbol == 0 {
+            text::print(cell, "7");
+        } else if symbol == 1 {
+            text::print(cell, "B");
+        } else if symbol == 2 {
+            text::print(cell, "C");
+        } else if symbol == 3 {
+            text::print(cell, "L");
         } else {
-            text.print(cell, "?");
+            text::print(cell, "?");
         }
     }
 }

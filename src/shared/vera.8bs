@@ -22,109 +22,109 @@
 //
 // The bonus round's border bars (fx.cx16.8bs) take palette entries 64-83; nothing here touches
 // those, or entries 0-15 other than the mask's 11.
-import { setVramAddress, locateTextMap, mapBank, mapLow } from "@8bitscript/cx16";
+use @8bitscript::cx16::{setVramAddress, locateTextMap, mapBank, mapLow};
 
-let rise: usmallint = 0;
+let mut rise: usmallint = 0;
 
-export namespace vera {
-    const PIXELS: usmallint = 0x4000;       // bank 0: the first symbol's pixels
-    const SYMBOL_UNITS: utinyint = 64;      // a symbol's 2,048 bytes in sprite address units of 32
-    const ATTRIBUTES: usmallint = 0xFC00;   // bank 1: sprite attribute table
-    const PALETTE: usmallint = 0xFB00;      // bank 1: entry 128, palette offset 8
-    const LIT: usmallint = 0xFB20;          // bank 1: entry 144, palette offset 9
-    const MASK_ENTRY: usmallint = 0xFA16;   // bank 1: entry 11, set to black
-    const ART: utinyint = 0xF8;             // 64x64, palette offset 8
-    const FLASH: utinyint = 0xF9;           // 64x64, palette offset 9
+pub mod vera {
+    const PIXELS: usmallint = 0x4000; // bank 0: the first symbol's pixels
+    const SYMBOL_UNITS: utinyint = 64; // a symbol's 2,048 bytes in sprite address units of 32
+    const ATTRIBUTES: usmallint = 0xFC00; // bank 1: sprite attribute table
+    const PALETTE: usmallint = 0xFB00; // bank 1: entry 128, palette offset 8
+    const LIT: usmallint = 0xFB20; // bank 1: entry 144, palette offset 9
+    const MASK_ENTRY: usmallint = 0xFA16; // bank 1: entry 11, set to black
+    const ART: utinyint = 0xF8; // 64x64, palette offset 8
+    const FLASH: utinyint = 0xF9; // 64x64, palette offset 9
 
     // Text-layer attributes (background nibble high, ink low) for the mask and the machine's frame.
     const MASK: utinyint = 0xB1;
-    const FRAME_OUTER: utinyint = 0x71;     // yellow
-    const FRAME_INNER: utinyint = 0x81;     // orange
+    const FRAME_OUTER: utinyint = 0x71; // yellow
+    const FRAME_INNER: utinyint = 0x81; // orange
 
     // Turn sprites on, remember x16emu's one-line offset, and make entry 11 an opaque black.
-    function begin(): void {
-        let ctrl: utinyint = memory.read(0x9F25);
-        memory.write(0x9F25, ctrl & 0xFD);
-        memory.write(0x9F29, memory.read(0x9F29) | 0x40);
-        memory.write(0x9F25, 0x02);
+    fn begin() {
+        let ctrl: utinyint = memory::read(0x9F25);
+        memory::write(0x9F25, ctrl & 0xFD);
+        memory::write(0x9F29, memory::read(0x9F29) | 0x40);
+        memory::write(0x9F25, 0x02);
         rise = 0;
-        if (memory.read(0x9F2B) != 0) {
+        if memory::read(0x9F2B) != 0 {
             rise = 2;
         }
-        memory.write(0x9F25, ctrl);
-        setVramAddress(1, vera.MASK_ENTRY, 1);
-        memory.write(0x9F23, 0);
-        memory.write(0x9F23, 0);
+        memory::write(0x9F25, ctrl);
+        setVramAddress(1, vera::MASK_ENTRY, 1);
+        memory::write(0x9F23, 0);
+        memory::write(0x9F23, 0);
     }
 
     // The art's palette block is written by the view (the data is its own); the lit block is the
     // same sixteen entries with every colour but the clear one and the theme's black turned white.
-    function lit(): void {
-        setVramAddress(1, vera.LIT, 1);
-        memory.write(0x9F23, 0);
-        memory.write(0x9F23, 0);
-        memory.write(0x9F23, 0);
-        memory.write(0x9F23, 0);
-        for (let i: utinyint = 2; i < 16; i++) {
-            memory.write(0x9F23, 0xFF);
-            memory.write(0x9F23, 0x0F);
+    fn lit() {
+        setVramAddress(1, vera::LIT, 1);
+        memory::write(0x9F23, 0);
+        memory::write(0x9F23, 0);
+        memory::write(0x9F23, 0);
+        memory::write(0x9F23, 0);
+        for i: utinyint in 2..16 {
+            memory::write(0x9F23, 0xFF);
+            memory::write(0x9F23, 0x0F);
         }
     }
 
     // Point the data port at sprite `n` (VERA sprite n + 1) attribute `offset`, stepping by one.
-    function seek(n: utinyint, offset: utinyint): void {
-        let at: usmallint = n;
-        at = vera.ATTRIBUTES + (at + 1) * 8 + offset;
+    fn seek(n: utinyint, offset: utinyint) {
+        let mut at: usmallint = n;
+        at = vera::ATTRIBUTES + (at + 1) * 8 + offset;
         setVramAddress(1, at, 1);
     }
 
     // Write one sprite's eight attribute bytes at the port: it shows symbol `symbol` with its
     // 64x64 box's top-left corner at (x, y) in the layers' pixels (the 48x48 art is 8 further in).
-    function put(symbol: utinyint, x: usmallint, y: usmallint, flags: utinyint): void {
-        let unit: usmallint = symbol;
-        unit = unit * vera.SYMBOL_UNITS + 0x200;
+    fn put(symbol: utinyint, x: usmallint, y: usmallint, flags: utinyint) {
+        let mut unit: usmallint = symbol;
+        unit = unit * vera::SYMBOL_UNITS + 0x200;
         let top: usmallint = y + rise;
-        memory.write(0x9F23, unit % 256);
-        memory.write(0x9F23, unit / 256);
-        memory.write(0x9F23, x % 256);
-        memory.write(0x9F23, x / 256);
-        memory.write(0x9F23, top % 256);
-        memory.write(0x9F23, top / 256);
-        memory.write(0x9F23, 0x08);        // z-depth 2: in front of layer 0, behind the text layer
-        memory.write(0x9F23, flags);
+        memory::write(0x9F23, unit % 256);
+        memory::write(0x9F23, unit / 256);
+        memory::write(0x9F23, x % 256);
+        memory::write(0x9F23, x / 256);
+        memory::write(0x9F23, top % 256);
+        memory::write(0x9F23, top / 256);
+        memory::write(0x9F23, 0x08); // z-depth 2: in front of layer 0, behind the text layer
+        memory::write(0x9F23, flags);
     }
 
     // Light (or put back) one sprite: the palette-offset byte only.
-    function paint(n: utinyint, flags: utinyint): void {
-        vera.seek(n, 7);
-        memory.write(0x9F23, flags);
+    fn paint(n: utinyint, flags: utinyint) {
+        vera::seek(n, 7);
+        memory::write(0x9F23, flags);
     }
 
     // Fill a block of the text map with spaces whose attribute is `attr`: `width` x `height` cells
     // from grid cell (col, row). The grid is the map's top-left 76x56, so cell (0, 0) is the map's.
-    function fill(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint): void {
+    fn fill(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint) {
         locateTextMap();
-        for (let r: utinyint = 0; r < height; r++) {
-            let at: usmallint = row + r;
+        for r: utinyint in 0..height {
+            let mut at: usmallint = row + r;
             at = at * 256 + mapLow + col * 2;
             setVramAddress(mapBank, at, 1);
-            for (let c: utinyint = 0; c < width; c++) {
-                memory.write(0x9F23, 32);
-                memory.write(0x9F23, attr);
+            for c: utinyint in 0..width {
+                memory::write(0x9F23, 32);
+                memory::write(0x9F23, attr);
             }
         }
     }
 
     // Recolour the background of a block of cells and leave the characters (a frame cell with an
     // arrow in it keeps the arrow).
-    function tint(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint): void {
+    fn tint(col: utinyint, row: utinyint, width: utinyint, height: utinyint, attr: utinyint) {
         locateTextMap();
-        for (let r: utinyint = 0; r < height; r++) {
-            let at: usmallint = row + r;
+        for r: utinyint in 0..height {
+            let mut at: usmallint = row + r;
             at = at * 256 + mapLow + col * 2 + 1;
             setVramAddress(mapBank, at, 2);
-            for (let c: utinyint = 0; c < width; c++) {
-                memory.write(0x9F23, attr);
+            for c: utinyint in 0..width {
+                memory::write(0x9F23, attr);
             }
         }
     }

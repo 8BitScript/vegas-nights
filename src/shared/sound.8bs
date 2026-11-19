@@ -11,49 +11,49 @@
 //   bonus   a jackpot or bonus
 //   update  once a frame, from the game loop
 //   toggle  mute / unmute (the cancel key)
-import { sfx } from "./sfx.8bs";
+use self::sfx::sfx;
 
-let muted: bool = false;
+let mut muted: bool = false;
 
-export namespace sound {
-    function tick(): void {
-        if (!muted) {
-            sfx.tick();
+pub mod sound {
+    fn tick() {
+        if !muted {
+            sfx::tick();
         }
     }
 
-    function stop(): void {
-        if (!muted) {
-            sfx.stop();
+    fn stop() {
+        if !muted {
+            sfx::stop();
         }
     }
 
-    function win(): void {
-        if (!muted) {
-            sfx.win();
+    fn win() {
+        if !muted {
+            sfx::win();
         }
     }
 
-    function big(): void {
-        if (!muted) {
-            sfx.big();
+    fn big() {
+        if !muted {
+            sfx::big();
         }
     }
 
-    function bonus(): void {
-        if (!muted) {
-            sfx.bonus();
+    fn bonus() {
+        if !muted {
+            sfx::bonus();
         }
     }
 
-    function update(): void {
-        sfx.update();
+    fn update() {
+        sfx::update();
     }
 
-    function toggle(): void {
+    fn toggle() {
         muted = !muted;
-        if (muted) {
-            sfx.silence();
+        if muted {
+            sfx::silence();
         }
     }
 }

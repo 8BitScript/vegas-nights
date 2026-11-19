@@ -6,42 +6,36 @@
 //
 // Codes 128-255 are the upper-case set's reverse-video copies, which a program
 // that never prints reverse text is free to use; the reels take them.
-import { setupVideo, bankIoOut, bankIoIn, memoryPointer } from "@8bitscript/c64";
-import { Video, screenRam } from "@8bitscript/c64/video";
+use @8bitscript::c64::{setupVideo, bankIoOut, bankIoIn, memoryPointer};
+use @8bitscript::c64::video::{Video, screenRam};
 
 // Where the tileset is staged for the assembly composer: $C000-$CFFF is plain RAM
 // on the C64, outside the video bank's screen, sprite shapes and character copy
 // and above any program this size. (A const array is not reachable from an
 // asm6502 block, and the compiler lowers no array parameters, so the bytes are
 // copied once to an address the block can name.)
-@address(0xC000)
-let tileBytes: array<utinyint, 1024>;
+#[address(0xC000)] let mut tileBytes: [utinyint; 1024];
 
 // …and the reels' strips, a symbol number a stop, right after the tiles.
-@address(0xC400)
-let stripBytes: array<utinyint, 320>;
+#[address(0xC400)] let mut stripBytes: [utinyint; 320];
 
 // …and where each symbol's tile starts in the tileset: the low and the high byte of its
 // address, one entry a symbol (up to sixteen), filled by symbols(). The composer reads a
 // symbol's place from here, so a symbol can be any size (24x24 or 32x32 art).
-@address(0xC600)
-let symbolLow: array<utinyint, 16>;
+#[address(0xC600)] let mut symbolLow: [utinyint; 16];
 
-@address(0xC610)
-let symbolHigh: array<utinyint, 16>;
+#[address(0xC610)] let mut symbolHigh: [utinyint; 16];
 
 // The 5x5's strips, pre-composed: for every reel and glyph column, the whole strip
 // of the column as bytes (512 pixel rows) and the first 80 repeated after it, so
 // that any 80 consecutive rows — a reel window at any pixel offset — are one
 // contiguous run to copy into ten glyphs. $8000-$9FFF is plain RAM, above any
 // program this size.
-@address(0x8000)
-let stripBuf: array<utinyint, 5920>;
+#[address(0x8000)] let mut stripBuf: [utinyint; 5920];
 
 // …and the colours: for every reel and glyph column, the colour of each cell row of the
 // strip (64 cell rows, then the first ten again), $9800 up.
-@address(0x9800)
-let colorBuf: array<utinyint, 740>;
+#[address(0x9800)] let mut colorBuf: [utinyint; 740];
 
 // ---- double buffering (glyphs.8bs) -------------------------------------------------------
 //
@@ -57,17 +51,16 @@ let colorBuf: array<utinyint, 740>;
 //
 // …and the colours of the reels' cells, staged while composing, so that they can be written to
 // colour RAM straight after the switch (192 bytes, $C540: free between the strips and the table).
-@address(0xC540)
-let colorStage: array<utinyint, 192>;
+#[address(0xC540)] let mut colorStage: [utinyint; 192];
 
 // Which set the screen shows: false the home set, true the one at $C800.
-let shownB: bool = false;
+let mut shownB: bool = false;
 
 // The raster lines the reels' glyph rows occupy (set by region()): the first, and the one past the last.
-let lineStart: utinyint = 83;
-let lineEnd: utinyint = 179;
+let mut lineStart: utinyint = 83;
+let mut lineEnd: utinyint = 179;
 
-export namespace glyphs {
+pub mod glyphs {
     const AVAILABLE: bool = true;
     const COLOR_STRIP: bool = true;
     const FIRST: utinyint = 128;
@@ -83,12 +76,12 @@ export namespace glyphs {
 
     // The ROM-to-RAM character copy and the video mode must exist before the
     // first glyph write; setupVideo() does both and is cheap when done.
-    function begin(): void {
+    fn begin() {
         setupVideo();
         // The glyphs are written into the mixed-case set (below), so that is the set to show.
         // @8bitscript/text selects it on its first write; the reel cells are written raw (put),
         // which does not, so it is selected here.
-        memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+        memoryPointer = Video::MEMORY_POINTER_LOWERCASE;
         shownB = false;
     }
 
@@ -96,32 +89,32 @@ export namespace glyphs {
     // the second half of the character copy, +$0800), so that is the set whose
     // glyphs the screen shows. (charset.define writes the other half; its header
     // says the text package uses that one, which no longer matches text.8bs.)
-    function address(code: utinyint): usmallint {
-        let offset: usmallint = code;
+    fn address(code: utinyint) -> usmallint {
+        let mut offset: usmallint = code;
         offset = offset * 8;
-        return Video.CHARSET + 2048 + offset;
+        return Video::CHARSET + 2048 + offset;
     }
 
-    function seek(code: utinyint): void {
+    fn seek(code: utinyint) {
     }
 
-    function stage(index: usmallint, value: utinyint): void {
+    fn stage(index: usmallint, value: utinyint) {
         tileBytes[index] = value;
     }
 
     // The screen code `code`, as it is, into text cell `at` (the screen matrix is the C64's own).
-    function put(at: usmallint, code: utinyint): void {
+    fn put(at: usmallint, code: utinyint) {
         screenRam[at] = code;
     }
 
-    function stageStrip(index: usmallint, value: utinyint): void {
+    fn stageStrip(index: usmallint, value: utinyint) {
         stripBytes[index] = value;
     }
 
     // Where symbol n's tile starts in the tileset, for the composer: $C000 + n * bytes.
-    function symbols(count: utinyint, bytes: usmallint): void {
-        let at: usmallint = 0xC000;
-        for (let i: utinyint = 0; i < count; i++) {
+    fn symbols(count: utinyint, bytes: usmallint) {
+        let mut at: usmallint = 0xC000;
+        for i: utinyint in 0..count {
             let low: utinyint = at & 255;
             let high: utinyint = at >> 8;
             symbolLow[i] = low;
@@ -148,19 +141,19 @@ export namespace glyphs {
     // pixels into a cell row; test/composer-offsets.test.mjs draws every offset.) The 3x3's
     // 24x24 version of this was ~6000 cycles; the same loop in compiled script was ~17000
     // and, before the copy was assembly, ~70000.
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
-        let first: usmallint = 0;
-        let second: usmallint = 0;
-        let here: usmallint = 0;
-        let run: utinyint = 0;
-        let rest: utinyint = 0;
-        let band: utinyint = 0;
-        let left: utinyint = rows;
+    fn drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint) {
+        let mut first: usmallint = 0;
+        let mut second: usmallint = 0;
+        let mut here: usmallint = 0;
+        let mut run: utinyint = 0;
+        let mut rest: utinyint = 0;
+        let mut band: utinyint = 0;
+        let mut left: utinyint = rows;
         // bytes from one cell row of a symbol to the next, a symbol's height in pixels, and
         // the index of its last cell row
-        let stride: utinyint = across << 3;
-        let pixH: utinyint = down << 3;
-        let last: utinyint = down - 1;
+        let mut stride: utinyint = across << 3;
+        let mut pixH: utinyint = down << 3;
+        let mut last: utinyint = down - 1;
         asm6502 {
         1:
             ldy stop
@@ -310,18 +303,18 @@ export namespace glyphs {
     const BUFFERED: bool = true;
 
     // Where glyph `code` is composed: in the set the screen is NOT showing.
-    function target(code: utinyint): usmallint {
-        let offset: usmallint = code;
+    fn target(code: utinyint) -> usmallint {
+        let mut offset: usmallint = code;
         offset = offset * 8;
-        if (shownB) {
-            return Video.CHARSET + 2048 + offset;
+        if shownB {
+            return Video::CHARSET + 2048 + offset;
         }
         return 0xC800 + offset;
     }
 
     // The hidden set, as a bit: 1 the home set, 2 the one at $C800.
-    function hiddenBit(): utinyint {
-        if (shownB) {
+    fn hiddenBit() -> utinyint {
+        if shownB {
             return 1;
         }
         return 2;
@@ -330,8 +323,8 @@ export namespace glyphs {
     // The reel window covers text rows row .. row + rows - 1: the first of its raster lines is
     // 51 + 8 * row (the C64's usual 25-row picture starts at line 51), and the beam leaves it at
     // 51 + 8 * (row + rows).
-    function region(row: utinyint, rows: utinyint): void {
-        let start: utinyint = row << 3;
+    fn region(row: utinyint, rows: utinyint) {
+        let mut start: utinyint = row << 3;
         start = start + 51;
         lineStart = start;
         let height: utinyint = rows << 3;
@@ -340,8 +333,8 @@ export namespace glyphs {
 
     // `pages` whole pages and `rest` more bytes from `src` to `dst`, with the I/O area banked out
     // (the home set lies under it).
-    function copyBytes(src: usmallint, dst: usmallint, pages: utinyint, rest: utinyint): void {
-        glyphs.open();
+    fn copyBytes(src: usmallint, dst: usmallint, pages: utinyint, rest: utinyint) {
+        glyphs::open();
         asm6502 {
             ldx pages
             beq 3f
@@ -368,23 +361,23 @@ export namespace glyphs {
             bne 4b
         5:
         }
-        glyphs.close();
+        glyphs::close();
     }
 
     // Glyphs first .. first + count - 1 (at most 255) copied from the set on the screen to the other.
-    function mirror(first: utinyint, count: utinyint): void {
-        let offset: usmallint = first;
+    fn mirror(first: utinyint, count: utinyint) {
+        let mut offset: usmallint = first;
         offset = offset * 8;
-        let bytes: usmallint = count;
+        let mut bytes: usmallint = count;
         bytes = bytes * 8;
-        let pages: utinyint = bytes >> 8;
-        let rest: utinyint = bytes & 255;
-        let homeSet: usmallint = Video.CHARSET + 2048 + offset;
+        let mut pages: utinyint = bytes >> 8;
+        let mut rest: utinyint = bytes & 255;
+        let homeSet: usmallint = Video::CHARSET + 2048 + offset;
         let otherSet: usmallint = 0xC800 + offset;
-        if (shownB) {
-            glyphs.copyBytes(otherSet, homeSet, pages, rest);
+        if shownB {
+            glyphs::copyBytes(otherSet, homeSet, pages, rest);
         } else {
-            glyphs.copyBytes(homeSet, otherSet, pages, rest);
+            glyphs::copyBytes(homeSet, otherSet, pages, rest);
         }
     }
 
@@ -393,10 +386,10 @@ export namespace glyphs {
     // the beam is in the 100 raster lines below the window, or in the vertical blank (bit 8 of the
     // line set), or in the first lines of the next picture; otherwise it waits for the beam to
     // come round to the window's bottom edge. An interrupt only delays it.
-    function flip(): void {
-        let endLine: utinyint = lineEnd;
-        let earlyLine: utinyint = 0;
-        if (lineStart > 50) {
+    fn flip() {
+        let mut endLine: utinyint = lineEnd;
+        let mut earlyLine: utinyint = 0;
+        if lineStart > 50 {
             earlyLine = lineStart - 50;
         }
         asm6502 {
@@ -414,8 +407,8 @@ export namespace glyphs {
             jmp 1b
         3:
         }
-        if (shownB) {
-            memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+        if shownB {
+            memoryPointer = Video::MEMORY_POINTER_LOWERCASE;
             shownB = false;
         } else {
             memoryPointer = 0x82;
@@ -424,29 +417,29 @@ export namespace glyphs {
     }
 
     // Show the home set again. The caller has made the two sets alike, so this is invisible at any line.
-    function home(): void {
-        if (shownB) {
-            memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+    fn home() {
+        if shownB {
+            memoryPointer = Video::MEMORY_POINTER_LOWERCASE;
             shownB = false;
         }
     }
 
     // Once, after the frame is defined: the second set becomes a duplicate of the home one.
-    function clone(): void {
-        glyphs.copyBytes(Video.CHARSET + 2048, 0xC800, 8, 0);
+    fn clone() {
+        glyphs::copyBytes(Video::CHARSET + 2048, 0xC800, 8, 0);
         shownB = false;
-        memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+        memoryPointer = Video::MEMORY_POINTER_LOWERCASE;
     }
 
-    function stageColor(index: usmallint, color: utinyint): void {
+    fn stageColor(index: usmallint, color: utinyint) {
         colorStage[index] = color;
     }
 
     // `rows` rows of `across` staged colours, from colorStage[source], into colour RAM from text
     // cell `at`, a screen row (40 cells) apart. The I/O area is in.
-    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
-        let dest: usmallint = 0xD800 + at;
-        let src: usmallint = 0xC540 + source;
+    fn putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint) {
+        let mut dest: usmallint = 0xD800 + at;
+        let mut src: usmallint = 0xC540 + source;
         asm6502 {
             ldx rows
         1:
@@ -476,15 +469,15 @@ export namespace glyphs {
         }
     }
 
-    function putStrip(index: usmallint, value: utinyint): void {
+    fn putStrip(index: usmallint, value: utinyint) {
         stripBuf[index] = value;
     }
 
     // `count` bytes (at most 255) from the strip buffer at `source` into the glyphs
     // starting at `code`: a straight copy, in assembly, with the I/O area banked out.
-    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
-        let dest: usmallint = glyphs.address(code);
-        let src: usmallint = 0x8000 + source;
+    fn copyOut(code: utinyint, source: usmallint, count: utinyint) {
+        let mut dest: usmallint = glyphs::address(code);
+        let mut src: usmallint = 0x8000 + source;
         asm6502 {
             ldy #0
         1:
@@ -496,15 +489,15 @@ export namespace glyphs {
         }
     }
 
-    function putColorStrip(index: usmallint, value: utinyint): void {
+    fn putColorStrip(index: usmallint, value: utinyint) {
         colorBuf[index] = value;
     }
 
     // `count` colours from the colour buffer at `source` into colour RAM, one a text row
     // (40 cells) apart, down from text cell `cell`.
-    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
-        let dest: usmallint = 0xD800 + cell;
-        let src: usmallint = 0x9800 + source;
+    fn copyColors(cell: usmallint, source: usmallint, count: utinyint) {
+        let mut dest: usmallint = 0xD800 + cell;
+        let mut src: usmallint = 0x9800 + source;
         asm6502 {
             ldx count
             ldy #0
@@ -527,11 +520,11 @@ export namespace glyphs {
         }
     }
 
-    function open(): void {
+    fn open() {
         bankIoOut();
     }
 
-    function close(): void {
+    fn close() {
         bankIoIn();
     }
 }

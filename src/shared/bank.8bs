@@ -10,17 +10,17 @@
 // prints as two adjacent three-digit fields.
 //
 // Only the balance saturates, at 999,999; a win is far below that.
-let balanceHigh: usmallint = 0;  // thousands of credits, 0..999
-let balanceLow: usmallint = 0;   // credits, 0..999
-let winHigh: usmallint = 0;
-let winLow: usmallint = 0;
+let mut balanceHigh: usmallint = 0; // thousands of credits, 0..999
+let mut balanceLow: usmallint = 0; // credits, 0..999
+let mut winHigh: usmallint = 0;
+let mut winLow: usmallint = 0;
 
-export namespace bank {
+pub mod bank {
     // Set the balance to `value` credits.
-    function set(value: usmallint): void {
-        let rest: usmallint = value;
-        let thousands: usmallint = 0;
-        while (rest >= 1000) {
+    fn set(value: usmallint) {
+        let mut rest: usmallint = value;
+        let mut thousands: usmallint = 0;
+        while rest >= 1000 {
             rest = rest - 1000;
             thousands = thousands + 1;
         }
@@ -28,58 +28,58 @@ export namespace bank {
         balanceLow = rest;
     }
 
-    function high(): usmallint {
+    fn high() -> usmallint {
         return balanceHigh;
     }
 
-    function low(): usmallint {
+    fn low() -> usmallint {
         return balanceLow;
     }
 
-    function winThousands(): usmallint {
+    fn winThousands() -> usmallint {
         return winHigh;
     }
 
-    function winUnits(): usmallint {
+    fn winUnits() -> usmallint {
         return winLow;
     }
 
     // a + b, held at 65,535 instead of wrapping (for sums that are known to be
     // small: the lines of one spin).
-    function sum(a: usmallint, b: usmallint): usmallint {
-        let total: usmallint = a + b;
-        if (total < a) {
+    fn sum(a: usmallint, b: usmallint) -> usmallint {
+        let mut total: usmallint = a + b;
+        if total < a {
             total = 65535;
         }
         return total;
     }
 
     // Is there at least `amount` credits?
-    function canPay(amount: usmallint): bool {
-        let rest: usmallint = amount;
-        let thousands: usmallint = 0;
-        while (rest >= 1000) {
+    fn canPay(amount: usmallint) -> bool {
+        let mut rest: usmallint = amount;
+        let mut thousands: usmallint = 0;
+        while rest >= 1000 {
             rest = rest - 1000;
             thousands = thousands + 1;
         }
-        if (balanceHigh > thousands) {
+        if balanceHigh > thousands {
             return true;
         }
-        if (balanceHigh < thousands) {
+        if balanceHigh < thousands {
             return false;
         }
         return balanceLow >= rest;
     }
 
     // Take `amount` credits; the caller has checked canPay.
-    function take(amount: usmallint): void {
-        let rest: usmallint = amount;
-        let thousands: usmallint = 0;
-        while (rest >= 1000) {
+    fn take(amount: usmallint) {
+        let mut rest: usmallint = amount;
+        let mut thousands: usmallint = 0;
+        while rest >= 1000 {
             rest = rest - 1000;
             thousands = thousands + 1;
         }
-        if (balanceLow >= rest) {
+        if balanceLow >= rest {
             balanceLow = balanceLow - rest;
         } else {
             balanceLow = balanceLow + 1000 - rest;
@@ -90,41 +90,41 @@ export namespace bank {
 
     // ---- the win of one spin, collected into the balance ------------------
 
-    function clearWin(): void {
+    fn clearWin() {
         winHigh = 0;
         winLow = 0;
     }
 
     // Add `amount` credits to the win.
-    function addWin(amount: usmallint): void {
-        let rest: usmallint = amount;
-        let thousands: usmallint = 0;
-        while (rest >= 1000) {
+    fn addWin(amount: usmallint) {
+        let mut rest: usmallint = amount;
+        let mut thousands: usmallint = 0;
+        while rest >= 1000 {
             rest = rest - 1000;
             thousands = thousands + 1;
         }
         winLow = winLow + rest;
-        if (winLow >= 1000) {
+        if winLow >= 1000 {
             winLow = winLow - 1000;
             thousands = thousands + 1;
         }
         winHigh = winHigh + thousands;
     }
 
-    function winning(): bool {
+    fn winning() -> bool {
         return winHigh != 0 || winLow != 0;
     }
 
     // Move the win into the balance (which holds at 999,999).
-    function collect(): void {
+    fn collect() {
         balanceLow = balanceLow + winLow;
-        let carry: usmallint = 0;
-        if (balanceLow >= 1000) {
+        let mut carry: usmallint = 0;
+        if balanceLow >= 1000 {
             balanceLow = balanceLow - 1000;
             carry = 1;
         }
         balanceHigh = balanceHigh + winHigh + carry;
-        if (balanceHigh > 999) {
+        if balanceHigh > 999 {
             balanceHigh = 999;
             balanceLow = 999;
         }

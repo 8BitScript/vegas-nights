@@ -17,65 +17,61 @@
 // (The assembly's second source pointer once read `next row start - within` where
 // `next row start - (8 - within)` is right, and agreed with these loops only at 0 and 4
 // pixels into a cell row; it is fixed, and test/composer-offsets.test.mjs draws every offset.)
-import { setupVideo, bankIoOut, bankIoIn, memoryPointer } from "@8bitscript/c64";
-import { Video, screenRam } from "@8bitscript/c64/video";
+use @8bitscript::c64::{setupVideo, bankIoOut, bankIoIn, memoryPointer};
+use @8bitscript::c64::video::{Video, screenRam};
 
 // The tileset's address, as a module constant the composer's loops read (a
 // namespace member cannot be named bare inside its own functions).
 const TILE_START: usmallint = 0xC000;
 
 // Bytes a symbol takes in the tileset, told by symbols() (24x24 art: 72, 32x32 art: 128).
-let tileSymbolBytes: usmallint = 72;
+let mut tileSymbolBytes: usmallint = 72;
 
 // The same fixed buffers glyphs.c64.8bs uses (the tileset, the strips, the
 // pre-composed 5x5 strips and their colours). None of them may overlap the
 // character RAM the wasm build keeps at $A000-$AFFF — the backend refuses a
 // build where one does.
-@address(0xC000)
-let tileBytes: array<utinyint, 1024>;
+#[address(0xC000)] let mut tileBytes: [utinyint; 1024];
 
-@address(0xC400)
-let stripBytes: array<utinyint, 320>;
+#[address(0xC400)] let mut stripBytes: [utinyint; 320];
 
-@address(0x8000)
-let stripBuf: array<utinyint, 5920>;
+#[address(0x8000)] let mut stripBuf: [utinyint; 5920];
 
-@address(0x9800)
-let colorBuf: array<utinyint, 740>;
+#[address(0x9800)] let mut colorBuf: [utinyint; 740];
 
-export namespace glyphs {
+pub mod glyphs {
     const AVAILABLE: bool = true;
     const COLOR_STRIP: bool = true;
     const BUFFERED: bool = false;
 
     // Double buffering (glyphs.8bs): this machine has one copy of the glyph block, so none of it does anything.
-    function target(code: utinyint): usmallint {
-        return glyphs.address(code);
+    fn target(code: utinyint) -> usmallint {
+        return glyphs::address(code);
     }
 
-    function hiddenBit(): utinyint {
+    fn hiddenBit() -> utinyint {
         return 0;
     }
 
-    function region(row: utinyint, rows: utinyint): void {
+    fn region(row: utinyint, rows: utinyint) {
     }
 
-    function mirror(first: utinyint, count: utinyint): void {
+    fn mirror(first: utinyint, count: utinyint) {
     }
 
-    function flip(): void {
+    fn flip() {
     }
 
-    function home(): void {
+    fn home() {
     }
 
-    function clone(): void {
+    fn clone() {
     }
 
-    function stageColor(index: usmallint, color: utinyint): void {
+    fn stageColor(index: usmallint, color: utinyint) {
     }
 
-    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
+    fn putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint) {
     }
     const FIRST: utinyint = 128;
     const CODES: utinyint = 127;
@@ -86,38 +82,38 @@ export namespace glyphs {
     const TILE_RAM: usmallint = 0xC000;
     const STRIP_RAM: usmallint = 0xC400;
 
-    function begin(): void {
+    fn begin() {
         setupVideo();
         // The glyphs are written into the mixed-case set (below), so that is the set to show.
         // @8bitscript/text selects it on its first write; the reel cells are written raw (put),
         // which does not, so it is selected here.
-        memoryPointer = Video.MEMORY_POINTER_LOWERCASE;
+        memoryPointer = Video::MEMORY_POINTER_LOWERCASE;
     }
 
     // The mixed-case set ($D018 = MEMORY_POINTER_LOWERCASE) is the second half
     // of the character RAM: +$0800.
-    function address(code: utinyint): usmallint {
-        let offset: usmallint = code;
+    fn address(code: utinyint) -> usmallint {
+        let mut offset: usmallint = code;
         offset = offset * 8;
-        return Video.CHARSET + 2048 + offset;
+        return Video::CHARSET + 2048 + offset;
     }
 
-    function seek(code: utinyint): void {
+    fn seek(code: utinyint) {
     }
 
-    function stage(index: usmallint, value: utinyint): void {
+    fn stage(index: usmallint, value: utinyint) {
         tileBytes[index] = value;
     }
 
-    function put(at: usmallint, code: utinyint): void {
+    fn put(at: usmallint, code: utinyint) {
         screenRam[at] = code;
     }
 
-    function stageStrip(index: usmallint, value: utinyint): void {
+    fn stageStrip(index: usmallint, value: utinyint) {
         stripBytes[index] = value;
     }
 
-    function symbols(count: utinyint, bytes: usmallint): void {
+    fn symbols(count: utinyint, bytes: usmallint) {
         tileSymbolBytes = bytes;
     }
 
@@ -131,94 +127,94 @@ export namespace glyphs {
     // window takes eight pixel rows of the strip from where it is: `run` bytes (8 - within)
     // from the symbol cell it starts in, then `within` from the start of the cell below it —
     // the next cell row of the same symbol, or the first of the next symbol.
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
-        let symbol: usmallint = 0;
-        let here: usmallint = 0;
-        let below: usmallint = 0;
-        let band: utinyint = 0;
-        let within: utinyint = 0;
-        let run: utinyint = 0;
-        let out: usmallint = dest;
-        let rowOffset: utinyint = row;
-        let stopNow: utinyint = stop;
+    fn drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint) {
+        let mut symbol: usmallint = 0;
+        let mut here: usmallint = 0;
+        let mut below: usmallint = 0;
+        let mut band: utinyint = 0;
+        let mut within: utinyint = 0;
+        let mut run: utinyint = 0;
+        let mut out: usmallint = dest;
+        let mut rowOffset: utinyint = row;
+        let mut stopNow: utinyint = stop;
         let height: utinyint = down << 3;
         let stride: utinyint = across << 3;
-        for (let left: utinyint = 0; left < rows; left++) {
-            symbol = memory.read(strip + stopNow);
+        for left: utinyint in 0..rows {
+            symbol = memory::read(strip + stopNow);
             within = rowOffset & 7;
             band = rowOffset >> 3;
             run = 8 - within;
             here = TILE_START;
-            for (let i: utinyint = 0; i < symbol; i++) {
+            for i: utinyint in 0..symbol {
                 here = here + tileSymbolBytes;
             }
             // The cell row this window row starts in, and the one under it.
-            let current: usmallint = here;
-            for (let i: utinyint = 0; i < band; i++) {
+            let mut current: usmallint = here;
+            for i: utinyint in 0..band {
                 current = current + stride;
             }
-            if (band < down - 1) {
+            if band < down - 1 {
                 below = current + stride;
             } else {
-                symbol = memory.read(strip + ((stopNow + 1) & mask));
+                symbol = memory::read(strip + (stopNow + 1 & mask));
                 below = TILE_START;
-                for (let i: utinyint = 0; i < symbol; i++) {
+                for i: utinyint in 0..symbol {
                     below = below + tileSymbolBytes;
                 }
             }
-            for (let glyph: utinyint = 0; glyph < across; glyph++) {
-                let shift: usmallint = glyph;
+            for glyph: utinyint in 0..across {
+                let mut shift: usmallint = glyph;
                 shift = shift * 8;
-                for (let y: utinyint = 0; y < run; y++) {
-                    memory.write(out + y, memory.read(current + shift + within + y));
+                for y: utinyint in 0..run {
+                    memory::write(out + y, memory::read(current + shift + within + y));
                 }
-                for (let y: utinyint = 0; y < within; y++) {
-                    memory.write(out + run + y, memory.read(below + shift + y));
+                for y: utinyint in 0..within {
+                    memory::write(out + run + y, memory::read(below + shift + y));
                 }
                 out = out + 8;
             }
             rowOffset = rowOffset + 8;
-            if (rowOffset >= height) {
+            if rowOffset >= height {
                 rowOffset = rowOffset - height;
-                stopNow = (stopNow + 1) & mask;
+                stopNow = stopNow + 1 & mask;
             }
         }
     }
 
-    function putStrip(index: usmallint, value: utinyint): void {
+    fn putStrip(index: usmallint, value: utinyint) {
         stripBuf[index] = value;
     }
 
     // `count` bytes (at most 255) from the strip buffer at `source` into the
     // glyphs starting at `code`: a straight copy.
-    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
-        let dest: usmallint = glyphs.address(code);
+    fn copyOut(code: utinyint, source: usmallint, count: utinyint) {
+        let dest: usmallint = glyphs::address(code);
         let src: usmallint = 0x8000 + source;
-        for (let i: utinyint = 0; i < count; i++) {
-            memory.write(dest + i, memory.read(src + i));
+        for i: utinyint in 0..count {
+            memory::write(dest + i, memory::read(src + i));
         }
     }
 
-    function putColorStrip(index: usmallint, value: utinyint): void {
+    fn putColorStrip(index: usmallint, value: utinyint) {
         colorBuf[index] = value;
     }
 
     // `count` colours from the colour buffer at `source` into colour RAM, one a
     // text row (40 cells) apart, down from text cell `cell`.
-    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
-        let dest: usmallint = 0xD800 + cell;
+    fn copyColors(cell: usmallint, source: usmallint, count: utinyint) {
+        let mut dest: usmallint = 0xD800 + cell;
         let src: usmallint = 0x9800 + source;
-        for (let i: utinyint = 0; i < count; i++) {
-            memory.write(dest, memory.read(src + i));
+        for i: utinyint in 0..count {
+            memory::write(dest, memory::read(src + i));
             dest = dest + 40;
         }
     }
 
-    function open(): void {
+    fn open() {
         bankIoOut();
     }
 
-    function close(): void {
+    fn close() {
         bankIoIn();
     }
 }

@@ -1,11 +1,11 @@
 // The reels on the PET: the quadrant composer (quad.8bs), in four-pixel steps (a whole cell row, eight pixels,
 // is a block copy), no colour. The block is 22 columns wide on a 40-column screen; under it a blank row, then three lines of text.
 // The game calls only this interface; see view.8bs for what each function means.
-import { text } from "@8bitscript/text";
-import { layout } from "@shared/layout.8bs";
-import { quad } from "./quad.8bs";
+use @8bitscript::text::text;
+use "@shared/layout.8bs"::layout;
+use self::quad::quad;
 
-export namespace view {
+pub mod view {
     // ---- where everything else goes, in cells from the block's left edge ----
     const BLOCK_WIDTH: utinyint = 22;
     const CREDIT_ROW: utinyint = 22;
@@ -18,38 +18,38 @@ export namespace view {
     const MESSAGE_COL: utinyint = 0;
     const MESSAGE_WIDTH: utinyint = 22;
 
-    function statics(): void {
-        text.print(layout.cell(0, 0), "VEGAS NIGHTS 3X3");
-        text.print(layout.cell(0, 22), "CREDIT");
-        text.print(layout.cell(16, 22), "BET");
-        text.print(layout.cell(0, 23), "WIN");
-        text.print(layout.cell(16, 23), "UP DOWN: BET");
+    fn statics() {
+        text::print(layout::cell(0, 0), "VEGAS NIGHTS 3X3");
+        text::print(layout::cell(0, 22), "CREDIT");
+        text::print(layout::cell(16, 22), "BET");
+        text::print(layout::cell(0, 23), "WIN");
+        text::print(layout::cell(16, 23), "UP DOWN: BET");
     }
 
-    function begin(): void {
-        quad.begin();
+    fn begin() {
+        quad::begin();
     }
 
-    function draw(reel: utinyint): void {
-        quad.draw(reel);
+    fn draw(reel: utinyint) {
+        quad::draw(reel);
     }
 
-    function drawAll(): void {
-        quad.drawAll();
+    fn drawAll() {
+        quad::drawAll();
     }
 
-    function moved(reel: utinyint, pixels: utinyint): void {
-        quad.moved(reel, pixels);
+    fn moved(reel: utinyint, pixels: utinyint) {
+        quad::moved(reel, pixels);
     }
 
-    function flashLine(line: utinyint, on: bool): void {
-        quad.flashLine(line, on);
+    fn flashLine(line: utinyint, on: bool) {
+        quad::flashLine(line, on);
     }
 
     // The reels are drawn straight to the screen here: nothing is held back to show later.
-    function flush(): void {
+    fn flush() {
     }
 
-    function sync(): void {
+    fn sync() {
     }
 }

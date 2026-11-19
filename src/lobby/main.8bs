@@ -5,25 +5,25 @@
 // A lobby cannot launch a lab: 8BitScript has no program chaining yet, so
 // each lab is its own build. The screen says how to run one; README.md has
 // the full list.
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { input } from "@8bitscript/input";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use @8bitscript::input::input;
 
-const ROW: usmallint = text.COLUMNS;
+const ROW: usmallint = text::COLUMNS;
 
-export function main(): void {
-    screen.blank();
-    input.begin();
+pub fn main() {
+    screen::blank();
+    input::begin();
 
-    text.print(2 * ROW + 1, "VEGAS NIGHTS");
-    text.print(4 * ROW + 1, "THE SLOT LAB");
-    text.print(7 * ROW + 1, "RUN A LAB WITH");
-    text.print(8 * ROW + 1, "THE EDITOR TASKS");
-    text.print(9 * ROW + 1, "OR PNPM SCRIPTS");
-    text.print(11 * ROW + 1, "SEE README");
+    text::print(2 * ROW + 1, "VEGAS NIGHTS");
+    text::print(4 * ROW + 1, "THE SLOT LAB");
+    text::print(7 * ROW + 1, "RUN A LAB WITH");
+    text::print(8 * ROW + 1, "THE EDITOR TASKS");
+    text::print(9 * ROW + 1, "OR PNPM SCRIPTS");
+    text::print(11 * ROW + 1, "SEE README");
 
-    while (true) {
+    loop {
         waitFrame();
-        input.poll();
+        input::poll();
     }
 }

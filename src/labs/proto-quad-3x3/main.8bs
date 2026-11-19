@@ -5,178 +5,175 @@
 //   8bs run <machine> --program proto-quad-3x3 --define REST=1              held at rest
 //   8bs run <machine> --program proto-quad-3x3 --define SPEED=1             spinning (pseudo-pixel rows a frame)
 //   8bs run <machine> --program proto-quad-3x3 --define REPS=60             measuring: redraw all reels 60 times, then DONE
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { cells } from "@shared/cells.8bs";
-import { layout } from "@shared/layout.8bs";
-import { scr } from "../proto-quad-shared/scr.8bs";
-import { move } from "../proto-quad-shared/move.8bs";
-import { REELS, STOPS, STOP_MASK, STRIPS } from "@generated/classic3x3.8bs";
-import {
-    FRAME_CODE, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR,
-    FRAME_DIV, FRAME_DIVT, FRAME_DIVB
-} from "@generated/tiles/classic.pet.8bs";
-import { S, NSYM, C0, C1, CX, K } from "./data.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use "@shared/cells.8bs"::cells;
+use "@shared/layout.8bs"::layout;
+use "../proto-quad-shared/scr.8bs"::scr;
+use "../proto-quad-shared/move.8bs"::move;
+use "@generated/classic3x3.8bs"::{REELS, STOPS, STOP_MASK, STRIPS};
+use "@generated/tiles/classic.pet.8bs"::{FRAME_CODE, FRAME_TL, FRAME_T, FRAME_TR, FRAME_L, FRAME_R, FRAME_BL, FRAME_B, FRAME_BR, FRAME_DIV, FRAME_DIVT, FRAME_DIVB};
+use self::data::{S, NSYM, C0, C1, CX, K};
 
 const REST: utinyint = #define("REST", 0);
 const SPEED: utinyint = #define("SPEED", 1);
 const REPS: usmallint = #define("REPS", 0);
-const HOP: utinyint = #define("HOP", 0);          // 1: scroll a whole cell row (8 pixels) by moving the cells in compiled code; 2: the same move as a 6502 block copy; the new top row is composed either way
+const HOP: utinyint = #define("HOP", 0); // 1: scroll a whole cell row (8 pixels) by moving the cells in compiled code; 2: the same move as a 6502 block copy; the new top row is composed either way
 
-const SHOWN: utinyint = 3;            // symbols a reel shows
-const TOP: utinyint = 2;             // the window's first text row
-const WIDTH: utinyint = 22;            // frame + reels + dividers, in cells
-const ROWS_PX: utinyint = 12;              // pseudo-pixel rows in a symbol
+const SHOWN: utinyint = 3; // symbols a reel shows
+const TOP: utinyint = 2; // the window's first text row
+const WIDTH: utinyint = 22; // frame + reels + dividers, in cells
+const ROWS_PX: utinyint = 12; // pseudo-pixel rows in a symbol
 
-let stopOf: array<utinyint, 5>;
-let lineOf: array<utinyint, 5>;
+let mut stopOf: [utinyint; 5];
+let mut lineOf: [utinyint; 5];
 
-function drawFrame(): void {
-    for (let col: utinyint = 0; col < WIDTH; col++) {
-        let top: utinyint = FRAME_T;
-        let low: utinyint = FRAME_B;
-        if (col == 0) {
+fn drawFrame() {
+    for col: utinyint in 0..WIDTH {
+        let mut top: utinyint = FRAME_T;
+        let mut low: utinyint = FRAME_B;
+        if col == 0 {
             top = FRAME_TL;
             low = FRAME_BL;
-        } else if (col == WIDTH - 1) {
+        } else if col == WIDTH - 1 {
             top = FRAME_TR;
             low = FRAME_BR;
-        } else if ((col % (S + 1)) == 0) {
+        } else if col % (S + 1) == 0 {
             top = FRAME_DIVT;
             low = FRAME_DIVB;
         }
-        let above: usmallint = layout.cell(col, TOP - 1);
-        let below: usmallint = layout.cell(col, TOP + SHOWN * S);
-        cells.put(above, FRAME_CODE[top]);
-        cells.put(below, FRAME_CODE[low]);
-        cells.tint(above, 7);
-        cells.tint(below, 7);
+        let above: usmallint = layout::cell(col, TOP - 1);
+        let below: usmallint = layout::cell(col, TOP + SHOWN * S);
+        cells::put(above, FRAME_CODE[top]);
+        cells::put(below, FRAME_CODE[low]);
+        cells::tint(above, 7);
+        cells::tint(below, 7);
     }
-    for (let row: utinyint = 0; row < SHOWN * S; row++) {
-        let side: usmallint = layout.cell(0, TOP + row);
-        cells.put(side, FRAME_CODE[FRAME_L]);
-        cells.put(side + WIDTH - 1, FRAME_CODE[FRAME_R]);
-        cells.tint(side, 7);
-        cells.tint(side + WIDTH - 1, 7);
-        for (let reel: utinyint = 1; reel < REELS; reel++) {
-            cells.put(side + reel * (S + 1), FRAME_CODE[FRAME_DIV]);
-            cells.tint(side + reel * (S + 1), 2);
+    for row: utinyint in 0..SHOWN * S {
+        let side: usmallint = layout::cell(0, TOP + row);
+        cells::put(side, FRAME_CODE[FRAME_L]);
+        cells::put(side + WIDTH - 1, FRAME_CODE[FRAME_R]);
+        cells::tint(side, 7);
+        cells::tint(side + WIDTH - 1, 7);
+        for reel: utinyint in 1..REELS {
+            cells::put(side + reel * (S + 1), FRAME_CODE[FRAME_DIV]);
+            cells::tint(side + reel * (S + 1), 2);
         }
     }
 }
 
 // One display row: S cells at `at`, from pseudo-pixel row `r` of strip symbol `i` (strip = the reel's offset into STRIPS).
-function drawRow(strip: usmallint, i: utinyint, r: utinyint, at: usmallint): void {
+fn drawRow(strip: usmallint, i: utinyint, r: utinyint, at: usmallint) {
     let s: usmallint = STRIPS[strip + i];
     let k: usmallint = r >> 1;
-    if (cells.COLORED) {
-        let ink: usmallint = s * S + k;
+    if cells::COLORED {
+        let mut ink: usmallint = s * S + k;
         ink = ink * S;
-        for (let c: utinyint = 0; c < S; c++) {
-            cells.tint(at + c, K[ink + c]);
+        for c: utinyint in 0..S {
+            cells::tint(at + c, K[ink + c]);
         }
     }
-    if ((r & 1) == 0) {
-        let base: usmallint = s * S + k;
+    if (r & 1) == 0 {
+        let mut base: usmallint = s * S + k;
         base = base * S;
-        for (let c: utinyint = 0; c < S; c++) {
-            cells.put(at + c, C0[base + c]);
+        for c: utinyint in 0..S {
+            cells::put(at + c, C0[base + c]);
         }
-    } else if (r < ROWS_PX - 1) {
-        let base: usmallint = s * (S - 1) + k;
+    } else if r < ROWS_PX - 1 {
+        let mut base: usmallint = s * (S - 1) + k;
         base = base * S;
-        for (let c: utinyint = 0; c < S; c++) {
-            cells.put(at + c, C1[base + c]);
+        for c: utinyint in 0..S {
+            cells::put(at + c, C1[base + c]);
         }
     } else {
-        let next: usmallint = STRIPS[strip + ((i + 1) & STOP_MASK)];
-        let base: usmallint = s * NSYM + next;
+        let next: usmallint = STRIPS[strip + (i + 1 & STOP_MASK)];
+        let mut base: usmallint = s * NSYM + next;
         base = base * S;
-        for (let c: utinyint = 0; c < S; c++) {
-            cells.put(at + c, CX[base + c]);
+        for c: utinyint in 0..S {
+            cells::put(at + c, CX[base + c]);
         }
     }
 }
 
 // One reel: SHOWN * S display rows of S cells, from pseudo-pixel row `line` of strip symbol `stop`.
-function drawReel(reel: utinyint): void {
-    let strip: usmallint = reel;
+fn drawReel(reel: utinyint) {
+    let mut strip: usmallint = reel;
     strip = strip * STOPS;
-    let at: usmallint = layout.cell(1 + reel * (S + 1), TOP);
-    let i: utinyint = stopOf[reel];
-    let r: utinyint = lineOf[reel];
-    for (let d: utinyint = 0; d < SHOWN * S; d++) {
+    let mut at: usmallint = layout::cell(1 + reel * (S + 1), TOP);
+    let mut i: utinyint = stopOf[reel];
+    let mut r: utinyint = lineOf[reel];
+    for d: utinyint in 0..SHOWN * S {
         drawRow(strip, i, r, at);
-        at = at + text.COLUMNS;
+        at = at + text::COLUMNS;
         r = r + 2;
-        if (r >= ROWS_PX) {
+        if r >= ROWS_PX {
             r = r - ROWS_PX;
-            i = (i + 1) & STOP_MASK;
+            i = i + 1 & STOP_MASK;
         }
     }
 }
 
 // A whole cell row (8 pixels) of scroll: every row of the reel moves down one, the new top row is composed.
 // The window's phase (even or odd pseudo-pixel row) does not change, so it is one table, one row.
-function hop(reel: utinyint): void {
-    let strip: usmallint = reel;
+fn hop(reel: utinyint) {
+    let mut strip: usmallint = reel;
     strip = strip * STOPS;
     let rows: utinyint = SHOWN * S;
-    let top: usmallint = layout.cell(1 + reel * (S + 1), TOP);
-    if (HOP == 2) {
-        move.down(scr.SCREEN + top, rows, S, text.COLUMNS);
-        if (cells.COLORED) {
-            move.down(scr.COLOR + top, rows, S, text.COLUMNS);
+    let top: usmallint = layout::cell(1 + reel * (S + 1), TOP);
+    if HOP == 2 {
+        move::down(scr::SCREEN + top, rows, S, text::COLUMNS);
+        if cells::COLORED {
+            move::down(scr::COLOR + top, rows, S, text::COLUMNS);
         }
     } else {
-        let to: usmallint = rows - 1;
-        to = to * text.COLUMNS + top;
-        for (let d: utinyint = 1; d < rows; d++) {
-            let up: usmallint = to - text.COLUMNS;
-            for (let c: utinyint = 0; c < S; c++) {
-                cells.put(to + c, scr.code(up + c));
-                if (cells.COLORED) {
-                    cells.tint(to + c, scr.ink(up + c));
+        let mut to: usmallint = rows - 1;
+        to = to * text::COLUMNS + top;
+        for d: utinyint in 1..rows {
+            let up: usmallint = to - text::COLUMNS;
+            for c: utinyint in 0..S {
+                cells::put(to + c, scr::code(up + c));
+                if cells::COLORED {
+                    cells::tint(to + c, scr::ink(up + c));
                 }
             }
             to = up;
         }
     }
-    if (lineOf[reel] >= 2) {
+    if lineOf[reel] >= 2 {
         lineOf[reel] = lineOf[reel] - 2;
     } else {
         lineOf[reel] = lineOf[reel] + ROWS_PX - 2;
-        stopOf[reel] = (stopOf[reel] + STOP_MASK) & STOP_MASK;
+        stopOf[reel] = stopOf[reel] + STOP_MASK & STOP_MASK;
     }
     drawRow(strip, stopOf[reel], lineOf[reel], top);
 }
 
 // The window moves up the strip one pseudo-pixel row: the symbols slide down.
-function step(reel: utinyint): void {
-    if (lineOf[reel] == 0) {
+fn step(reel: utinyint) {
+    if lineOf[reel] == 0 {
         lineOf[reel] = ROWS_PX - 1;
-        stopOf[reel] = (stopOf[reel] + STOP_MASK) & STOP_MASK;
+        stopOf[reel] = stopOf[reel] + STOP_MASK & STOP_MASK;
     } else {
         lineOf[reel] = lineOf[reel] - 1;
     }
 }
 
-export function main(): void {
-    screen.blank();
-    layout.centre(WIDTH);
+pub fn main() {
+    screen::blank();
+    layout::centre(WIDTH);
     drawFrame();
-    text.print(layout.cell(0, 0), "VEGAS NIGHTS QUADRANT REELS 3X3");
-    text.print(layout.cell(0, TOP + SHOWN * S + 1), "CREDIT 001900");
-    text.print(layout.cell(0, TOP + SHOWN * S + 2), "BET 000100  WIN 000000");
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        stopOf[reel] = (3 + reel * 11) & STOP_MASK;
+    text::print(layout::cell(0, 0), "VEGAS NIGHTS QUADRANT REELS 3X3");
+    text::print(layout::cell(0, TOP + SHOWN * S + 1), "CREDIT 001900");
+    text::print(layout::cell(0, TOP + SHOWN * S + 2), "BET 000100  WIN 000000");
+    for reel: utinyint in 0..REELS {
+        stopOf[reel] = 3 + reel * 11 & STOP_MASK;
         lineOf[reel] = 0;
         drawReel(reel);
     }
-    if (REPS > 0) {
-        for (let n: usmallint = 0; n < REPS; n++) {
-            for (let reel: utinyint = 0; reel < REELS; reel++) {
-                if (HOP > 0) {
+    if REPS > 0 {
+        for n: usmallint in 0..REPS {
+            for reel: utinyint in 0..REELS {
+                if HOP > 0 {
                     hop(reel);
                 } else {
                     step(reel);
@@ -184,17 +181,17 @@ export function main(): void {
                 }
             }
         }
-        text.print(layout.cell(17, TOP + SHOWN * S + 1), "DONE");
-        while (true) {
+        text::print(layout::cell(17, TOP + SHOWN * S + 1), "DONE");
+        loop {
             waitFrame();
         }
     }
-    while (true) {
+    loop {
         waitFrame();
-        if (REST == 0) {
-            for (let n: utinyint = 0; n < SPEED; n++) {
-                for (let reel: utinyint = 0; reel < REELS; reel++) {
-                    if (HOP > 0) {
+        if REST == 0 {
+            for n: utinyint in 0..SPEED {
+                for reel: utinyint in 0..REELS {
+                    if HOP > 0 {
                         hop(reel);
                     } else {
                         step(reel);

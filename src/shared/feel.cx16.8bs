@@ -3,7 +3,7 @@
 // (24 to a symbol in the 3x3, 16 in the 5x5) and drawn at two or three pixels a row, so 4 rows is
 // 8 pixels a frame in the 3x3 and 12 in the 5x5 — 480 to 720 a second, a blur you can still read
 // as a reel. FAR must divide both 24 and 16.
-export namespace feel {
+pub mod feel {
     const WAIT: utinyint = 0;
     const FAR: utinyint = 4;
     const REEL_WAIT: utinyint = 0;

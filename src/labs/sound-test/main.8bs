@@ -5,21 +5,21 @@
 // Up and down choose the effect, confirm plays it. It also plays all five once,
 // a second after it starts, because a headless run cannot press anything:
 // scripts/sound.mjs records that run's audio and checks each effect's notes.
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { input } from "@8bitscript/input";
-import { sfx } from "@shared/sfx.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use @8bitscript::input::input;
+use "@shared/sfx.8bs"::sfx;
 
-const ROW: usmallint = text.COLUMNS;
+const ROW: usmallint = text::COLUMNS;
 const EFFECTS: utinyint = 5;
 
 // The first menu row; the entries are two rows apart.
 const FIRST_ROW: utinyint = 6;
 
-let chosen: utinyint = 0;
-let drawn: utinyint = 255;
+let mut chosen: utinyint = 0;
+let mut drawn: utinyint = 255;
 
-function markCell(effect: utinyint): usmallint {
+fn markCell(effect: utinyint) -> usmallint {
     let cell: usmallint = FIRST_ROW + effect + effect;
     return cell * ROW + 1;
 }
@@ -28,52 +28,52 @@ function markCell(effect: utinyint): usmallint {
 // whole list. A sound counts frames in calls of sfx.update(), so a loop that
 // takes longer than a frame to draw stretches it (a VIC-20 redrawing five
 // rows did, by a frame).
-function mark(): void {
-    if (drawn != 255) {
-        text.print(markCell(drawn), " ");
+fn mark() {
+    if drawn != 255 {
+        text::print(markCell(drawn), " ");
     }
-    text.print(markCell(chosen), "-");
+    text::print(markCell(chosen), "-");
     drawn = chosen;
 }
 
-function play(): void {
-    if (chosen == 0) {
-        sfx.tick();
-    } else if (chosen == 1) {
-        sfx.stop();
-    } else if (chosen == 2) {
-        sfx.win();
-    } else if (chosen == 3) {
-        sfx.big();
+fn play() {
+    if chosen == 0 {
+        sfx::tick();
+    } else if chosen == 1 {
+        sfx::stop();
+    } else if chosen == 2 {
+        sfx::win();
+    } else if chosen == 3 {
+        sfx::big();
     } else {
-        sfx.bonus();
+        sfx::bonus();
     }
 }
 
-export function main(): void {
-    screen.blank();
-    input.begin();
+pub fn main() {
+    screen::blank();
+    input::begin();
 
-    text.print(2 * ROW + 1, "SOUND TEST");
-    text.print(4 * ROW + 1, "UP DOWN CONFIRM");
-    text.print((FIRST_ROW + 0) * ROW + 3, "TICK");
-    text.print((FIRST_ROW + 2) * ROW + 3, "STOP");
-    text.print((FIRST_ROW + 4) * ROW + 3, "WIN");
-    text.print((FIRST_ROW + 6) * ROW + 3, "BIG WIN");
-    text.print((FIRST_ROW + 8) * ROW + 3, "BONUS");
+    text::print(2 * ROW + 1, "SOUND TEST");
+    text::print(4 * ROW + 1, "UP DOWN CONFIRM");
+    text::print((FIRST_ROW + 0) * ROW + 3, "TICK");
+    text::print((FIRST_ROW + 2) * ROW + 3, "STOP");
+    text::print((FIRST_ROW + 4) * ROW + 3, "WIN");
+    text::print((FIRST_ROW + 6) * ROW + 3, "BIG WIN");
+    text::print((FIRST_ROW + 8) * ROW + 3, "BONUS");
     mark();
 
     // Each effect once at the start, 40 frames apart, so a recording of a
     // run that presses nothing hears all five. Then the keys take over.
-    let demo: utinyint = 0;
-    let wait: utinyint = 60;
+    let mut demo: utinyint = 0;
+    let mut wait: utinyint = 60;
 
-    while (true) {
+    loop {
         waitFrame();
-        sfx.update();
-        input.poll();
-        if (demo < EFFECTS && !sfx.busy()) {
-            if (wait == 0) {
+        sfx::update();
+        input::poll();
+        if demo < EFFECTS && !sfx::busy() {
+            if wait == 0 {
                 // Sound first, then the slow drawing: a step is counted in
                 // calls of sfx.update(), so the first one is as long as the
                 // frame's remainder after this call.
@@ -86,15 +86,15 @@ export function main(): void {
                 wait = wait - 1;
             }
         }
-        if (input.up() && chosen > 0) {
+        if input::up() && chosen > 0 {
             chosen = chosen - 1;
             mark();
         }
-        if (input.down() && chosen + 1 < EFFECTS) {
+        if input::down() && chosen + 1 < EFFECTS {
             chosen = chosen + 1;
             mark();
         }
-        if (input.confirm()) {
+        if input::confirm() {
             play();
         }
     }

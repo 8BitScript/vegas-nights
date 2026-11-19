@@ -6,30 +6,30 @@
 // to half. So the largest N that keeps up, times the cost of the counting itself, bounds what one
 // redraw of three reels costs: 133,333 / N cycles at most. The number printed is the count.
 //   8bs run cx16 --program x16-draw-cost --define N=20 --screenshot out.png --frames 400
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { layout } from "@shared/layout.8bs";
-import { reelscroll } from "@shared/reelscroll.8bs";
-import { view } from "../slot3x3/view.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use "@shared/layout.8bs"::layout;
+use "@shared/reelscroll.8bs"::reelscroll;
+use super::slot3x3::view::view;
 
 const N: utinyint = #define("N", 20);
 
-export function main(): void {
-    screen.blank();
-    layout.centre(view.BLOCK_WIDTH);
-    for (let reel: utinyint = 0; reel < 3; reel++) {
-        reelscroll.place(reel, reel * 7);
+pub fn main() {
+    screen::blank();
+    layout::centre(view::BLOCK_WIDTH);
+    for reel: utinyint in 0..3 {
+        reelscroll::place(reel, reel * 7);
     }
-    view.begin();
-    let frames: usmallint = 0;
-    while (true) {
+    view::begin();
+    let mut frames: usmallint = 0;
+    loop {
         waitFrame();
-        for (let n: utinyint = 0; n < N; n++) {
-            view.draw(0);
-            view.draw(1);
-            view.draw(2);
+        for n: utinyint in 0..N {
+            view::draw(0);
+            view::draw(1);
+            view::draw(2);
         }
         frames = frames + 1;
-        text.printNumber(layout.cell(1, 1), frames, 5);
+        text::printNumber(layout::cell(1, 1), frames, 5);
     }
 }

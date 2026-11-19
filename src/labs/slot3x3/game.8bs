@@ -11,28 +11,23 @@
 //
 // States: IDLE (waiting for confirm) -> SPINNING (reels scrolling, stopping one
 // after another) -> PAYING (the winning lines flash) -> IDLE.
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import { input } from "@8bitscript/input";
-import { pointer } from "@8bitscript/pointer";
-import { random } from "@8bitscript/random";
-import { bank } from "@shared/bank.8bs";
-import { reelscroll } from "@shared/reelscroll.8bs";
-import { layout } from "@shared/layout.8bs";
-import { symbolpx } from "@shared/symbolpx.8bs";
-import { sound } from "@shared/sound.8bs";
-import { view } from "./view.8bs";
-import {
-    REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS,
-    LINE_COUNT, PAY_WIDTH, JACKPOT_DRAW_MASK,
-    STRIPS, BET_LEVELS, LINES, PAYS,
-    JACKPOT_SEED, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO
-} from "@generated/classic3x3.8bs";
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use @8bitscript::input::input;
+use @8bitscript::pointer::pointer;
+use @8bitscript::random::random;
+use "@shared/bank.8bs"::bank;
+use "@shared/reelscroll.8bs"::reelscroll;
+use "@shared/layout.8bs"::layout;
+use "@shared/symbolpx.8bs"::symbolpx;
+use "@shared/sound.8bs"::sound;
+use self::view::view;
+use "@generated/classic3x3.8bs"::{REELS, ROWS, STOPS, STOP_MASK, BET_CREDITS, LINE_COUNT, PAY_WIDTH, JACKPOT_DRAW_MASK, STRIPS, BET_LEVELS, LINES, PAYS, JACKPOT_SEED, JACKPOT_MIN_BET, JACKPOT_RANGE_FROM, JACKPOT_RANGE_TO};
 
 // The seed a person at the keyboard plays from; a headless run names its own, so
 // a screenshot reproduces the same spins on every machine (the test computes the
 // same draws in JavaScript).
-export const DEFAULT_SEED: usmallint = 2026;
+pub const DEFAULT_SEED: usmallint = 2026;
 const START_CREDITS: usmallint = 2000;
 const BIG_WIN: usmallint = 2000; // credits at the base bet: twenty bets or more is a big pay
 
@@ -41,98 +36,98 @@ const BIG_WIN: usmallint = 2000; // credits at the base bet: twenty bets or more
 
 // The frame after which the machine stops changing the picture (0: never); see play().
 const FREEZE: usmallint = #define("FREEZE", 0);
-let ticks: usmallint = 0;
+let mut ticks: usmallint = 0;
 
-let state: utinyint = 0;       // 0 idle, 1 spinning, 2 paying
-let betIndex: utinyint = 0;
-let multiplier: utinyint = 1;
-let targets: array<utinyint, 3>;
-let jackpotHit: bool = false;
-let lineWin: array<utinyint, 3>;
-let autoLeft: utinyint = 0;
-let idleFrames: utinyint = 0;
-let flashLeft: utinyint = 0;
-let flashWait: utinyint = 0;
-let stoppedReels: utinyint = 0;
+let mut state: utinyint = 0; // 0 idle, 1 spinning, 2 paying
+let mut betIndex: utinyint = 0;
+let mut multiplier: utinyint = 1;
+let mut targets: [utinyint; 3];
+let mut jackpotHit: bool = false;
+let mut lineWin: [utinyint; 3];
+let mut autoLeft: utinyint = 0;
+let mut idleFrames: utinyint = 0;
+let mut flashLeft: utinyint = 0;
+let mut flashWait: utinyint = 0;
+let mut stoppedReels: utinyint = 0;
 
 // The symbol a reel shows on `row` of the window when it rests on `stop`.
-function symbolAt(reel: utinyint, stop: utinyint, row: utinyint): utinyint {
-    return STRIPS[reel * STOPS + ((stop + row) & STOP_MASK)];
+fn symbolAt(reel: utinyint, stop: utinyint, row: utinyint) -> utinyint {
+    return STRIPS[reel * STOPS + (stop + row & STOP_MASK)];
 }
 
-function clearMessage(): void {
-    let at: usmallint = layout.cell(view.MESSAGE_COL, view.MESSAGE_ROW);
-    for (let i: utinyint = 0; i < view.MESSAGE_WIDTH; i++) {
-        text.putChar(at + i, 32);
+fn clearMessage() {
+    let at: usmallint = layout::cell(view::MESSAGE_COL, view::MESSAGE_ROW);
+    for i: utinyint in 0..view::MESSAGE_WIDTH {
+        text::putChar(at + i, 32);
     }
 }
 
 // Six digits, as two adjacent fields of three (see shared/bank.8bs for why).
-function drawCredit(): void {
-    text.printNumber(layout.cell(view.CREDIT_NUM, view.CREDIT_ROW), bank.high(), 3);
-    text.printNumber(layout.cell(view.CREDIT_NUM + 3, view.CREDIT_ROW), bank.low(), 3);
+fn drawCredit() {
+    text::printNumber(layout::cell(view::CREDIT_NUM, view::CREDIT_ROW), bank::high(), 3);
+    text::printNumber(layout::cell(view::CREDIT_NUM + 3, view::CREDIT_ROW), bank::low(), 3);
 }
 
-function drawBet(): void {
-    text.printNumber(layout.cell(view.BET_NUM, view.BET_ROW), 0, 3);
-    text.printNumber(layout.cell(view.BET_NUM + 3, view.BET_ROW), BET_CREDITS * multiplier, 3);
+fn drawBet() {
+    text::printNumber(layout::cell(view::BET_NUM, view::BET_ROW), 0, 3);
+    text::printNumber(layout::cell(view::BET_NUM + 3, view::BET_ROW), BET_CREDITS * multiplier, 3);
 }
 
-function drawWin(): void {
-    text.printNumber(layout.cell(view.WIN_NUM, view.WIN_ROW), bank.winThousands(), 3);
-    text.printNumber(layout.cell(view.WIN_NUM + 3, view.WIN_ROW), bank.winUnits(), 3);
+fn drawWin() {
+    text::printNumber(layout::cell(view::WIN_NUM, view::WIN_ROW), bank::winThousands(), 3);
+    text::printNumber(layout::cell(view::WIN_NUM + 3, view::WIN_ROW), bank::winUnits(), 3);
 }
 
-function message(which: utinyint): void {
+fn message(which: utinyint) {
     clearMessage();
-    let at: usmallint = layout.cell(view.MESSAGE_COL, view.MESSAGE_ROW);
-    if (which == 1) {
-        text.print(at, "SPINNING");
-    } else if (which == 2) {
-        text.print(at, "WINNER!");
-    } else if (which == 3) {
-        text.print(at, "JACKPOT!");
-    } else if (which == 4) {
-        text.print(at, "NO WIN");
-    } else if (which == 5) {
-        text.print(at, "NEED CREDIT");
+    let at: usmallint = layout::cell(view::MESSAGE_COL, view::MESSAGE_ROW);
+    if which == 1 {
+        text::print(at, "SPINNING");
+    } else if which == 2 {
+        text::print(at, "WINNER!");
+    } else if which == 3 {
+        text::print(at, "JACKPOT!");
+    } else if which == 4 {
+        text::print(at, "NO WIN");
+    } else if which == 5 {
+        text::print(at, "NEED CREDIT");
     } else {
-        text.print(at, "PRESS KEY");
+        text::print(at, "PRESS KEY");
     }
 }
 
 // ---- play ----------------------------------------------------------------
 
-function setBet(index: utinyint): void {
+fn setBet(index: utinyint) {
     betIndex = index;
     multiplier = BET_LEVELS[index];
     drawBet();
 }
 
-function startSpin(): void {
-    bank.take(BET_CREDITS * multiplier);
-    bank.clearWin();
+fn startSpin() {
+    bank::take(BET_CREDITS * multiplier);
+    bank::clearWin();
     // The draw plan, in the order tools/slotmath documents: one byte per
     // reel (& STOP_MASK), then two for the jackpot (little-endian).
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        let byte: utinyint = random.next();
+    for reel: utinyint in 0..REELS {
+        let byte: utinyint = random::next();
         targets[reel] = byte & STOP_MASK;
         // Each reel runs at least six more symbols than the one before.
-        let minimum: usmallint = reel;
+        let mut minimum: usmallint = reel;
         minimum = minimum + 1;
-        minimum = minimum * (symbolpx.CELLS_H * 48);
-        reelscroll.start(reel, targets[reel], minimum, STOPS);
+        minimum = minimum * (symbolpx::CELLS_H * 48);
+        reelscroll::start(reel, targets[reel], minimum, STOPS);
     }
-    let low: utinyint = random.next();
-    let high: utinyint = random.next();
-    let draw: usmallint = high;
+    let low: utinyint = random::next();
+    let high: utinyint = random::next();
+    let mut draw: usmallint = high;
     draw = draw << 8;
     draw = draw | low;
     draw = draw & JACKPOT_DRAW_MASK;
     jackpotHit = false;
-    if (draw >= JACKPOT_RANGE_FROM[0]) {
-        if (draw < JACKPOT_RANGE_TO[0]) {
-            if (multiplier >= JACKPOT_MIN_BET[0]) {
+    if draw >= JACKPOT_RANGE_FROM[0] {
+        if draw < JACKPOT_RANGE_TO[0] {
+            if multiplier >= JACKPOT_MIN_BET[0] {
                 jackpotHit = true;
             }
         }
@@ -147,58 +142,58 @@ function startSpin(): void {
 // The pay of one line, in credits at the base bet: the longest run of one
 // symbol from the first reel, looked up in the paytable. Reels are at rest, so
 // each is on a whole stop.
-function linePay(line: utinyint): usmallint {
-    let first: utinyint = symbolAt(0, reelscroll.stop(0), LINES[line * REELS]);
-    let second: utinyint = symbolAt(1, reelscroll.stop(1), LINES[line * REELS + 1]);
-    let third: utinyint = symbolAt(2, reelscroll.stop(2), LINES[line * REELS + 2]);
-    let run: utinyint = 1;
-    if (second == first) {
+fn linePay(line: utinyint) -> usmallint {
+    let first: utinyint = symbolAt(0, reelscroll::stop(0), LINES[line * REELS]);
+    let second: utinyint = symbolAt(1, reelscroll::stop(1), LINES[line * REELS + 1]);
+    let third: utinyint = symbolAt(2, reelscroll::stop(2), LINES[line * REELS + 2]);
+    let mut run: utinyint = 1;
+    if second == first {
         run = 2;
-        if (third == first) {
+        if third == first {
             run = 3;
         }
     }
     return PAYS[first * PAY_WIDTH + run];
 }
 
-function settle(): void {
-    let base: usmallint = 0;
-    for (let line: utinyint = 0; line < LINE_COUNT; line++) {
+fn settle() {
+    let mut base: usmallint = 0;
+    for line: utinyint in 0..LINE_COUNT {
         let pay: usmallint = linePay(line);
         lineWin[line] = 0;
-        if (pay != 0) {
+        if pay != 0 {
             lineWin[line] = 1;
-            base = bank.sum(base, pay);
+            base = bank::sum(base, pay);
         }
     }
     // The win is the lines' credits times the bet, plus the jackpot's, in credits
     // that are exact at every bet (the bank holds six digits).
-    for (let i: utinyint = 0; i < multiplier; i++) {
-        bank.addWin(base);
-        if (jackpotHit) {
-            bank.addWin(JACKPOT_SEED[0]);
+    for i: utinyint in 0..multiplier {
+        bank::addWin(base);
+        if jackpotHit {
+            bank::addWin(JACKPOT_SEED[0]);
         }
     }
-    bank.collect();
+    bank::collect();
     drawCredit();
     drawWin();
     flashLeft = 0;
-    if (jackpotHit) {
+    if jackpotHit {
         message(3);
-        sound.bonus();
-    } else if (bank.winning()) {
+        sound::bonus();
+    } else if bank::winning() {
         message(2);
         // A pay of twenty times the bet or more (the engine's credits at the base bet) is big.
-        if (base >= BIG_WIN) {
-            sound.big();
+        if base >= BIG_WIN {
+            sound::big();
         } else {
-            sound.win();
+            sound::win();
         }
     } else {
         message(4);
-        sound.stop();
+        sound::stop();
     }
-    if (bank.winning()) {
+    if bank::winning() {
         flashLeft = 8;
         flashWait = 0;
         state = 2;
@@ -208,48 +203,48 @@ function settle(): void {
     }
 }
 
-function frameSpinning(): void {
-    let any: bool = false;
-    let stepped: bool = false;
-    let stopped: bool = false;
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        let moved: utinyint = reelscroll.step(reel, STOPS);
-        if (moved != 0) {
-            view.moved(reel, moved);
+fn frameSpinning() {
+    let mut any: bool = false;
+    let mut stepped: bool = false;
+    let mut stopped: bool = false;
+    for reel: utinyint in 0..REELS {
+        let moved: utinyint = reelscroll::step(reel, STOPS);
+        if moved != 0 {
+            view::moved(reel, moved);
             stepped = true;
-            if (!reelscroll.moving(reel)) {
+            if !reelscroll::moving(reel) {
                 stopped = true;
             }
         }
-        if (reelscroll.moving(reel)) {
+        if reelscroll::moving(reel) {
             any = true;
         }
     }
     // The reels that moved were composed out of sight; show them all at once (nothing on a machine
     // that draws straight to the screen).
-    view.flush();
+    view::flush();
     // One sound a frame: a reel coming to rest outranks the ticking (a new
     // effect cuts the old one off), and three reels ticking at once is one tick.
     // The frame the last reel rests settles the spin, and the result has its own
     // sound (a pay's jingle, or the stop itself for a loss), so no stop is struck
     // under it: a second tone started over the first on the SID would not retrigger.
-    if (!any) {
+    if !any {
         // Both copies of the glyphs alike and the text package's copy on the screen, before it prints.
-        view.sync();
+        view::sync();
         settle();
-    } else if (stopped) {
-        sound.stop();
-    } else if (stepped) {
-        sound.tick();
+    } else if stopped {
+        sound::stop();
+    } else if stepped {
+        sound::tick();
     }
 }
 
-function framePaying(): void {
-    if (flashWait != 0) {
+fn framePaying() {
+    if flashWait != 0 {
         flashWait = flashWait - 1;
         return;
     }
-    if (flashLeft == 0) {
+    if flashLeft == 0 {
         state = 0;
         idleFrames = 0;
         return;
@@ -257,46 +252,46 @@ function framePaying(): void {
     flashLeft = flashLeft - 1;
     flashWait = 7;
     let lit: bool = (flashLeft & 1) != 0;
-    for (let line: utinyint = 0; line < LINE_COUNT; line++) {
-        if (lineWin[line] != 0) {
-            view.flashLine(line, lit);
+    for line: utinyint in 0..LINE_COUNT {
+        if lineWin[line] != 0 {
+            view::flashLine(line, lit);
         }
     }
 }
 
-function frameIdle(): void {
-    if (idleFrames < 255) {
+fn frameIdle() {
+    if idleFrames < 255 {
         idleFrames = idleFrames + 1;
     }
     let cost: usmallint = BET_CREDITS * multiplier;
-    let go: bool = false;
-    if (input.confirm()) {
+    let mut go: bool = false;
+    if input::confirm() {
         go = true;
     }
-    if (autoLeft != 0) {
-        if (idleFrames > 20) {
+    if autoLeft != 0 {
+        if idleFrames > 20 {
             go = true;
         }
     }
-    if (input.up()) {
-        if (betIndex + 1 < 4) {
+    if input::up() {
+        if betIndex + 1 < 4 {
             setBet(betIndex + 1);
         }
     }
-    if (input.down()) {
-        if (betIndex != 0) {
+    if input::down() {
+        if betIndex != 0 {
             setBet(betIndex - 1);
         }
     }
-    if (go) {
-        if (!bank.canPay(cost)) {
+    if go {
+        if !bank::canPay(cost) {
             // Out of credit: the lab reloads rather than ending the session.
-            bank.set(START_CREDITS);
+            bank::set(START_CREDITS);
             drawCredit();
             message(5);
             idleFrames = 0;
         } else {
-            if (autoLeft != 0) {
+            if autoLeft != 0 {
                 autoLeft = autoLeft - 1;
             }
             startSpin();
@@ -307,42 +302,42 @@ function frameIdle(): void {
 // Play forever from `seed`. `autoSpins` is the number of spins the machine takes
 // by itself right after it starts (0 for a person at the keyboard): headless
 // screenshots cannot press a key.
-export function play(autoSpins: utinyint, seed: usmallint): void {
-    screen.blank();
-    layout.centre(view.BLOCK_WIDTH);
-    random.seed(seed);
-    input.begin();
-    pointer.hide();
-    bank.set(START_CREDITS);
+pub fn play(autoSpins: utinyint, seed: usmallint) {
+    screen::blank();
+    layout::centre(view::BLOCK_WIDTH);
+    random::seed(seed);
+    input::begin();
+    pointer::hide();
+    bank::set(START_CREDITS);
     autoLeft = autoSpins;
-    for (let reel: utinyint = 0; reel < REELS; reel++) {
-        reelscroll.place(reel, 0);
+    for reel: utinyint in 0..REELS {
+        reelscroll::place(reel, 0);
     }
-    view.begin();
-    view.statics();
-    view.drawAll();
+    view::begin();
+    view::statics();
+    view::drawAll();
     setBet(0);
     drawCredit();
     drawWin();
     message(0);
 
-    while (true) {
+    loop {
         waitFrame();
         // `--define FREEZE=n` stops the machine changing the picture after its n-th frame (a headless
         // capture from a real-time emulator cannot be timed to a frame; this makes one taken later show
         // exactly that frame). Unset it is 0 and the test folds away.
-        if (FREEZE == 0 || ticks < FREEZE) {
-            if (FREEZE != 0) {
+        if FREEZE == 0 || ticks < FREEZE {
+            if FREEZE != 0 {
                 ticks = ticks + 1;
             }
-            input.poll();
-            sound.update();
-            if (input.cancel()) {
-                sound.toggle();
+            input::poll();
+            sound::update();
+            if input::cancel() {
+                sound::toggle();
             }
-            if (state == 1) {
+            if state == 1 {
                 frameSpinning();
-            } else if (state == 2) {
+            } else if state == 2 {
                 framePaying();
             } else {
                 frameIdle();

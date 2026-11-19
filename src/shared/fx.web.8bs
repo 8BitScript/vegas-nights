@@ -13,68 +13,68 @@
 //
 // The reel composer writes glyphs and screen codes, never the raster list, so the two do not meet.
 // end() empties the list and turns the renderer back to the plain picture.
-import { raster, Slot } from "@8bitscript/raster";
+use @8bitscript::raster::{raster, Slot};
 
 // The ramp, in the C64 palette the web uses: black, brown, orange, light red, yellow, white, back.
-const GOLD: array<utinyint, 12> = [0, 9, 8, 10, 7, 1, 7, 10, 8, 9, 0, 0];
+const GOLD: [utinyint; 12] = [0, 9, 8, 10, 7, 1, 7, 10, 8, 9, 0, 0];
 
-const STRIPES: utinyint = 12;     // border stripes, one raster entry each
-const PITCH: utinyint = 21;       // picture lines to a stripe: 0, 21, ... 231
-const STEP: utinyint = 5;         // frames to a step of the glow
+const STRIPES: utinyint = 12; // border stripes, one raster entry each
+const PITCH: utinyint = 21; // picture lines to a stripe: 0, 21, ... 231
+const STEP: utinyint = 5; // frames to a step of the glow
 
-let phase: utinyint = 0;
-let waiting: utinyint = 0;
+let mut phase: utinyint = 0;
+let mut waiting: utinyint = 0;
 
-function colourOf(k: utinyint): utinyint {
-    let at: utinyint = k + 12 - phase;
-    if (at >= 12) {
+fn colourOf(k: utinyint) -> utinyint {
+    let mut at: utinyint = k + 12 - phase;
+    if at >= 12 {
         at = at - 12;
     }
     return GOLD[at];
 }
 
 // The byte offset of stripe `k`'s entry in the list (entry 0 is the black background).
-function entryOf(k: utinyint): utinyint {
+fn entryOf(k: utinyint) -> utinyint {
     let index: utinyint = 1 + k;
-    return index * raster.STRIDE;
+    return index * raster::STRIDE;
 }
 
-export namespace fx {
-    const RASTER: bool = #fact(video.raster);
+pub mod fx {
+    const RASTER: bool = #fact(video::raster);
 
-    function begin(): void {
+    fn begin() {
         phase = 0;
         waiting = STEP - 1;
-        raster.clear();
-        raster.at(0, Slot.BACKGROUND, 0);
-        for (let k: utinyint = 0; k < STRIPES; k++) {
-            let line: usmallint = k;
+        raster::clear();
+        raster::at(0, Slot::BACKGROUND, 0);
+        for k: utinyint in 0..STRIPES {
+            let mut line: usmallint = k;
             line = line * PITCH;
-            raster.at(line, Slot.BORDER, colourOf(k));
+            raster::at(line, Slot::BORDER, colourOf(k));
         }
-        raster.commit();
-        raster.enable();
+        raster::commit();
+        raster::enable();
     }
 
-    function frame(tick: utinyint): void {
-        if (waiting == 0) {
+    fn frame(tick: utinyint) {
+        if waiting == 0 {
             waiting = STEP - 1;
             phase = phase + 1;
-            if (phase >= 12) {
+            if phase >= 12 {
                 phase = 0;
             }
-            for (let k: utinyint = 0; k < STRIPES; k++) {
-                raster.setValue(entryOf(k), colourOf(k));
+            for k: utinyint in 0..STRIPES {
+                raster::setValue(entryOf(k), colourOf(k));
             }
-            raster.commit();
+            raster::commit();
         } else {
             waiting = waiting - 1;
         }
     }
 
-    function end(): void {
-        raster.disable();
-        raster.clear();
-        raster.commit();
+    fn end() {
+        raster::disable();
+        raster::clear();
+        raster::commit();
     }
 }

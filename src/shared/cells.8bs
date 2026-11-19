@@ -9,25 +9,25 @@
 //   put       the raw screen code `code` at the text cell at index `at`.
 //   ink       colour that cell as symbol cell `cell` (0-8) of `symbol` is coloured.
 //   tint      colour that cell a plain colour number (frame cells).
-export namespace cells {
+pub mod cells {
     const COLORED: bool = false;
 
-    function put(at: usmallint, code: utinyint): void {
+    fn put(at: usmallint, code: utinyint) {
     }
 
-    function ink(at: usmallint, symbol: utinyint, cell: utinyint): void {
+    fn ink(at: usmallint, symbol: utinyint, cell: utinyint) {
     }
 
-    function tint(at: usmallint, color: utinyint): void {
+    fn tint(at: usmallint, color: utinyint) {
     }
 
     // The code of the block that is `code` inverted (a win flash lights a symbol by inverting it): "not here".
-    function invert(code: utinyint): utinyint {
+    fn invert(code: utinyint) -> utinyint {
         return code;
     }
 
     // The screen code to print for frame cell `cell` (FRAME_TL ... in the tile data).
-    function frameCode(cell: utinyint): utinyint {
+    fn frameCode(cell: utinyint) -> utinyint {
         return 143;
     }
 }

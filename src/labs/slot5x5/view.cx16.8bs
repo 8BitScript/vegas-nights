@@ -7,22 +7,22 @@
 // The bonus round pulses the frame's outer ring through the colours in PULSE, as it does on the
 // machines that draw the frame in glyphs; the symbols that won are lit by switching their sprite to
 // the white palette block.
-import { text } from "@8bitscript/text";
-import { mouse } from "@8bitscript/cx16/mouse";
-import { setVramAddress } from "@8bitscript/cx16";
-import { layout } from "@shared/layout.8bs";
-import { vera } from "@shared/vera.8bs";
-import { spin } from "./spin.8bs";
-import { REELS, ROWS, STOPS, STOP_MASK, STRIPS } from "@generated/grid5x5.8bs";
-import { VERA_SYMBOLS, VERA_PALETTE, VERA_PIXELS } from "@generated/tiles/cosmic-vera.8bs";
+use @8bitscript::text::text;
+use @8bitscript::cx16::mouse::mouse;
+use @8bitscript::cx16::setVramAddress;
+use "@shared/layout.8bs"::layout;
+use "@shared/vera.8bs"::vera;
+use self::spin::spin;
+use "@generated/grid5x5.8bs"::{REELS, ROWS, STOPS, STOP_MASK, STRIPS};
+use "@generated/tiles/cosmic-vera.8bs"::{VERA_SYMBOLS, VERA_PALETTE, VERA_PIXELS};
 
 // The colours (background nibbles) the frame's outer ring cycles through in a bonus round: yellow, red, white, purple.
-const PULSE: array<utinyint, 4> = [7, 2, 1, 4];
+const PULSE: [utinyint; 4] = [7, 2, 1, 4];
 
 // 1 << n, as a table: the 6502 backends take no run-time shift amount.
-const BIT: array<utinyint, 5> = [1, 2, 4, 8, 16];
+const BIT: [utinyint; 5] = [1, 2, 4, 8, 16];
 
-export namespace view {
+pub mod view {
     // The block, in cells: a 2-cell frame, five 8-cell reels less the last gap (38), a 2-cell frame.
     const WIDTH: utinyint = 42;
     // The block row of the window's first row, and its height in cells (5 symbols of 48 pixels).
@@ -42,122 +42,122 @@ export namespace view {
 
     // ---- start-up ----------------------------------------------------------------
 
-    function upload(): void {
-        setVramAddress(1, vera.PALETTE, 1);
-        for (let i: utinyint = 0; i < 32; i++) {
-            memory.write(0x9F23, VERA_PALETTE[i]);
+    fn upload() {
+        setVramAddress(1, vera::PALETTE, 1);
+        for i: utinyint in 0..32 {
+            memory::write(0x9F23, VERA_PALETTE[i]);
         }
-        vera.lit();
-        let source: usmallint = 0;
-        for (let symbol: utinyint = 0; symbol < VERA_SYMBOLS; symbol++) {
-            let at: usmallint = symbol;
-            at = vera.PIXELS + at * 2048;
+        vera::lit();
+        let mut source: usmallint = 0;
+        for symbol: utinyint in 0..VERA_SYMBOLS {
+            let mut at: usmallint = symbol;
+            at = vera::PIXELS + at * 2048;
             setVramAddress(0, at, 1);
-            for (let i: usmallint = 0; i < 256; i++) {
-                memory.write(0x9F23, 0);
+            for i: usmallint in 0..256 {
+                memory::write(0x9F23, 0);
             }
-            for (let row: utinyint = 0; row < 48; row++) {
-                for (let i: utinyint = 0; i < 4; i++) {
-                    memory.write(0x9F23, 0);
+            for row: utinyint in 0..48 {
+                for i: utinyint in 0..4 {
+                    memory::write(0x9F23, 0);
                 }
-                for (let i: utinyint = 0; i < 24; i++) {
-                    memory.write(0x9F23, VERA_PIXELS[source]);
+                for i: utinyint in 0..24 {
+                    memory::write(0x9F23, VERA_PIXELS[source]);
                     source = source + 1;
                 }
-                for (let i: utinyint = 0; i < 4; i++) {
-                    memory.write(0x9F23, 0);
+                for i: utinyint in 0..4 {
+                    memory::write(0x9F23, 0);
                 }
             }
-            for (let i: usmallint = 0; i < 256; i++) {
-                memory.write(0x9F23, 0);
+            for i: usmallint in 0..256 {
+                memory::write(0x9F23, 0);
             }
         }
     }
 
     // The frame's outer ring (one cell thick) in background colour `attr`.
-    function ring(attr: utinyint): void {
-        let left: utinyint = layout.left();
-        let top: utinyint = layout.top() + view.TOP;
-        vera.fill(left, top - 2, view.WIDTH, 1, attr);
-        vera.fill(left, top + view.WINDOW_ROWS + 1, view.WIDTH, 1, attr);
-        vera.fill(left, top - 1, 1, view.WINDOW_ROWS + 2, attr);
-        vera.fill(left + view.WIDTH - 1, top - 1, 1, view.WINDOW_ROWS + 2, attr);
+    fn ring(attr: utinyint) {
+        let left: utinyint = layout::left();
+        let top: utinyint = layout::top() + view::TOP;
+        vera::fill(left, top - 2, view::WIDTH, 1, attr);
+        vera::fill(left, top + view::WINDOW_ROWS + 1, view::WIDTH, 1, attr);
+        vera::fill(left, top - 1, 1, view::WINDOW_ROWS + 2, attr);
+        vera::fill(left + view::WIDTH - 1, top - 1, 1, view::WINDOW_ROWS + 2, attr);
     }
 
-    function build(): void {
-        let left: utinyint = layout.left();
-        let top: utinyint = layout.top() + view.TOP;
-        vera.fill(left, top - view.MASK_ROWS, view.WIDTH, view.MASK_ROWS, vera.MASK);
-        vera.fill(left, top + view.WINDOW_ROWS, view.WIDTH, view.MASK_ROWS + 2, vera.MASK);
+    fn build() {
+        let left: utinyint = layout::left();
+        let top: utinyint = layout::top() + view::TOP;
+        vera::fill(left, top - view::MASK_ROWS, view::WIDTH, view::MASK_ROWS, vera::MASK);
+        vera::fill(left, top + view::WINDOW_ROWS, view::WIDTH, view::MASK_ROWS + 2, vera::MASK);
         // the frame: an inner line in the second colour, the outer ring in the first
-        vera.fill(left + 1, top - 1, view.WIDTH - 2, 1, vera.FRAME_INNER);
-        vera.fill(left + 1, top + view.WINDOW_ROWS, view.WIDTH - 2, 1, vera.FRAME_INNER);
-        vera.fill(left + 1, top, 1, view.WINDOW_ROWS, vera.FRAME_INNER);
-        vera.fill(left + view.WIDTH - 2, top, 1, view.WINDOW_ROWS, vera.FRAME_INNER);
-        view.ring(vera.FRAME_OUTER);
-        for (let reel: utinyint = 1; reel < REELS; reel++) {
-            vera.fill(left + 2 + reel * view.REEL_CELLS - 2, top, 2, view.WINDOW_ROWS, vera.FRAME_INNER);
+        vera::fill(left + 1, top - 1, view::WIDTH - 2, 1, vera::FRAME_INNER);
+        vera::fill(left + 1, top + view::WINDOW_ROWS, view::WIDTH - 2, 1, vera::FRAME_INNER);
+        vera::fill(left + 1, top, 1, view::WINDOW_ROWS, vera::FRAME_INNER);
+        vera::fill(left + view::WIDTH - 2, top, 1, view::WINDOW_ROWS, vera::FRAME_INNER);
+        view::ring(vera::FRAME_OUTER);
+        for reel: utinyint in 1..REELS {
+            vera::fill(left + 2 + reel * view::REEL_CELLS - 2, top, 2, view::WINDOW_ROWS, vera::FRAME_INNER);
         }
     }
 
     // ---- what the game calls -------------------------------------------------------
 
-    function begin(): void {
-        mouse.hide();
-        vera.begin();
-        view.upload();
-        view.build();
+    fn begin() {
+        mouse::hide();
+        vera::begin();
+        view::upload();
+        view::build();
     }
 
-    function draw(reel: utinyint): void {
-        let stop: utinyint = spin.stop(reel);
-        let row: usmallint = spin.row(reel);
-        let strip: usmallint = reel;
+    fn draw(reel: utinyint) {
+        let stop: utinyint = spin::stop(reel);
+        let row: usmallint = spin::row(reel);
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
         // widen before multiplying: 4 * 64 is 256, which an 8-bit product wraps to 0
         let across: usmallint = reel;
-        let x: usmallint = layout.left() + 2;
+        let mut x: usmallint = layout::left() + 2;
         x = x * 8 + across * 64 - 8;
-        let y: usmallint = layout.top() + view.TOP;
-        y = y * 8 - 8 - row * view.SCALE;
-        vera.seek(reel * view.SPRITES, 0);
-        for (let k: utinyint = 0; k < view.SPRITES; k++) {
-            vera.put(STRIPS[strip + ((stop + k) & STOP_MASK)], x, y, vera.ART);
-            y = y + view.PITCH;
+        let mut y: usmallint = layout::top() + view::TOP;
+        y = y * 8 - 8 - row * view::SCALE;
+        vera::seek(reel * view::SPRITES, 0);
+        for k: utinyint in 0..view::SPRITES {
+            vera::put(STRIPS[strip + (stop + k & STOP_MASK)], x, y, vera::ART);
+            y = y + view::PITCH;
         }
     }
 
-    function drawAll(): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            view.draw(reel);
+    fn drawAll() {
+        for reel: utinyint in 0..REELS {
+            view::draw(reel);
         }
     }
 
-    function moved(reel: utinyint, pixels: utinyint): void {
-        view.draw(reel);
+    fn moved(reel: utinyint, pixels: utinyint) {
+        view::draw(reel);
     }
 
     // Light the symbols of `reel` whose rows are set in `mask` (bit 0 = the top symbol), or put
     // the reel back as it was. The reels are at rest when this is called.
-    function flashRows(reel: utinyint, mask: utinyint, on: bool): void {
-        for (let row: utinyint = 0; row < ROWS; row++) {
-            if ((mask & BIT[row]) != 0) {
-                if (on) {
-                    vera.paint(reel * view.SPRITES + row, vera.FLASH);
+    fn flashRows(reel: utinyint, mask: utinyint, on: bool) {
+        for row: utinyint in 0..ROWS {
+            if (mask & BIT[row]) != 0 {
+                if on {
+                    vera::paint(reel * view::SPRITES + row, vera::FLASH);
                 } else {
-                    vera.paint(reel * view.SPRITES + row, vera.ART);
+                    vera::paint(reel * view::SPRITES + row, vera::ART);
                 }
             }
         }
     }
 
     // The bonus round's frame: the outer ring in colour `phase` of the cycle.
-    function pulse(phase: utinyint): void {
-        view.ring(PULSE[phase & 3] * 16 + 1);
+    fn pulse(phase: utinyint) {
+        view::ring(PULSE[phase & 3] * 16 + 1);
     }
 
     // Put the frame back to its own colours.
-    function unpulse(): void {
-        view.ring(vera.FRAME_OUTER);
+    fn unpulse() {
+        view::ring(vera::FRAME_OUTER);
     }
 }

@@ -1,5 +1,5 @@
 // How fast the VIC-20 can let a reel move.
-export namespace feel {
+pub mod feel {
     // The 5x5 still recomposes a reel whole (24-pixel symbols): 12 pixels every third frame.
     const WAIT: utinyint = 2;
     const FAR: utinyint = 12;

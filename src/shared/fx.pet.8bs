@@ -39,9 +39,9 @@
 // cent). Nothing here multiplies once the round is running: begin() lays every address into
 // tables and frame() only looks them up and adds. See docs/fx.md, "The PET".
 
-import { text } from "@8bitscript/text";
-import { cells } from "@shared/cells.8bs";
-import { layout } from "@shared/layout.8bs";
+use @8bitscript::text::text;
+use "@shared/cells.8bs"::cells;
+use "@shared/layout.8bs"::layout;
 
 // Screen codes. The game runs in the PET's text set (upper and lower case), where the letters
 // are 1-26 for lower case and 65-90 for capitals; the codes below read the same in both sets.
@@ -64,50 +64,50 @@ const LAST_ROW: utinyint = 24;
 
 // "-- FREE SPINS --" as screen codes (capitals are 65-90 in the text set); +128 is the same in
 // reverse video.
-const BANNER: array<utinyint, 16> = [45, 45, 32, 70, 82, 69, 69, 32, 83, 80, 73, 78, 83, 32, 45, 45];
+const BANNER: [utinyint; 16] = [45, 45, 32, 70, 82, 69, 69, 32, 83, 80, 73, 78, 83, 32, 45, 45];
 
-let indent: utinyint = 0;       // the block's left column
-let pathLength: utinyint = 0;   // cells in the marquee ring
-let head: array<utinyint, 4>;   // each comet's head, as a place on the ring
+let mut indent: utinyint = 0; // the block's left column
+let mut pathLength: utinyint = 0; // cells in the marquee ring
+let mut head: [utinyint; 4]; // each comet's head, as a place on the ring
 // The screen offset of each place on the ring, as two tables of 16-bit offsets of 93 places
 // each: a single table of 185 offsets is 370 bytes, and the 6502 backend indexes one with an
 // 8-bit index register, so on an 80-column PET every place from the 128th would land on top of
 // one of the first 57. (The 40-column ring has 105 places, so its second table holds 12.)
 const RING_HALF: utinyint = 93;
-let ringFirst: array<usmallint, 93>;
-let ringSecond: array<usmallint, 92>;
-let bannerAt: usmallint = 0;    // the first cell of the banner
-let sideLeft: usmallint = 0;    // the first cell of the strip beside the machine's left, and ...
-let sideRight: usmallint = 0;   // ... of its right
-let bannerPos: utinyint = 0;    // the banner cell in reverse video
+let mut ringFirst: [usmallint; 93];
+let mut ringSecond: [usmallint; 92];
+let mut bannerAt: usmallint = 0; // the first cell of the banner
+let mut sideLeft: usmallint = 0; // the first cell of the strip beside the machine's left, and ...
+let mut sideRight: usmallint = 0; // ... of its right
+let mut bannerPos: utinyint = 0; // the banner cell in reverse video
 
 // The offset of the cell `row`, `col`. A multiply: begin() only.
-function at(row: utinyint, col: utinyint): usmallint {
-    let a: usmallint = row;
-    a = a * text.COLUMNS;
+fn at(row: utinyint, col: utinyint) -> usmallint {
+    let mut a: usmallint = row;
+    a = a * text::COLUMNS;
     a = a + col;
     return a;
 }
 
 // A margin cell: `offset` columns from the left edge, or from the right edge when `right` is 1.
-function margin(row: utinyint, offset: utinyint, right: utinyint): usmallint {
-    let col: utinyint = offset;
-    if (right == 1) {
-        col = text.COLUMNS - 1 - offset;
+fn margin(row: utinyint, offset: utinyint, right: utinyint) -> usmallint {
+    let mut col: utinyint = offset;
+    if right == 1 {
+        col = text::COLUMNS - 1 - offset;
     }
     return at(row, col);
 }
 
 // The screen offset of place `i` on the ring.
-function ringCell(i: utinyint): usmallint {
-    if (i < RING_HALF) {
+fn ringCell(i: utinyint) -> usmallint {
+    if i < RING_HALF {
         return ringFirst[i];
     }
     return ringSecond[i - RING_HALF];
 }
 
-function setRing(n: utinyint, a: usmallint): void {
-    if (n < RING_HALF) {
+fn setRing(n: utinyint, a: usmallint) {
+    if n < RING_HALF {
         ringFirst[n] = a;
     } else {
         ringSecond[n - RING_HALF] = a;
@@ -117,38 +117,38 @@ function setRing(n: utinyint, a: usmallint): void {
 // Lay the marquee ring out in the ring tables, by adding and subtracting only. It starts on the top row at
 // the cell beside the machine and goes left, then down the left edge, along the bottom row, up the
 // right edge and left again along the top row to the machine's right-hand side.
-function layRing(): void {
-    let n: utinyint = 0;
-    let a: usmallint = indent;
+fn layRing() {
+    let mut n: utinyint = 0;
+    let mut a: usmallint = indent;
     a = a - 1;
-    for (let i: utinyint = 0; i < indent; i++) {
+    for i: utinyint in 0..indent {
         setRing(n, a);
         a = a - 1;
         n = n + 1;
     }
-    a = text.COLUMNS;
-    for (let i: utinyint = 0; i < LAST_ROW; i++) {
+    a = text::COLUMNS;
+    for i: utinyint in 0..LAST_ROW {
         setRing(n, a);
-        a = a + text.COLUMNS;
+        a = a + text::COLUMNS;
         n = n + 1;
     }
-    a = a - text.COLUMNS;
+    a = a - text::COLUMNS;
     a = a + 1;
-    for (let i: utinyint = 1; i < text.COLUMNS; i++) {
+    for i: utinyint in 1..text::COLUMNS {
         setRing(n, a);
         a = a + 1;
         n = n + 1;
     }
-    a = a - text.COLUMNS;
+    a = a - text::COLUMNS;
     a = a - 1;
-    for (let i: utinyint = 0; i < LAST_ROW; i++) {
+    for i: utinyint in 0..LAST_ROW {
         setRing(n, a);
-        a = a - text.COLUMNS;
+        a = a - text::COLUMNS;
         n = n + 1;
     }
-    a = text.COLUMNS;
+    a = text::COLUMNS;
     a = a - 2;
-    for (let i: utinyint = indent + 21; i < text.COLUMNS - 1; i++) {
+    for i: utinyint in indent + 21..text::COLUMNS - 1 {
         setRing(n, a);
         a = a - 1;
         n = n + 1;
@@ -156,94 +156,94 @@ function layRing(): void {
     pathLength = n;
 }
 
-function wrapNext(place: utinyint): utinyint {
-    let n: utinyint = place + 1;
-    if (n >= pathLength) {
+fn wrapNext(place: utinyint) -> utinyint {
+    let mut n: utinyint = place + 1;
+    if n >= pathLength {
         n = 0;
     }
     return n;
 }
 
-function wrapPrevious(place: utinyint): utinyint {
-    if (place == 0) {
+fn wrapPrevious(place: utinyint) -> utinyint {
+    if place == 0 {
         return pathLength - 1;
     }
     return place - 1;
 }
 
-function drawBanner(): void {
-    for (let k: utinyint = 0; k < BANNER_LEN; k++) {
-        cells.put(bannerAt + k, BANNER[k]);
+fn drawBanner() {
+    for k: utinyint in 0..BANNER_LEN {
+        cells::put(bannerAt + k, BANNER[k]);
     }
 }
 
 // The strips beside the machine: `code` down SIDE_ROWS cells each.
-function drawSides(code: utinyint): void {
-    let left: usmallint = sideLeft;
-    let right: usmallint = sideRight;
-    for (let i: utinyint = 0; i < SIDE_ROWS; i++) {
-        cells.put(left, code);
-        cells.put(right, code);
-        left = left + text.COLUMNS;
-        right = right + text.COLUMNS;
+fn drawSides(code: utinyint) {
+    let mut left: usmallint = sideLeft;
+    let mut right: usmallint = sideRight;
+    for i: utinyint in 0..SIDE_ROWS {
+        cells::put(left, code);
+        cells::put(right, code);
+        left = left + text::COLUMNS;
+        right = right + text::COLUMNS;
     }
 }
 
 // One comet moves on a place: a new head, the old head becomes shade, the old shade a dot.
-function stepComet(k: utinyint): void {
+fn stepComet(k: utinyint) {
     let was: utinyint = head[k];
     let now: utinyint = wrapNext(was);
-    cells.put(ringCell(wrapPrevious(was)), DOT);
-    cells.put(ringCell(was), SHADE);
-    cells.put(ringCell(now), BULB);
+    cells::put(ringCell(wrapPrevious(was)), DOT);
+    cells::put(ringCell(was), SHADE);
+    cells::put(ringCell(now), BULB);
     head[k] = now;
 }
 
-export namespace fx {
+pub mod fx {
     const RASTER: bool = true;
 
-    function begin(): void {
+    fn begin() {
         // The block is the 21 columns layout.centre() put at `indent`; the ring runs outside it.
-        let left: usmallint = layout.cell(0, 0);
+        let left: usmallint = layout::cell(0, 0);
         indent = left;
         layRing();
-        for (let i: utinyint = 0; i < pathLength; i++) {
-            cells.put(ringCell(i), DOT);
+        for i: utinyint in 0..pathLength {
+            cells::put(ringCell(i), DOT);
         }
-        for (let k: utinyint = 0; k < COMET_COUNT; k++) {
+        for k: utinyint in 0..COMET_COUNT {
             head[k] = (pathLength >> 2) * k;
-            cells.put(ringCell(head[k]), BULB);
-            cells.put(ringCell(wrapPrevious(head[k])), SHADE);
+            cells::put(ringCell(head[k]), BULB);
+            cells::put(ringCell(wrapPrevious(head[k])), SHADE);
         }
         sideLeft = at(SIDE_FIRST_ROW, indent - 1);
         sideRight = at(SIDE_FIRST_ROW, indent + 21);
         drawSides(SHADE);
-        bannerAt = at(BANNER_ROW, (text.COLUMNS - BANNER_LEN) >> 1);
+        bannerAt = at(BANNER_ROW, text::COLUMNS - BANNER_LEN >> 1);
         bannerPos = 0;
         drawBanner();
-        cells.put(bannerAt, BANNER[0] + 128);
+        cells::put(bannerAt, BANNER[0] + 128);
     }
 
-    function frame(tick: utinyint): void {
+    fn frame(tick: utinyint) {
         // One comet moves on every frame (each comet every fourth): a smooth chase.
         stepComet(tick & 3);
         // The reverse-video block moves to the next banner cell on every fourth frame.
-        if ((tick & 3) == 0) {
-            cells.put(bannerAt + bannerPos, BANNER[bannerPos]);
+        if (tick & 3) == 0 {
+            cells::put(bannerAt + bannerPos, BANNER[bannerPos]);
             bannerPos = bannerPos + 1;
-            if (bannerPos == BANNER_LEN) {
+            if bannerPos == BANNER_LEN {
                 bannerPos = 0;
             }
-            cells.put(bannerAt + bannerPos, BANNER[bannerPos] + 128);
+            cells::put(bannerAt + bannerPos, BANNER[bannerPos] + 128);
         }
     }
 
-    function end(): void {
-        for (let i: utinyint = 0; i < pathLength; i++) {
-            cells.put(ringCell(i), BLANK);
+    fn end() {
+        for i: utinyint in 0..pathLength {
+            cells::put(ringCell(i), BLANK);
         }
-        for (let k: utinyint = 0; k < BANNER_LEN; k++) {
-            cells.put(bannerAt + k, BLANK);
+        for k: utinyint in 0..BANNER_LEN {
+            cells::put(bannerAt + k, BLANK);
         }
         drawSides(BLANK);
     }

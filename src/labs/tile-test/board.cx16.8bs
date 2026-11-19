@@ -3,54 +3,51 @@
 // passes it straight through), so the theme's glyphs are written over tiles
 // FIRST.. and drawn like characters. Glyph bytes go through DATA0 with
 // auto-increment 1; the KERNAL's font base is read from VERA, not assumed.
-import { setVramAddress } from "@8bitscript/cx16";
-import { screen } from "@8bitscript/screen";
-import { text } from "@8bitscript/text";
-import {
-    SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS, SYMBOL_CELLS_W, SYMBOL_BYTES, ART_SYMBOLS,
-    FRAME_BITMAP, FRAME_COLOR, FRAME_CELLS,
-} from "@generated/tiles/classic.cx16.8bs";
+use @8bitscript::cx16::setVramAddress;
+use @8bitscript::screen::screen;
+use @8bitscript::text::text;
+use "@generated/tiles/classic.cx16.8bs"::{SYMBOL_BITMAP, SYMBOL_COLOR, SYMBOL_CELLS, SYMBOL_CELLS_W, SYMBOL_BYTES, ART_SYMBOLS, FRAME_BITMAP, FRAME_COLOR, FRAME_CELLS};
 
 const FIRST: utinyint = 128; // tile index of the theme's glyph 0: ISO 128-159 are unused
 
-export namespace board {
-    function frameBase(): utinyint {
+pub mod board {
+    fn frameBase() -> utinyint {
         return FIRST + ART_SYMBOLS * SYMBOL_CELLS;
     }
 
     // Write `count` bytes of `source` to tile `code`'s rows in VRAM.
-    function begin(): void {
-        screen.blank();
-        let v: utinyint = memory.read(0x9F36); // L1_TILEBASE: address bits 16:11 in bits 7:2
+    fn begin() {
+        screen::blank();
+        let v: utinyint = memory::read(0x9F36); // L1_TILEBASE: address bits 16:11 in bits 7:2
         let bank: utinyint = v / 128;
-        let low: usmallint = v % 128;
+        let mut low: usmallint = v % 128;
         low = low / 4;
         low = low * 2048;
 
-        let symbolBytes: usmallint = ART_SYMBOLS;
+        let mut symbolBytes: usmallint = ART_SYMBOLS;
         symbolBytes = symbolBytes * SYMBOL_BYTES;
         let first: usmallint = FIRST;
         setVramAddress(bank, low + first * 8, 1);
-        for (let i: usmallint = 0; i < symbolBytes; i++) {
-            memory.write(0x9F23, SYMBOL_BITMAP[i]);
+        for i: usmallint in 0..symbolBytes {
+            memory::write(0x9F23, SYMBOL_BITMAP[i]);
         }
-        let frameAt: usmallint = board.frameBase();
+        let frameAt: usmallint = board::frameBase();
         setVramAddress(bank, low + frameAt * 8, 1);
-        let frameBytes: usmallint = FRAME_CELLS;
+        let mut frameBytes: usmallint = FRAME_CELLS;
         frameBytes = frameBytes * 8;
-        for (let i: usmallint = 0; i < frameBytes; i++) {
-            memory.write(0x9F23, FRAME_BITMAP[i]);
+        for i: usmallint in 0..frameBytes {
+            memory::write(0x9F23, FRAME_BITMAP[i]);
         }
     }
 
-    function symbolCell(cell: usmallint, symbol: utinyint, cx: utinyint, cy: utinyint): void {
+    fn symbolCell(cell: usmallint, symbol: utinyint, cx: utinyint, cy: utinyint) {
         let glyph: utinyint = symbol * SYMBOL_CELLS + cy * SYMBOL_CELLS_W + cx;
-        text.putChar(cell, FIRST + glyph);
-        text.putColor(cell, SYMBOL_COLOR[glyph]);
+        text::putChar(cell, FIRST + glyph);
+        text::putColor(cell, SYMBOL_COLOR[glyph]);
     }
 
-    function frameCell(cell: usmallint, which: utinyint): void {
-        text.putChar(cell, board.frameBase() + which);
-        text.putColor(cell, FRAME_COLOR[which]);
+    fn frameCell(cell: usmallint, which: utinyint) {
+        text::putChar(cell, board::frameBase() + which);
+        text::putColor(cell, FRAME_COLOR[which]);
     }
 }

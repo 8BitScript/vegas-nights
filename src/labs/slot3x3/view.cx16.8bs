@@ -13,16 +13,16 @@
 //
 // This file replaces view.8bs on the X16 (the machine twin rule); the rest of the lab, the game
 // included, is the one the other machines run.
-import { text } from "@8bitscript/text";
-import { mouse } from "@8bitscript/cx16/mouse";
-import { setVramAddress } from "@8bitscript/cx16";
-import { layout } from "@shared/layout.8bs";
-import { vera } from "@shared/vera.8bs";
-import { reelscroll } from "@shared/reelscroll.8bs";
-import { REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES } from "@generated/classic3x3.8bs";
-import { VERA_SYMBOLS, VERA_PALETTE, VERA_PIXELS } from "@generated/tiles/classic-vera.8bs";
+use @8bitscript::text::text;
+use @8bitscript::cx16::mouse::mouse;
+use @8bitscript::cx16::setVramAddress;
+use "@shared/layout.8bs"::layout;
+use "@shared/vera.8bs"::vera;
+use "@shared/reelscroll.8bs"::reelscroll;
+use "@generated/classic3x3.8bs"::{REELS, ROWS, STOPS, STOP_MASK, STRIPS, LINES};
+use "@generated/tiles/classic-vera.8bs"::{VERA_SYMBOLS, VERA_PALETTE, VERA_PIXELS};
 
-export namespace view {
+pub mod view {
     // The block, in cells: a 2-cell frame, the window (3 reels of 48 px and 2 gaps of 16 = 22 cells),
     // a 2-cell frame.
     const WIDTH: utinyint = 26;
@@ -52,69 +52,69 @@ export namespace view {
     const MASK_ROWS: utinyint = 7;
 
     // The words that never change: the title, the labels of the three numbers and the key hint.
-    function statics(): void {
-        text.print(layout.cell(1, 1), "VEGAS NIGHTS");
-        text.print(layout.cell(1, 2), "SLOT 3X3");
-        text.print(layout.cell(1, 26), "CREDIT");
-        text.print(layout.cell(1, 27), "BET");
-        text.print(layout.cell(1, 28), "WIN");
-        text.print(layout.cell(1, 32), "UP DOWN: BET");
+    fn statics() {
+        text::print(layout::cell(1, 1), "VEGAS NIGHTS");
+        text::print(layout::cell(1, 2), "SLOT 3X3");
+        text::print(layout::cell(1, 26), "CREDIT");
+        text::print(layout::cell(1, 27), "BET");
+        text::print(layout::cell(1, 28), "WIN");
+        text::print(layout::cell(1, 32), "UP DOWN: BET");
     }
 
     // ---- start-up ----------------------------------------------------------------
 
     // Every symbol's 48x48 art into video memory as a 64x64 sprite: 8 clear rows, 48 rows of 4 clear
     // bytes, the art's 24 and 4 clear, then 8 clear rows.
-    function upload(): void {
-        setVramAddress(1, vera.PALETTE, 1);
-        for (let i: utinyint = 0; i < 32; i++) {
-            memory.write(0x9F23, VERA_PALETTE[i]);
+    fn upload() {
+        setVramAddress(1, vera::PALETTE, 1);
+        for i: utinyint in 0..32 {
+            memory::write(0x9F23, VERA_PALETTE[i]);
         }
-        vera.lit();
-        let source: usmallint = 0;
-        for (let symbol: utinyint = 0; symbol < VERA_SYMBOLS; symbol++) {
-            let at: usmallint = symbol;
-            at = vera.PIXELS + at * 2048;
+        vera::lit();
+        let mut source: usmallint = 0;
+        for symbol: utinyint in 0..VERA_SYMBOLS {
+            let mut at: usmallint = symbol;
+            at = vera::PIXELS + at * 2048;
             setVramAddress(0, at, 1);
-            for (let i: usmallint = 0; i < 256; i++) {
-                memory.write(0x9F23, 0);
+            for i: usmallint in 0..256 {
+                memory::write(0x9F23, 0);
             }
-            for (let row: utinyint = 0; row < 48; row++) {
-                for (let i: utinyint = 0; i < 4; i++) {
-                    memory.write(0x9F23, 0);
+            for row: utinyint in 0..48 {
+                for i: utinyint in 0..4 {
+                    memory::write(0x9F23, 0);
                 }
-                for (let i: utinyint = 0; i < 24; i++) {
-                    memory.write(0x9F23, VERA_PIXELS[source]);
+                for i: utinyint in 0..24 {
+                    memory::write(0x9F23, VERA_PIXELS[source]);
                     source = source + 1;
                 }
-                for (let i: utinyint = 0; i < 4; i++) {
-                    memory.write(0x9F23, 0);
+                for i: utinyint in 0..4 {
+                    memory::write(0x9F23, 0);
                 }
             }
-            for (let i: usmallint = 0; i < 256; i++) {
-                memory.write(0x9F23, 0);
+            for i: usmallint in 0..256 {
+                memory::write(0x9F23, 0);
             }
         }
     }
 
     // The machine around the window: the masks, the frame, the dividers, the payline arrows.
-    function build(): void {
-        let left: utinyint = layout.left();
-        let top: utinyint = layout.top() + view.TOP;
+    fn build() {
+        let left: utinyint = layout::left();
+        let top: utinyint = layout::top() + view::TOP;
         // masks first, over the rows the overflow reaches, then the frame over their edges
-        vera.fill(left, top - view.MASK_ROWS, view.WIDTH, view.MASK_ROWS, vera.MASK);
-        vera.fill(left, top + view.WINDOW_ROWS, view.WIDTH, view.MASK_ROWS + 2, vera.MASK);
-        vera.fill(left, top - 2, view.WIDTH, 2, vera.FRAME_OUTER);
-        vera.fill(left, top + view.WINDOW_ROWS, view.WIDTH, 2, vera.FRAME_OUTER);
-        vera.fill(left, top, 2, view.WINDOW_ROWS, vera.FRAME_OUTER);
-        vera.fill(left + view.WIDTH - 2, top, 2, view.WINDOW_ROWS, vera.FRAME_OUTER);
+        vera::fill(left, top - view::MASK_ROWS, view::WIDTH, view::MASK_ROWS, vera::MASK);
+        vera::fill(left, top + view::WINDOW_ROWS, view::WIDTH, view::MASK_ROWS + 2, vera::MASK);
+        vera::fill(left, top - 2, view::WIDTH, 2, vera::FRAME_OUTER);
+        vera::fill(left, top + view::WINDOW_ROWS, view::WIDTH, 2, vera::FRAME_OUTER);
+        vera::fill(left, top, 2, view::WINDOW_ROWS, vera::FRAME_OUTER);
+        vera::fill(left + view::WIDTH - 2, top, 2, view::WINDOW_ROWS, vera::FRAME_OUTER);
         // the inner edge of the frame in the second colour
-        vera.fill(left + 1, top - 1, view.WIDTH - 2, 1, vera.FRAME_INNER);
-        vera.fill(left + 1, top + view.WINDOW_ROWS, view.WIDTH - 2, 1, vera.FRAME_INNER);
-        vera.fill(left + 1, top, 1, view.WINDOW_ROWS, vera.FRAME_INNER);
-        vera.fill(left + view.WIDTH - 2, top, 1, view.WINDOW_ROWS, vera.FRAME_INNER);
-        for (let reel: utinyint = 1; reel < REELS; reel++) {
-            vera.fill(left + 2 + reel * view.REEL_CELLS - 2, top, 2, view.WINDOW_ROWS, vera.FRAME_INNER);
+        vera::fill(left + 1, top - 1, view::WIDTH - 2, 1, vera::FRAME_INNER);
+        vera::fill(left + 1, top + view::WINDOW_ROWS, view::WIDTH - 2, 1, vera::FRAME_INNER);
+        vera::fill(left + 1, top, 1, view::WINDOW_ROWS, vera::FRAME_INNER);
+        vera::fill(left + view::WIDTH - 2, top, 1, view::WINDOW_ROWS, vera::FRAME_INNER);
+        for reel: utinyint in 1..REELS {
+            vera::fill(left + 2 + reel * view::REEL_CELLS - 2, top, 2, view::WINDOW_ROWS, vera::FRAME_INNER);
         }
     }
 
@@ -123,58 +123,58 @@ export namespace view {
     // Once, after the screen is blank.
     // The sprites are the picture: there is no second copy to show or bring level, so a flush and a sync have
     // nothing to do (the game calls them for the machines that compose into a hidden copy).
-    function flush(): void {
+    fn flush() {
     }
 
-    function sync(): void {
+    fn sync() {
     }
 
-    function begin(): void {
-        mouse.hide();
-        vera.begin();
-        view.upload();
-        view.build();
+    fn begin() {
+        mouse::hide();
+        vera::begin();
+        view::upload();
+        view::build();
     }
 
     // Reel `reel` at its current position: its four sprites, one after another in the attribute table.
-    function draw(reel: utinyint): void {
-        let stop: utinyint = reelscroll.stop(reel);
-        let row: usmallint = reelscroll.row(reel);
-        let strip: usmallint = reel;
+    fn draw(reel: utinyint) {
+        let stop: utinyint = reelscroll::stop(reel);
+        let row: usmallint = reelscroll::row(reel);
+        let mut strip: usmallint = reel;
         strip = strip * STOPS;
         // widen before multiplying: 4 * 64 is 256, which an 8-bit product wraps to 0
         let across: usmallint = reel;
-        let x: usmallint = layout.left() + 2;
+        let mut x: usmallint = layout::left() + 2;
         x = x * 8 + across * 64 - 8;
-        let y: usmallint = layout.top() + view.TOP;
-        y = y * 8 - 8 - row * view.SCALE;
-        vera.seek(reel * view.SPRITES, 0);
-        for (let k: utinyint = 0; k < view.SPRITES; k++) {
-            vera.put(STRIPS[strip + ((stop + k) & STOP_MASK)], x, y, vera.ART);
-            y = y + view.PITCH;
+        let mut y: usmallint = layout::top() + view::TOP;
+        y = y * 8 - 8 - row * view::SCALE;
+        vera::seek(reel * view::SPRITES, 0);
+        for k: utinyint in 0..view::SPRITES {
+            vera::put(STRIPS[strip + (stop + k & STOP_MASK)], x, y, vera::ART);
+            y = y + view::PITCH;
         }
     }
 
-    function drawAll(): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
-            view.draw(reel);
+    fn drawAll() {
+        for reel: utinyint in 0..REELS {
+            view::draw(reel);
         }
     }
 
     // A reel moved `pixels` down: draw it again (four sprites' worth of writes, a few hundred cycles).
-    function moved(reel: utinyint, pixels: utinyint): void {
-        view.draw(reel);
+    fn moved(reel: utinyint, pixels: utinyint) {
+        view::draw(reel);
     }
 
     // Show payline `line` lit (or put the reels back as they were): the symbols on it take the
     // white palette block. The reels are at rest, so window row r is sprite r.
-    function flashLine(line: utinyint, on: bool): void {
-        for (let reel: utinyint = 0; reel < REELS; reel++) {
+    fn flashLine(line: utinyint, on: bool) {
+        for reel: utinyint in 0..REELS {
             let row: utinyint = LINES[line * REELS + reel];
-            if (on) {
-                vera.paint(reel * view.SPRITES + row, vera.FLASH);
+            if on {
+                vera::paint(reel * view::SPRITES + row, vera::FLASH);
             } else {
-                vera.paint(reel * view.SPRITES + row, vera.ART);
+                vera::paint(reel * view::SPRITES + row, vera::ART);
             }
         }
     }

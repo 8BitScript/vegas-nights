@@ -4,19 +4,19 @@
 // Game: classic3x3   symbols: SEVEN BAR3 BAR2 BAR1 CHERRY BLANK
 // 6 symbols of 48x48 pixels = 6912 bytes in the program image   art 273c95bc4334
 
-export const VERA_SYMBOLS: utinyint = 6; // symbols with art, in the engine's order
-export const VERA_SIDE: utinyint = 48; // a symbol's width and height in pixels
-export const VERA_SYMBOL_BYTES: usmallint = 1152; // bytes of VERA_PIXELS per symbol
-export const VERA_TOTAL_BYTES: usmallint = 6912;
+pub const VERA_SYMBOLS: utinyint = 6; // symbols with art, in the engine's order
+pub const VERA_SIDE: utinyint = 48; // a symbol's width and height in pixels
+pub const VERA_SYMBOL_BYTES: usmallint = 1152; // bytes of VERA_PIXELS per symbol
+pub const VERA_TOTAL_BYTES: usmallint = 6912;
 
 // sixteen VERA palette entries, two bytes each (GB then 0R); entry 0 is the clear index
-export const VERA_PALETTE: array<utinyint, 32> = [
+pub const VERA_PALETTE: [utinyint; 32] = [
     0, 0, 0, 0, 255, 15, 51, 8, 102, 11, 187, 6, 57, 8, 164, 5,
-    232, 9, 56, 4, 108, 7, 199, 11, 82, 8, 119, 7, 85, 5, 153, 9
+    232, 9, 56, 4, 108, 7, 199, 11, 82, 8, 119, 7, 85, 5, 153, 9,
 ];
 
 // [symbol * VERA_SYMBOL_BYTES + row * 24 + column / 2], row 0..47, the left pixel of a pair in the high nibble
-export const VERA_PIXELS: array<utinyint, 6912> = [
+pub const VERA_PIXELS: [utinyint; 6912] = [
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
@@ -448,6 +448,5 @@ export const VERA_PIXELS: array<utinyint, 6912> = [
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
-    17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17
+    17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
 ];
-

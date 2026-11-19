@@ -10,26 +10,26 @@
 //
 // Up to five reels, so the 5x5 lab uses the same file. The strip itself and
 // how a position is drawn belong to the game; this file only moves numbers.
-let positions: array<utinyint, 5>;
-let remaining: array<utinyint, 5>;
-let waits: array<utinyint, 5>;
+let mut positions: [utinyint; 5];
+let mut remaining: [utinyint; 5];
+let mut waits: [utinyint; 5];
 
-export namespace scroll {
+pub mod scroll {
     // Frames between steps while a reel is at speed, and in the last steps
     // of its run (it eases in: 2, 2, ..., 3, 4, 6 frames per step).
     const FAST: utinyint = 2;
 
-    function place(reel: utinyint, position: utinyint): void {
+    fn place(reel: utinyint, position: utinyint) {
         positions[reel] = position;
         remaining[reel] = 0;
         waits[reel] = 0;
     }
 
-    function position(reel: utinyint): utinyint {
+    fn position(reel: utinyint) -> utinyint {
         return positions[reel];
     }
 
-    function moving(reel: utinyint): bool {
+    fn moving(reel: utinyint) -> bool {
         return remaining[reel] != 0;
     }
 
@@ -37,8 +37,8 @@ export namespace scroll {
     // least `minimum` steps, then however many more it takes to land on the
     // target: steps ≡ position - target (mod stops), so counting down from
     // the current position ends exactly there.
-    function start(reel: utinyint, target: utinyint, minimum: utinyint, mask: utinyint): void {
-        let extra: utinyint = positions[reel] - target;
+    fn start(reel: utinyint, target: utinyint, minimum: utinyint, mask: utinyint) {
+        let mut extra: utinyint = positions[reel] - target;
         extra = extra - minimum;
         extra = extra & mask;
         remaining[reel] = minimum + extra;
@@ -47,23 +47,23 @@ export namespace scroll {
 
     // Call once a frame. True when the reel moved one stop this frame (the
     // caller redraws it); the reel counts as stopped once `moving` is false.
-    function step(reel: utinyint, mask: utinyint): bool {
-        if (remaining[reel] == 0) {
+    fn step(reel: utinyint, mask: utinyint) -> bool {
+        if remaining[reel] == 0 {
             return false;
         }
-        if (waits[reel] != 0) {
+        if waits[reel] != 0 {
             waits[reel] = waits[reel] - 1;
             return false;
         }
-        positions[reel] = (positions[reel] - 1) & mask;
+        positions[reel] = positions[reel] - 1 & mask;
         remaining[reel] = remaining[reel] - 1;
         let left: utinyint = remaining[reel];
-        let gap: utinyint = scroll.FAST;
-        if (left == 1) {
+        let mut gap: utinyint = scroll::FAST;
+        if left == 1 {
             gap = 6;
-        } else if (left == 2) {
+        } else if left == 2 {
             gap = 4;
-        } else if (left == 3) {
+        } else if left == 3 {
             gap = 3;
         }
         waits[reel] = gap - 1;

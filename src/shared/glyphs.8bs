@@ -50,7 +50,7 @@
 //   clone()        make the other copy a duplicate of the home one (once, after the frame is defined).
 //   stageColor / putColors  the reels' cell colours, staged while composing and written to
 //                  colour RAM right after a flip, so a shape never shows in the last colours.
-export namespace glyphs {
+pub mod glyphs {
     const AVAILABLE: bool = false;
     const FIRST: utinyint = 0;
     const CODES: utinyint = 0;
@@ -64,80 +64,80 @@ export namespace glyphs {
     const COLOR_STRIP: bool = false;
     const BUFFERED: bool = false;
 
-    function begin(): void {
+    fn begin() {
     }
 
-    function target(code: utinyint): usmallint {
-        return glyphs.address(code);
+    fn target(code: utinyint) -> usmallint {
+        return glyphs::address(code);
     }
 
-    function hiddenBit(): utinyint {
+    fn hiddenBit() -> utinyint {
         return 0;
     }
 
-    function region(row: utinyint, rows: utinyint): void {
+    fn region(row: utinyint, rows: utinyint) {
     }
 
-    function mirror(first: utinyint, count: utinyint): void {
+    fn mirror(first: utinyint, count: utinyint) {
     }
 
-    function flip(): void {
+    fn flip() {
     }
 
-    function home(): void {
+    fn home() {
     }
 
-    function clone(): void {
+    fn clone() {
     }
 
-    function stageColor(index: usmallint, color: utinyint): void {
+    fn stageColor(index: usmallint, color: utinyint) {
     }
 
-    function putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint): void {
+    fn putColors(at: usmallint, source: usmallint, across: utinyint, rows: utinyint) {
     }
 
-    function address(code: utinyint): usmallint {
+    fn address(code: utinyint) -> usmallint {
         return 0;
     }
 
-    function seek(code: utinyint): void {
+    fn seek(code: utinyint) {
     }
 
-    function stage(index: usmallint, value: utinyint): void {
+    fn stage(index: usmallint, value: utinyint) {
     }
 
-    function put(at: usmallint, code: utinyint): void {
+    fn put(at: usmallint, code: utinyint) {
     }
 
-    function symbols(count: utinyint, bytes: usmallint): void {
+    fn symbols(count: utinyint, bytes: usmallint) {
     }
 
-    function stageStrip(index: usmallint, value: utinyint): void {
+    fn stageStrip(index: usmallint, value: utinyint) {
     }
 
     // A whole reel window in one call (memory-mapped machines with an assembly composer):
     // `rows` cell rows of `across` glyphs, from symbols `down` cell rows tall.
-    function drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint): void {
+    fn drawReel(strip: usmallint, stop: utinyint, row: utinyint, dest: usmallint, mask: utinyint, across: utinyint, down: utinyint, rows: utinyint) {
     }
 
     // The pre-composed strip buffer (the 5x5): byte `index` set to `value`, and
     // `count` bytes of it from `source` copied into the glyphs from `code` on.
-    function putStrip(index: usmallint, value: utinyint): void {
+    fn putStrip(index: usmallint, value: utinyint) {
     }
 
-    function copyOut(code: utinyint, source: usmallint, count: utinyint): void {
+    fn copyOut(code: utinyint, source: usmallint, count: utinyint) {
     }
 
-    function putColorStrip(index: usmallint, value: utinyint): void {
+    fn putColorStrip(index: usmallint, value: utinyint) {
     }
 
     // `count` colours from the colour buffer at `source` down a screen column from text cell `cell`.
-    function copyColors(cell: usmallint, source: usmallint, count: utinyint): void {
+    fn copyColors(cell: usmallint, source: usmallint, count: utinyint) {
     }
 
-    function open(): void {
+    fn open() {
     }
 
-    function close(): void {
+    fn close() {
     }
 }

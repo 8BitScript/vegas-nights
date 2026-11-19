@@ -1,13 +1,13 @@
 // Move a block of screen bytes down one row (design prototype, docs/reel-size.md): the whole-cell scroll of a
 // reel is `width` bytes copied from each row to the one below it, bottom row first, 18 cycles a byte.
-export namespace move {
+pub mod move {
     // `top` is the address of the block's first byte, `rows` its height, `width` its width, `stride` the
     // distance between rows (the screen's columns). The top row is left as it was; the caller composes it.
-    function down(top: usmallint, rows: utinyint, width: utinyint, stride: utinyint): void {
-        let dst: usmallint = rows - 1;
+    fn down(top: usmallint, rows: utinyint, width: utinyint, stride: utinyint) {
+        let mut dst: usmallint = rows - 1;
         dst = dst * stride + top;
-        let src: usmallint = dst - stride;
-        let n: utinyint = rows - 1;
+        let mut src: usmallint = dst - stride;
+        let mut n: utinyint = rows - 1;
         asm6502 {
         1:
             ldy width

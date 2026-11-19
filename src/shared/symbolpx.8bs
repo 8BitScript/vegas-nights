@@ -2,8 +2,8 @@
 // answer is the pixel machines' (the C64 and X16: the tile file's SYMBOL_CELLS_H); the machines that build the
 // reel from block glyphs have a twin that answers from their quadrant tables (QUAD_S, which is not the same
 // size: it is the size the owner wanted the reels to be on that machine).
-import { SYMBOL_CELLS_H } from "@generated/tiles/classic.8bs";
+use "@generated/tiles/classic.8bs"::SYMBOL_CELLS_H;
 
-export namespace symbolpx {
+pub mod symbolpx {
     const CELLS_H: utinyint = SYMBOL_CELLS_H;
 }

@@ -21,7 +21,7 @@
 //
 // On a machine with no driver `audio.NOTE_HIGH` is 0, a constant, and every
 // call here folds to nothing.
-import { audio } from "@8bitscript/audio";
+use @8bitscript::audio::audio;
 
 // Effect numbers, and where each one's steps are in NOTE and FRAMES.
 const TICK: utinyint = 0;
@@ -32,14 +32,14 @@ const BONUS: utinyint = 4;
 const NONE: utinyint = 255;
 
 // tick | stop | win | big | bonus, back to back.
-const NOTE: array<u8, 30> = [
+const NOTE: [u8; 30] = [
     67,
     48,
     60, 64, 67, 64, 67,
     48, 52, 55, 60, 64, 67, 71, 67, 71,
     55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 69, 71, 69, 71,
 ];
-const FRAMES: array<u8, 30> = [
+const FRAMES: [u8; 30] = [
     2,
     5,
     3, 3, 3, 3, 8,
@@ -47,26 +47,26 @@ const FRAMES: array<u8, 30> = [
     3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 10,
 ];
 // The first step of each effect, and one past its last.
-const FIRST: array<u8, 6> = [0, 1, 2, 7, 16, 30];
+const FIRST: [u8; 6] = [0, 1, 2, 7, 16, 30];
 
-let current: utinyint = 255;
-let at: utinyint = 0;
-let end: utinyint = 0;
-let left: utinyint = 0;
+let mut current: utinyint = 255;
+let mut at: utinyint = 0;
+let mut end: utinyint = 0;
+let mut left: utinyint = 0;
 
 // Sound the step at `at`, or end the effect when there are none left.
-function step(): void {
-    if (at >= end) {
+fn step() {
+    if at >= end {
         current = NONE;
         return;
     }
-    audio.tone(NOTE[at], FRAMES[at]);
+    audio::tone(NOTE[at], FRAMES[at]);
     left = FRAMES[at];
     at = at + 1;
 }
 
-function begin(effect: utinyint): void {
-    if (audio.NOTE_HIGH == 0) {
+fn begin(effect: utinyint) {
+    if audio::NOTE_HIGH == 0 {
         return;
     }
     current = effect;
@@ -75,46 +75,46 @@ function begin(effect: utinyint): void {
     step();
 }
 
-export namespace sfx {
-    function tick(): void {
+pub mod sfx {
+    fn tick() {
         begin(TICK);
     }
 
-    function stop(): void {
+    fn stop() {
         begin(STOP);
     }
 
-    function win(): void {
+    fn win() {
         begin(WIN);
     }
 
-    function big(): void {
+    fn big() {
         begin(BIG);
     }
 
-    function bonus(): void {
+    fn bonus() {
         begin(BONUS);
     }
 
-    function silence(): void {
+    fn silence() {
         current = NONE;
-        audio.silence();
+        audio::silence();
     }
 
     // True while an effect is still sounding.
-    function busy(): bool {
+    fn busy() -> bool {
         return current != NONE;
     }
 
     // Once a frame. Counts the sounding step down (this is `audio.update()`)
     // and starts the next one when it has run out.
-    function update(): void {
-        audio.update();
-        if (current == NONE) {
+    fn update() {
+        audio::update();
+        if current == NONE {
             return;
         }
         left = left - 1;
-        if (left == 0) {
+        if left == 0 {
             step();
         }
     }

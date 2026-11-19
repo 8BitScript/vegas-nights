@@ -4,26 +4,26 @@
 // Game: grid5x5   symbols: STAR MOON SUN COMET ORB RING BLANK WILD SCAT
 // 9 symbols of 3x3 cells = 24x24 pixels   data 855 bytes in the program image   art 87e17fbf8237
 
-export const TILE_MODE: utinyint = 1; // 0 = quadrant screen codes (PET), 1 = pixel bitmaps with a colour per cell
-export const ART_SYMBOLS: utinyint = 9; // symbols with art; equals SYMBOL_COUNT in the game's generated odds file
-export const SYMBOL_CELLS_W: utinyint = 3; // character cells across one symbol
-export const SYMBOL_CELLS_H: utinyint = 3; // character cells down one symbol
-export const SYMBOL_CELLS: utinyint = 9;
-export const SYMBOL_BYTES: usmallint = 72; // bytes of SYMBOL_BITMAP per symbol (cells x 8 pixel rows)
-export const BIT0_IS_LEFT: bool = false; // false: bit 7 is the leftmost pixel of a row (C64, VIC-20, X16); true: bit 0 is (the web's glyph table)
-export const BACKGROUND_COLOR: utinyint = 0; // the paper colour the art was made against: screen.setColors / the background register
-export const ART_STAR: utinyint = 0; // symbol index, in the engine's order
-export const ART_MOON: utinyint = 1; // symbol index, in the engine's order
-export const ART_SUN: utinyint = 2; // symbol index, in the engine's order
-export const ART_COMET: utinyint = 3; // symbol index, in the engine's order
-export const ART_ORB: utinyint = 4; // symbol index, in the engine's order
-export const ART_RING: utinyint = 5; // symbol index, in the engine's order
-export const ART_BLANK: utinyint = 6; // symbol index, in the engine's order
-export const ART_WILD: utinyint = 7; // symbol index, in the engine's order
-export const ART_SCAT: utinyint = 8; // symbol index, in the engine's order
+pub const TILE_MODE: utinyint = 1; // 0 = quadrant screen codes (PET), 1 = pixel bitmaps with a colour per cell
+pub const ART_SYMBOLS: utinyint = 9; // symbols with art; equals SYMBOL_COUNT in the game's generated odds file
+pub const SYMBOL_CELLS_W: utinyint = 3; // character cells across one symbol
+pub const SYMBOL_CELLS_H: utinyint = 3; // character cells down one symbol
+pub const SYMBOL_CELLS: utinyint = 9;
+pub const SYMBOL_BYTES: usmallint = 72; // bytes of SYMBOL_BITMAP per symbol (cells x 8 pixel rows)
+pub const BIT0_IS_LEFT: bool = false; // false: bit 7 is the leftmost pixel of a row (C64, VIC-20, X16); true: bit 0 is (the web's glyph table)
+pub const BACKGROUND_COLOR: utinyint = 0; // the paper colour the art was made against: screen.setColors / the background register
+pub const ART_STAR: utinyint = 0; // symbol index, in the engine's order
+pub const ART_MOON: utinyint = 1; // symbol index, in the engine's order
+pub const ART_SUN: utinyint = 2; // symbol index, in the engine's order
+pub const ART_COMET: utinyint = 3; // symbol index, in the engine's order
+pub const ART_ORB: utinyint = 4; // symbol index, in the engine's order
+pub const ART_RING: utinyint = 5; // symbol index, in the engine's order
+pub const ART_BLANK: utinyint = 6; // symbol index, in the engine's order
+pub const ART_WILD: utinyint = 7; // symbol index, in the engine's order
+pub const ART_SCAT: utinyint = 8; // symbol index, in the engine's order
 
 // [symbol * SYMBOL_BYTES + cell * 8 + pixelRow], cell = cellRow * SYMBOL_CELLS_W + cellCol, bit 7 = leftmost pixel
-export const SYMBOL_BITMAP: array<utinyint, 648> = [
+pub const SYMBOL_BITMAP: [utinyint; 648] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 24, 24, 60, 60,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 31, 15, 7, 1, 0, 1,
     36, 255, 255, 255, 255, 255, 255, 255, 0, 252, 248, 240, 224, 128, 0, 128,
@@ -64,48 +64,47 @@ export const SYMBOL_BITMAP: array<utinyint, 648> = [
     0, 0, 0, 0, 0, 128, 192, 224, 12, 24, 49, 25, 12, 6, 2, 3,
     126, 126, 255, 255, 255, 255, 126, 60, 48, 24, 140, 152, 48, 96, 64, 192,
     1, 0, 0, 0, 0, 0, 0, 0, 153, 195, 102, 36, 60, 24, 0, 0,
-    128, 0, 0, 0, 0, 0, 0, 0
+    128, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 // [symbol * SYMBOL_CELLS + cell]: vic20's own colour number for that cell's ink
-export const SYMBOL_COLOR: array<utinyint, 81> = [
+pub const SYMBOL_COLOR: [utinyint; 81] = [
     1, 7, 1, 7, 7, 7, 7, 7, 7, 7, 7, 1, 7, 7, 1, 7,
     7, 7, 2, 7, 2, 7, 7, 7, 2, 7, 2, 1, 1, 1, 3, 3,
     1, 3, 3, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 4, 1,
     4, 4, 4, 1, 4, 1, 1, 1, 1, 1, 6, 1, 1, 1, 1, 7,
     1, 7, 7, 7, 7, 7, 7, 7, 2, 2, 2, 2, 2, 2, 2, 2,
-    2
+    2,
 ];
 
-export const FRAME_CELLS: utinyint = 14; // frame, bevel, divider and panel cells
-export const FRAME_TL: utinyint = 0;
-export const FRAME_T: utinyint = 1;
-export const FRAME_TR: utinyint = 2;
-export const FRAME_L: utinyint = 3;
-export const FRAME_R: utinyint = 4;
-export const FRAME_BL: utinyint = 5;
-export const FRAME_B: utinyint = 6;
-export const FRAME_BR: utinyint = 7;
-export const FRAME_DIV: utinyint = 8;
-export const FRAME_DIVT: utinyint = 9;
-export const FRAME_DIVB: utinyint = 10;
-export const FRAME_ARROW_L: utinyint = 11;
-export const FRAME_ARROW_R: utinyint = 12;
-export const FRAME_PANEL: utinyint = 13;
+pub const FRAME_CELLS: utinyint = 14; // frame, bevel, divider and panel cells
+pub const FRAME_TL: utinyint = 0;
+pub const FRAME_T: utinyint = 1;
+pub const FRAME_TR: utinyint = 2;
+pub const FRAME_L: utinyint = 3;
+pub const FRAME_R: utinyint = 4;
+pub const FRAME_BL: utinyint = 5;
+pub const FRAME_B: utinyint = 6;
+pub const FRAME_BR: utinyint = 7;
+pub const FRAME_DIV: utinyint = 8;
+pub const FRAME_DIVT: utinyint = 9;
+pub const FRAME_DIVB: utinyint = 10;
+pub const FRAME_ARROW_L: utinyint = 11;
+pub const FRAME_ARROW_R: utinyint = 12;
+pub const FRAME_PANEL: utinyint = 13;
 
 // [frameCell * 8 + pixelRow], bit 7 = leftmost pixel
-export const FRAME_BITMAP: array<utinyint, 112> = [
+pub const FRAME_BITMAP: [utinyint; 112] = [
     63, 127, 255, 255, 255, 255, 254, 252, 255, 255, 255, 255, 255, 255, 170, 0,
     252, 254, 255, 255, 255, 255, 127, 63, 254, 252, 254, 252, 254, 252, 254, 252,
     127, 63, 127, 63, 127, 63, 127, 63, 252, 254, 255, 255, 255, 255, 127, 63,
     0, 170, 255, 255, 255, 255, 255, 255, 63, 127, 255, 255, 255, 255, 254, 252,
     124, 62, 124, 62, 124, 62, 124, 62, 255, 255, 255, 255, 255, 255, 254, 62,
     124, 190, 255, 255, 255, 255, 255, 255, 32, 48, 56, 60, 60, 56, 48, 32,
-    4, 12, 28, 60, 60, 28, 12, 4, 170, 85, 170, 85, 170, 85, 170, 85
+    4, 12, 28, 60, 60, 28, 12, 4, 170, 85, 170, 85, 170, 85, 170, 85,
 ];
 
 // [frameCell]: the ink colour
-export const FRAME_COLOR: array<utinyint, 14> = [
-    3, 3, 3, 3, 3, 3, 3, 3, 4, 3, 3, 7, 7, 6
+pub const FRAME_COLOR: [utinyint; 14] = [
+    3, 3, 3, 3, 3, 3, 3, 3, 4, 3, 3, 7, 7, 6,
 ];
-
