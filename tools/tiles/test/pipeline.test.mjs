@@ -138,9 +138,9 @@ const cosmic = await loadTheme('cosmic');
 
 test('the classic theme lists the engine\'s symbols in the engine\'s order, and the odds file agrees', () => {
   const odds = readFileSync(join(ROOT, 'src', 'generated', 'classic3x3.8bs'), 'utf8');
-  const count = Number(/export const SYMBOL_COUNT: utinyint = (\d+)/.exec(odds)[1]);
+  const count = Number(/pub const SYMBOL_COUNT: utinyint = (\d+)/.exec(odds)[1]);
   assert.equal(theme.symbols.length, count);
-  theme.symbols.forEach((s, i) => assert.match(odds, new RegExp(`export const SYM_${s.id}: utinyint = ${i};`), `${s.id} is symbol ${i} in the odds`));
+  theme.symbols.forEach((s, i) => assert.match(odds, new RegExp(`pub const SYM_${s.id}: utinyint = ${i};`), `${s.id} is symbol ${i} in the odds`));
 });
 
 test('every machine gets a file, each symbol has ink, and the sizes follow the theme', () => {
@@ -151,10 +151,10 @@ test('every machine gets a file, each symbol has ink, and the sizes follow the t
     // the X16's sprite file keeps the masters as they are: it has no converted symbols to count ink in
     (r.data?.symbols ?? []).forEach((s) => assert.ok((s.ink ?? 1) > 0, `${machine} ${s.id} has ink`));
   }
-  assert.match(files['classic.pet.8bs'], /export const QUAD_CODE: array<utinyint, 16>/);
+  assert.match(files['classic.pet.8bs'], /pub const QUAD_CODE: \[utinyint; 16\]/);
   // the C64's classic symbols are 4x4 cells (32x32 pixels, 128 bytes each), the other pixel machines' 3x3 or 2x2
-  assert.match(files['classic.8bs'], /export const SYMBOL_BITMAP: array<utinyint, 768>/);
-  assert.match(files['classic.cx16.8bs'], /export const SYMBOL_BITMAP: array<utinyint, 432>/);
+  assert.match(files['classic.8bs'], /pub const SYMBOL_BITMAP: \[utinyint; 768\]/);
+  assert.match(files['classic.cx16.8bs'], /pub const SYMBOL_BITMAP: \[utinyint; 432\]/);
   assert.match(files['classic.8bs'], /BIT0_IS_LEFT: bool = false/);
   assert.match(files['classic.web.8bs'], /BIT0_IS_LEFT: bool = true/);
 });
@@ -168,7 +168,7 @@ test('the web twin is the C64 file with every bitmap byte mirrored, given the sa
     assert.deepEqual([...web.symbols[i].bitmap], [...s.bitmap], 'same bitmaps before the emitter mirrors them');
     assert.deepEqual([...web.symbols[i].colors], [...s.colors]);
   });
-  const bytes = (text, name) => /array<utinyint, \d+> = \[([^\]]+)\]/.exec(text.slice(text.indexOf(`export const ${name}`)))[1].split(',').map(Number);
+  const bytes = (text, name) => /\[utinyint; \d+\] = \[([^\]]+)\]/.exec(text.slice(text.indexOf(`pub const ${name}`)))[1].split(',').map(Number);
   const full = buildTheme(same).files;
   assert.deepEqual(bytes(full['classic.web.8bs'], 'SYMBOL_BITMAP'), bytes(full['classic.8bs'], 'SYMBOL_BITMAP').map(reverseBits));
   assert.deepEqual(bytes(full['classic.web.8bs'], 'SYMBOL_COLOR'), bytes(full['classic.8bs'], 'SYMBOL_COLOR'));
@@ -202,7 +202,7 @@ test('the web draws BAR1 on its own 16x16 grid, so the word on the bar stays leg
 
 test('the VIC-20 only inks with colours 0-7, every colour is in its machine\'s palette, and the PET has no colour table', () => {
   const { files } = buildTheme(theme);
-  const colours = (text, name) => /array<utinyint, \d+> = \[([^\]]+)\]/.exec(text.slice(text.indexOf(`export const ${name}`)))[1].split(',').map(Number);
+  const colours = (text, name) => /\[utinyint; \d+\] = \[([^\]]+)\]/.exec(text.slice(text.indexOf(`pub const ${name}`)))[1].split(',').map(Number);
   assert.ok(colours(files['classic.vic20.8bs'], 'SYMBOL_COLOR').every((c) => c < 8));
   assert.ok(colours(files['classic.vic20.8bs'], 'FRAME_COLOR').every((c) => c < 8));
   assert.ok(colours(files['classic.cx16.8bs'], 'SYMBOL_COLOR').every((c) => c < 16));
@@ -225,9 +225,9 @@ test('the committed tables are what the pipeline writes now (a stale file fails 
 
 // ---- the X16's sprites ---------------------------------------------------------
 
-/** Read an emitted `export const NAME: array<utinyint, N> = [...]` back into numbers. */
+/** Read an emitted `pub const NAME: [utinyint; N] = [...]` back into numbers. */
 const arrayOf = (text, name) => {
-  const m = new RegExp(`export const ${name}: array<utinyint, (\\d+)> = \\[([^\\]]*)\\];`).exec(text);
+  const m = new RegExp(`pub const ${name}: \\[utinyint; (\\d+)\\] = \\[([^\\]]*)\\];`).exec(text);
   const values = m[2].split(',').map((v) => Number(v.trim()));
   assert.equal(values.length, Number(m[1]), `${name} declares its length`);
   return values;
@@ -330,8 +330,8 @@ test('compare passes an exact image, and fails when one ink pixel moves or a col
 
 const fileTables = (text) => {
   const out = {};
-  for (const m of text.matchAll(/^export const (\w+): (?:\w+) = (\d+|true|false);/gm)) out[m[1]] = m[2] === 'true' ? true : m[2] === 'false' ? false : Number(m[2]);
-  for (const m of text.matchAll(/^export const (\w+): array<\w+, \d+> = \[([^\]]*)\];/gm)) out[m[1]] = m[2].split(',').map((v) => Number(v.trim()));
+  for (const m of text.matchAll(/^pub const (\w+): (?:\w+) = (\d+|true|false);/gm)) out[m[1]] = m[2] === 'true' ? true : m[2] === 'false' ? false : Number(m[2]);
+  for (const m of text.matchAll(/^pub const (\w+): \[\w+; \d+\] = \[([^\]]*)\];/gm)) out[m[1]] = m[2].split(',').map((v) => Number(v.trim()));
   return out;
 };
 

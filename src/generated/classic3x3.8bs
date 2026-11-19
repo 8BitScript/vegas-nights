@@ -40,46 +40,46 @@ pub const STRIPS: [utinyint; 192] = [
     5, 3, 5, 2, 4, 5, 5, 5, 1, 5, 5, 3, 5, 4, 5, 0,
     5, 2, 5, 5, 5, 3, 5, 5, 4, 5, 5, 5, 2, 1, 5, 3,
     5, 5, 5, 4, 5, 5, 5, 3, 5, 2, 5, 5, 5, 4, 0, 5,
-    3, 5, 5, 1, 5, 5, 2, 5, 5, 4, 3, 5, 5, 5, 5, 5,
+    3, 5, 5, 1, 5, 5, 2, 5, 5, 4, 3, 5, 5, 5, 5, 5
 ];
 
 // bet multipliers of the base bet; pays scale linearly
 pub const BET_LEVELS: [utinyint; 4] = [
-    1, 2, 3, 5,
+    1, 2, 3, 5
 ];
 
 // line-major: LINES[line * REELS + reel] is the row that line crosses on that reel
 pub const LINES: [utinyint; 9] = [
-    1, 1, 1, 0, 1, 2, 2, 1, 0,
+    1, 1, 1, 0, 1, 2, 2, 1, 0
 ];
 
 // PAYS[symbol * PAY_WIDTH + run] credits for that many from reel 1
 pub const PAYS: [usmallint; 24] = [
     0, 0, 0, 40000, 0, 0, 0, 16000, 0, 0, 0, 8000, 0, 0, 0, 4000,
-    0, 77, 1000, 2000, 0, 0, 0, 0,
+    0, 77, 1000, 2000, 0, 0, 0, 0
 ];
 
 // credits a meter resets to (or a fixed jackpot pays), at the base bet
 pub const JACKPOT_SEED: [usmallint; 1] = [
-    5000,
+    5000
 ];
 
 // credits added to the meter per base-bet spin, x256 (8.8 fixed point); 0 = fixed odds
 pub const JACKPOT_CONTRIB_Q8: [usmallint; 1] = [
-    0,
+    0
 ];
 
 // smallest bet multiplier that can win it
 pub const JACKPOT_MIN_BET: [utinyint; 1] = [
-    1,
+    1
 ];
 
 // first draw value that hits it (per-spin jackpots only)
 pub const JACKPOT_RANGE_FROM: [usmallint; 1] = [
-    0,
+    0
 ];
 
 // one past the last (0 = not a per-spin jackpot)
 pub const JACKPOT_RANGE_TO: [usmallint; 1] = [
-    1,
+    1
 ];

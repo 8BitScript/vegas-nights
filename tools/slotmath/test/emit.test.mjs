@@ -16,12 +16,12 @@ async function get(id) {
   return built.get(id);
 }
 
-/** Pull `export const NAME: type = value;` and `export const NAME: array<type, n> = [..];` out of emitted text. */
+/** Pull `pub const NAME: type = value;` and `pub const NAME: [type; n] = [..];` out of emitted text. */
 function parseModule(text) {
   const consts = {};
   const arrays = {};
-  for (const m of text.matchAll(/export const (\w+): (\w+) = (\d+);/g)) consts[m[1]] = Number(m[3]);
-  for (const m of text.matchAll(/export const (\w+): array<(\w+), (\d+)> = \[([^\]]*)\];/g)) {
+  for (const m of text.matchAll(/pub const (\w+): (\w+) = (\d+);/g)) consts[m[1]] = Number(m[3]);
+  for (const m of text.matchAll(/pub const (\w+): \[(\w+); (\d+)\] = \[([^\]]*)\];/g)) {
     arrays[m[1]] = { type: m[2], length: Number(m[3]), values: m[4].split(',').map((v) => Number(v.trim())) };
   }
   return { consts, arrays };

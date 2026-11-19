@@ -12,7 +12,7 @@ pub const VERA_TOTAL_BYTES: usmallint = 6912;
 // sixteen VERA palette entries, two bytes each (GB then 0R); entry 0 is the clear index
 pub const VERA_PALETTE: [utinyint; 32] = [
     0, 0, 0, 0, 255, 15, 51, 8, 102, 11, 187, 6, 57, 8, 164, 5,
-    232, 9, 56, 4, 108, 7, 199, 11, 82, 8, 119, 7, 85, 5, 153, 9,
+    232, 9, 56, 4, 108, 7, 199, 11, 82, 8, 119, 7, 85, 5, 153, 9
 ];
 
 // [symbol * VERA_SYMBOL_BYTES + row * 24 + column / 2], row 0..47, the left pixel of a pair in the high nibble
@@ -448,5 +448,6 @@ pub const VERA_PIXELS: [utinyint; 6912] = [
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
     17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
-    17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+    17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17
 ];
+

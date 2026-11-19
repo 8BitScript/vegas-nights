@@ -67,9 +67,9 @@ for (const { machine, tiles, glyphs } of MACHINES) {
 test('the C64 stages the whole tileset and every strip into the RAM the composer reads', () => {
   const t = loadFile('tiles/classic.8bs').consts;
   const g = readFileSync(join(ROOT, 'src/shared/glyphs.c64.8bs'), 'utf8');
-  const tiles = Number(/let tileBytes: array<utinyint, (\d+)>/.exec(g)[1]);
-  const strips = Number(/let stripBytes: array<utinyint, (\d+)>/.exec(g)[1]);
-  const symbolTables = Number(/let symbolLow: array<utinyint, (\d+)>/.exec(g)[1]);
+  const tiles = Number(/let mut tileBytes: \[utinyint; (\d+)\]/.exec(g)[1]);
+  const strips = Number(/let mut stripBytes: \[utinyint; (\d+)\]/.exec(g)[1]);
+  const symbolTables = Number(/let mut symbolLow: \[utinyint; (\d+)\]/.exec(g)[1]);
   assert.ok(t.ART_SYMBOLS * t.SYMBOL_BYTES <= tiles, 'the tileset is bigger than the buffer at $C000');
   assert.ok(game.REELS * game.STOPS <= strips, 'the strips are bigger than the buffer at $C400');
   assert.ok(t.ART_SYMBOLS <= symbolTables, 'more symbols than the offset table holds');

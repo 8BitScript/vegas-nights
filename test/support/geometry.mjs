@@ -44,6 +44,6 @@ export function panelRows(lab, machine) {
 /** The strings the game prints on its message row, from game.8bs. */
 export function messages(lab) {
   const src = read(`src/labs/${lab}/game.8bs`);
-  const body = /function message\([^)]*\): void \{([\s\S]*?)\n\}/.exec(src)[1];
-  return [...body.matchAll(/text\.print\(at, "([^"]*)"\)/g)].map((m) => m[1]);
+  const body = /fn message\([^)]*\) \{([\s\S]*?)\n\}/.exec(src)[1];
+  return [...body.matchAll(/text::print\(at, "([^"]*)"\)/g)].map((m) => m[1]);
 }

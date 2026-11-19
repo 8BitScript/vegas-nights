@@ -57,7 +57,7 @@ test('every symbol the strips use has art, on every machine', () => {
   // the text fallback's characters, in view.8bs
   const view = readFileSync(join(ROOT, 'src', 'labs', 'slot3x3', 'view.8bs'), 'utf8');
   for (const name of ['GLYPH_LEFT', 'GLYPH_MID', 'GLYPH_RIGHT']) {
-    const m = new RegExp(`const ${name}: array<utinyint, (\\d+)>`).exec(view);
+    const m = new RegExp(`const ${name}: \\[utinyint; (\\d+)\\]`).exec(view);
     assert.ok(m, `${name} exists in view.8bs`);
     assert.equal(Number(m[1]), c.SYMBOL_COUNT, `${name} has one entry per symbol`);
   }

@@ -171,11 +171,11 @@ export function emit(spec, analysis) {
   lines.push(`// Table data: ${dataBytes} bytes in the program image (const arrays are never in RAM).`);
   lines.push(`// Random bytes: ${plan.perBaseSpin} per base spin${plan.conditional.length ? `, +${plan.conditional.length} when the wheel opens` : ''}, ${plan.perFreeSpin} per free spin.`);
   lines.push('');
-  for (const [name, type, value, comment] of consts) lines.push(`export const ${name}: ${type} = ${value}; // ${comment}`);
+  for (const [name, type, value, comment] of consts) lines.push(`pub const ${name}: ${type} = ${value}; // ${comment}`);
   for (const [name, type, values, comment] of arrays) {
     lines.push('');
     lines.push(`// ${comment}`);
-    lines.push(`export const ${name}: array<${type}, ${values.length}> = [`);
+    lines.push(`pub const ${name}: [${type}; ${values.length}] = [`);
     lines.push(tableLines(values));
     lines.push('];');
   }

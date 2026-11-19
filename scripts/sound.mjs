@@ -31,7 +31,7 @@ export const { haveBinary, viceWav, viceDump, x16Wav, analyzeSamples, sidTones, 
 // ---- the schedule, read from the source of truth --------------------------------
 
 function table(source, name) {
-  const match = new RegExp(`const ${name}: array<u8, \\d+> = \\[([^\\]]*)\\];`).exec(source);
+  const match = new RegExp(`const ${name}: \\[u8; \\d+\\] = \\[([^\\]]*)\\];`).exec(source);
   if (!match) throw new Error(`sound: no ${name} table in src/shared/sfx.8bs`);
   return match[1].split(',').map((s) => s.trim()).filter(Boolean).map(Number);
 }

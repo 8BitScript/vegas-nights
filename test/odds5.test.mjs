@@ -116,8 +116,8 @@ test('the bonus round, played by the game\'s rules, returns the engine\'s exact 
 
 test('the jackpot seeds game.8bs keeps by hand are the generated file\'s, and the meters grow by whole credits', () => {
   const game = readFileSync(join(ROOT, 'src', 'labs', 'slot5x5', 'game.8bs'), 'utf8');
-  const millions = /const SEED_MILLIONS: array<usmallint, 4> = \[([^\]]*)\]/.exec(game)[1].split(',').map(Number);
-  const thousands = /const SEED_THOUSANDS: array<usmallint, 4> = \[([^\]]*)\]/.exec(game)[1].split(',').map(Number);
+  const millions = /const SEED_MILLIONS: \[usmallint; 4\] = \[([^\]]*)\]/.exec(game)[1].split(',').map(Number);
+  const thousands = /const SEED_THOUSANDS: \[usmallint; 4\] = \[([^\]]*)\]/.exec(game)[1].split(',').map(Number);
   for (let j = 0; j < c.JACKPOT_COUNT; j += 1) {
     assert.equal(millions[j] * 1_000_000 + thousands[j] * 1000, a.JACKPOT_SEED[j], `jackpot ${j}`);
     assert.equal(a.JACKPOT_CONTRIB_Q8[j] % 256, 0, `jackpot ${j} grows by whole credits, so the 6502 side needs no fractions`);

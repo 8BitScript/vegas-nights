@@ -24,7 +24,7 @@ pub const ART_SCAT: utinyint = 8; // symbol index, in the engine's order
 
 // screen code for a 2x2 block pattern, indexed topLeft<<3 | topRight<<2 | bottomLeft<<1 | bottomRight (from the PET character ROM; reverse video makes the upper eight)
 pub const QUAD_CODE: [utinyint; 16] = [
-    32, 108, 123, 98, 124, 225, 255, 254, 126, 127, 97, 252, 226, 251, 236, 160,
+    32, 108, 123, 98, 124, 225, 255, 254, 126, 127, 97, 252, 226, 251, 236, 160
 ];
 
 // [symbol * SYMBOL_PIXEL_ROWS + row]: one byte a pseudo-pixel row, bit 7 = leftmost; two rows and two columns make one cell
@@ -32,7 +32,7 @@ pub const SYMBOL_PIXELS: [utinyint; 54] = [
     48, 252, 120, 72, 132, 0, 112, 192, 192, 192, 112, 0, 180, 120, 252, 120,
     180, 0, 12, 28, 48, 96, 192, 0, 120, 252, 252, 252, 120, 0, 0, 48,
     252, 120, 48, 0, 0, 0, 48, 48, 0, 0, 132, 132, 180, 180, 72, 0,
-    120, 252, 120, 48, 0, 0,
+    120, 252, 120, 48, 0, 0
 ];
 
 pub const FRAME_CELLS: utinyint = 14; // frame, bevel, divider and panel cells
@@ -53,5 +53,6 @@ pub const FRAME_PANEL: utinyint = 13;
 
 // [frameCell]: the screen code to print
 pub const FRAME_CODE: [utinyint; 14] = [
-    236, 226, 251, 97, 225, 252, 98, 254, 97, 236, 252, 160, 160, 32,
+    236, 226, 251, 97, 225, 252, 98, 254, 97, 236, 252, 160, 160, 32
 ];
+

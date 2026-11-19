@@ -53,7 +53,7 @@ export function quadTables(images, S, codes, ink) {
 const array = (name, values, comment) => {
   const lines = [];
   for (let i = 0; i < values.length; i += 16) lines.push('    ' + values.slice(i, i + 16).join(', '));
-  return `// ${comment}\nexport const ${name}: array<utinyint, ${values.length}> = [\n${lines.join(',\n')}\n];\n`;
+  return `// ${comment}\npub const ${name}: [utinyint; ${values.length}] = [\n${lines.join(',\n')}\n];\n`;
 };
 
 /** The source of one quadrant-table file. `S` is the symbol size in cells for this machine. */
@@ -80,10 +80,10 @@ export function emitQuadTables(theme, out, S) {
     `// Game: ${theme.game}   symbols: ${theme.symbols.map((s) => s.id).join(' ')}`,
     `// ${n} symbols   data ${bytes} bytes in the program image   art ${hash}`,
     '',
-    `export const QUAD_S: utinyint = ${S}; // cells a symbol is on a side`,
-    `export const QUAD_P: utinyint = ${2 * S}; // pseudo-pixel rows a symbol has (two a cell)`,
-    `export const QUAD_SYMBOLS: utinyint = ${n}; // symbols with art; equals SYMBOL_COUNT in the odds file`,
-    `export const QUAD_COLORED: bool = ${out.colored}; // QUAD_K holds an ink a symbol cell`,
+    `pub const QUAD_S: utinyint = ${S}; // cells a symbol is on a side`,
+    `pub const QUAD_P: utinyint = ${2 * S}; // pseudo-pixel rows a symbol has (two a cell)`,
+    `pub const QUAD_SYMBOLS: utinyint = ${n}; // symbols with art; equals SYMBOL_COUNT in the odds file`,
+    `pub const QUAD_COLORED: bool = ${out.colored}; // QUAD_K holds an ink a symbol cell`,
     '',
     array('QUAD_C0', t.C0, '[(symbol * QUAD_S + k) * QUAD_S + c]: the cell for symbol rows 2k and 2k+1 (a window that starts on an even pseudo-pixel row)'),
     array('QUAD_C1', t.C1, '[(symbol * (QUAD_S - 1) + k) * QUAD_S + c]: symbol rows 2k+1 and 2k+2 (an odd start), k < QUAD_S - 1'),

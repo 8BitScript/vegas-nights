@@ -45,54 +45,54 @@ pub const STRIPS: [utinyint; 160] = [
     6, 2, 4, 6, 1, 8, 6, 5, 6, 7, 4, 6, 3, 0, 5, 6,
     4, 2, 6, 1, 5, 6, 3, 6, 7, 6, 5, 4, 0, 6, 3, 5,
     1, 6, 5, 6, 4, 6, 2, 6, 5, 0, 6, 2, 4, 6, 5, 6,
-    1, 6, 3, 6, 5, 4, 6, 3, 0, 6, 5, 2, 6, 3, 4, 6,
+    1, 6, 3, 6, 5, 4, 6, 3, 0, 6, 5, 2, 6, 3, 4, 6
 ];
 
 // bet multipliers of the base bet; pays scale linearly
 pub const BET_LEVELS: [utinyint; 4] = [
-    1, 2, 3, 5,
+    1, 2, 3, 5
 ];
 
 // PAYS[symbol * PAY_WIDTH + run] credits PER WAY; multiply by the number of ways
 pub const PAYS: [usmallint; 48] = [
     0, 0, 0, 120, 560, 2800, 0, 0, 0, 68, 330, 1650, 0, 0, 0, 42,
     200, 990, 0, 0, 0, 0, 120, 560, 0, 0, 0, 0, 68, 330, 0, 0,
-    0, 0, 22, 230, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 22, 230, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ];
 
 // credits for n scatters anywhere
 pub const SCATTER_PAYS: [usmallint; 26] = [
     0, 0, 0, 2000, 10000, 50000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ];
 
 // free spins for n scatters
 pub const FREE_SPIN_AWARD: [utinyint; 26] = [
     0, 0, 0, 8, 12, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ];
 
 // credits a meter resets to (or a fixed jackpot pays), at the base bet; 32-bit because a seed exceeds 65535
 pub const JACKPOT_SEED: [uint; 4] = [
-    10000, 50000, 250000, 1000000,
+    10000, 50000, 250000, 1000000
 ];
 
 // credits added to the meter per base-bet spin, x256 (8.8 fixed point); 0 = fixed odds
 pub const JACKPOT_CONTRIB_Q8: [usmallint; 4] = [
-    1024, 768, 512, 256,
+    1024, 768, 512, 256
 ];
 
 // smallest bet multiplier that can win it
 pub const JACKPOT_MIN_BET: [utinyint; 4] = [
-    1, 2, 3, 5,
+    1, 2, 3, 5
 ];
 
 // first draw value that hits it (per-spin jackpots only)
 pub const JACKPOT_RANGE_FROM: [usmallint; 4] = [
-    0, 64, 80, 83,
+    0, 64, 80, 83
 ];
 
 // one past the last (0 = not a per-spin jackpot)
 pub const JACKPOT_RANGE_TO: [usmallint; 4] = [
-    64, 80, 83, 84,
+    64, 80, 83, 84
 ];
