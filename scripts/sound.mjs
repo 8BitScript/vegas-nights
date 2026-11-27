@@ -1,19 +1,19 @@
-// Record the sound-test lab on each machine and check what it plays.
+// Record the sound-test lab on each machine and check what it plays against what assets/audio/classic.8ba
+// COMPOSES. Nothing here knows a note: the expected notes, rows, lengths and decays are read from the
+// `.8ba` file with the 8BitScript compiler (EIGHTBS_CHECKOUT), so editing a song and running this
+// checks the new song.
 //
 //   node scripts/sound.mjs                 # every machine whose emulator is installed
 //   node scripts/sound.mjs c64 vic20       # just those
 //
-// The lab plays the five slot sounds once each at start (src/shared/sfx.8bs).
-// This builds it, records the machine's audio headlessly, and for every note
-// of every effect measures the pitch in that note's window and compares it
-// with the note the effect says. What it uses to record is
-// packages/audio/test/capture.mjs in the 8BitScript checkout that has
-// `audio.tone` (EIGHTBS_CHECKOUT, default ../8bitscript): VICE in `-console`
-// mode at 2% volume, x16emu on SDL's dummy drivers, and for the web the
-// register timeline of the compiled program rendered to samples, because
-// there is no browser tab to record. Nothing opens a window or makes a sound
-// worth hearing. The check says what the machine PLAYS; whether a person
-// likes it is another matter, and the web's sound has not been heard.
+// The lab (src/labs/sound-test) plays the seven sounds once each at start. This builds it, records the
+// machine's audio headlessly, and compares every note: its pitch (folded into the machine's range, as the
+// driver does) and, where the chip reports it, how long it sounded. What it records with is
+// packages/audio/test/capture.mjs in the 8BitScript checkout: VICE in `-console` mode (the SID and the
+// VIC-I read register by register from its `dump` sound device, the PET recorded), x16emu on SDL's dummy
+// drivers, and for the web the register timeline of the compiled program. Nothing opens a window or makes
+// a sound worth hearing. The check says what the machine PLAYS; whether a person likes it is another
+// matter, and the web's sound has not been heard.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -22,46 +22,70 @@ import { pathToFileURL } from 'node:url';
 const CHECKOUT = resolve(process.env.EIGHTBS_CHECKOUT ?? join(process.cwd(), '..', '8bitscript'));
 const CLI = join(CHECKOUT, 'packages', 'cli', 'bin', '8bs.mjs');
 const capturePath = join(CHECKOUT, 'packages', 'audio', 'test', 'capture.mjs');
-if (!existsSync(capturePath)) {
-  console.error(`sound: ${capturePath} not found. Set EIGHTBS_CHECKOUT to an 8BitScript checkout with audio.tone (packages/audio/test/capture.mjs).`);
+const compilerPath = join(CHECKOUT, 'packages', 'compiler', 'index.mjs');
+const songPath = join(CHECKOUT, 'packages', 'compiler', 'src', 'media', 'audio', 'song.mjs');
+if (!existsSync(capturePath) || !existsSync(songPath)) {
+  console.error(`sound: ${CHECKOUT} has no packages/audio/test/capture.mjs or no .8ba song encoder. Set EIGHTBS_CHECKOUT to an 8BitScript checkout with .8ba songs (8bitscript #316 or later).`);
   process.exit(2);
 }
 export const { haveBinary, viceWav, viceDump, x16Wav, analyzeSamples, sidTones, vicTones, cents, noteHz } = await import(pathToFileURL(capturePath));
+const { analyzeMedia } = await import(pathToFileURL(compilerPath));
+const { songEvents } = await import(pathToFileURL(songPath));
 
-// ---- the schedule, read from the source of truth --------------------------------
+// ---- the composition, read from the source of truth -------------------------------
 
-function table(source, name) {
-  const match = new RegExp(`const ${name}: array<u8, \\d+> = \\[([^\\]]*)\\];`).exec(source);
-  if (!match) throw new Error(`sound: no ${name} table in src/shared/sfx.8bs`);
-  return match[1].split(',').map((s) => s.trim()).filter(Boolean).map(Number);
+export const EFFECTS = ['tick', 'stop', 'win', 'big', 'jackpot', 'bonus', 'over'];
+
+const bank = analyzeMedia(readFileSync('assets/audio/classic.8ba', 'utf8'), 'classic.8ba', { sourceKind: '.8ba' });
+if (bank.diagnostics.length > 0) throw new Error(`assets/audio/classic.8ba: ${bank.diagnostics.map((d) => d.message).join('; ')}`);
+
+/** The sound as composed: { name, speed, rows, notes: [{ note, start, frames, decay }] } with frames counted from the first row. */
+export function composed(name) {
+  const song = bank.air.songs.find((s) => s.name === `${name}Sound`);
+  if (!song) throw new Error(`no song ${name}Sound in assets/audio/classic.8ba`);
+  const events = songEvents(bank.air, song);
+  const rows = song.patterns.find((p) => p.name === song.order[0]).length;
+  const notes = events.map((e, i) => {
+    // A note sounds for its length, or until the next one starts, whichever is first (and not past the last row).
+    const nextRow = i + 1 < events.length ? events[i + 1].row : rows;
+    const sounded = Math.min(e.length, nextRow - e.row, rows - e.row);
+    return { note: e.note, start: e.row * song.speed, frames: sounded * song.speed, decay: e.decay, volume: e.volume };
+  });
+  return { name, speed: song.speed, rows, frames: rows * song.speed, notes };
 }
-const sfx = readFileSync('src/shared/sfx.8bs', 'utf8');
-export const NOTE = table(sfx, 'NOTE');
-export const FRAMES = table(sfx, 'FRAMES');
-export const FIRST = table(sfx, 'FIRST');
-export const EFFECTS = ['tick', 'stop', 'win', 'big', 'bonus'];
 
 // ---- the machines ---------------------------------------------------------------
 
-// `cents`: how far a measured note may be from its note. The VIC-I's 7-bit
-// divisor is up to 50 cents off by design (packages/audio/AGENTS.md); the
-// PET's T2 steps round; the SID and the PSG are exact; the web's is a formula.
-//
-// `dump`: the SID and the VIC-I are read register by register from VICE's
-// `dump` sound device, which is exact; a recorded WAV of a 50 ms note on
-// either is a poor ruler (the SID's envelope hides where a note starts and a
-// VIC-I note change glitches the zero crossings), so the notes are checked on
-// the registers and the lengths on the cycles between them. The PET has no
-// registers to read (its CB2 wave is not a chip write) and is measured on the
-// WAV. The PET's logical frame is measured at about 58 Hz in xpet, not the
-// catalog's 50, so a window is timed with 60.
+// `range`: the notes the driver plays; one outside it moves by whole octaves (packages/audio/AGENTS.md).
+// `cents`: how far a measured note may be from its note. The VIC-I's 7-bit divisor is up to 50 cents off by
+// design; the PET's T2 steps round; the SID and the PSG are exact; the web's is a formula.
+// `gate`: how a note's sounding time ends. The SID's gate stays open for the note's length (its
+// envelope does the fading); the others silence the voice when the decay is up.
 export const MACHINES = {
-  pet: { frameRate: 60, tolerance: 35, emulator: 'xpet', cycles: 12_000_000, modelArgs: ['-model', '4032', '-ramsize', '32'], build: ['--target', 'pet'] },
-  vic20: { dump: 'vic', tolerance: 60, emulator: 'xvic', cycles: 11_000_000, modelArgs: ['-model', 'vic20ntsc', '-memory', '8k'], build: ['--target', 'vic20'] },
-  c64: { dump: 'sid', tolerance: 3, emulator: 'x64sc', cycles: 12_000_000, modelArgs: ['-model', 'ntsc'], build: ['--target', 'c64'] },
-  cx16: { frameRate: 60, tolerance: 20, emulator: 'x16emu', build: ['--target', 'cx16'] },
-  web: { frameRate: 60, tolerance: 5, build: ['--target', 'web'] },
+  pet: { frameRate: 60, tolerance: 35, range: [48, 71], gate: 'decay', emulator: 'xpet', cycles: 15_000_000, modelArgs: ['-model', '4032', '-ramsize', '32'], build: ['--target', 'pet'] },
+  vic20: { dump: 'vic', tolerance: 60, range: [36, 71], gate: 'decay', emulator: 'xvic', cycles: 14_000_000, modelArgs: ['-model', 'vic20ntsc', '-memory', '16k'], build: ['--target', 'vic20'] },
+  c64: { dump: 'sid', tolerance: 3, range: [0, 83], gate: 'length', emulator: 'x64sc', cycles: 14_000_000, modelArgs: ['-model', 'ntsc'], build: ['--target', 'c64'] },
+  cx16: { frameRate: 60, tolerance: 20, range: [36, 95], gate: 'decay', emulator: 'x16emu', build: ['--target', 'cx16'] },
+  web: { frameRate: 60, tolerance: 5, range: [24, 95], gate: 'decay', build: ['--target', 'web'] },
 };
+
+export function fold(machine, note) {
+  const [low, high] = MACHINES[machine].range;
+  let n = note;
+  while (n < low) n += 12;
+  while (n > high) n -= 12;
+  return n;
+}
+
+/** What `machine` should play for `name`: the folded notes and the frames each sounds for. */
+export function expectedFor(machine, name) {
+  const sound = composed(name);
+  return sound.notes.map((n) => ({
+    note: fold(machine, n.note),
+    start: n.start,
+    frames: MACHINES[machine].gate === 'decay' && n.decay > 0 ? Math.min(n.frames, n.decay) : n.frames,
+  }));
+}
 
 export function build(machine, program = 'sound-test') {
   const run = spawnSync(process.execPath, [CLI, 'build', ...MACHINES[machine].build, '--program', program, '--checkout', CHECKOUT], { encoding: 'utf8' });
@@ -79,8 +103,8 @@ export function prgFor(machine, program = 'sound-test') {
 export async function record(machine, program = 'sound-test', run = {}) {
   const m = MACHINES[machine];
   const frames = run.frames;
-  if (machine === 'cx16') return x16Wav(prgFor(machine, program), { ms: frames ? Math.round(frames * 17 + 6000) : 11000 });
-  if (machine === 'web') return renderWeb(program, frames ?? 700);
+  if (machine === 'cx16') return x16Wav(prgFor(machine, program), { ms: frames ? Math.round(frames * 17 + 6000) : 16000 });
+  if (machine === 'web') return renderWeb(program, frames ?? 1500);
   const cycles = frames ? Math.round((frames + 300) * 17200) : m.cycles;
   if (m.dump) return viceDump(m.emulator, prgFor(machine, program), { cycles, modelArgs: m.modelArgs });
   return viceWav(m.emulator, prgFor(machine, program), { cycles, modelArgs: m.modelArgs });
@@ -88,7 +112,7 @@ export async function record(machine, program = 'sound-test', run = {}) {
 
 // No browser tab here: run the compiled program a frame at a time, read the
 // four tone registers each frame as the page would, and render what they say.
-async function renderWeb(name = 'sound-test', limit = 700) {
+async function renderWeb(name = 'sound-test', limit = 1500) {
   const { instantiateProgram, FrameLimitReached } = await import(pathToFileURL(join(CHECKOUT, 'packages', 'cli', 'src', 'wasm-host.mjs')));
   const { voiceState, renderVoice } = await import(pathToFileURL(join(CHECKOUT, 'packages', 'cli', 'src', 'web-audio.mjs')));
   const { layoutFromHardware } = await import(pathToFileURL(join(CHECKOUT, 'packages', 'cli', 'src', 'web-layout.mjs')));
@@ -109,93 +133,117 @@ async function renderWeb(name = 'sound-test', limit = 700) {
   const scaled = new Float32Array(samples.length);
   for (let i = 0; i < samples.length; i += 1) scaled[i] = samples[i] * 32767;
   const analysis = analyzeSamples(scaled, rate);
-  // The per-frame voice, for a check that wants the notes themselves (scripts/slot-sound.mjs).
+  // The per-frame voice, for a check that wants the notes themselves.
   analysis.timeline = timeline;
   return analysis;
 }
 
-// ---- the check ------------------------------------------------------------------
+// ---- reading what was played -----------------------------------------------------
 
-// Notes and lengths from a register dump: one tone per step, in order, the
-// pitch from the registers and the length from the cycles it stayed on. The
-// frame period is whatever the steps agree on (it is cycles / frames), and it
-// has to be a real machine's frame, 16,000 to 18,500 cycles.
-function checkDump(machine, events) {
-  const { tolerance, dump } = MACHINES[machine];
-  const tones = dump === 'sid' ? sidTones(events) : vicTones(events, 12);
-  const lines = [];
-  const warnings = [];
-  let bad = 0;
-  if (tones.length < NOTE.length) {
-    lines.push(`  FAIL heard ${tones.length} steps, wanted ${NOTE.length}`);
-    return { lines, bad: 1 };
-  }
-  const periods = tones.slice(0, NOTE.length).map((t, i) => t.cycles / FRAMES[i]).sort((a, b) => a - b);
-  const frame = periods[Math.floor(periods.length / 2)];
-  if (frame < 16000 || frame > 18500) {
-    lines.push(`  FAIL a frame measures ${frame.toFixed(0)} cycles`);
-    bad += 1;
-  }
-  EFFECTS.forEach((name, e) => {
-    const notes = [];
-    let wrongLength = 0;
-    for (let i = FIRST[e]; i < FIRST[e + 1]; i += 1) {
-      const tone = tones[i];
-      const error = Math.abs(cents(tone.hz, noteHz(NOTE[i])));
-      const frames = tone.cycles / frame;
-      if (error > tolerance) bad += 1;
-      // A length that is off is a warning, not a failure: the pitch is the
-      // property of the sound. The VIC-20's first step of `big` runs a frame
-      // long (4.95 where its neighbours measure 4.00); the cause is not found.
-      if (Math.abs(frames - FRAMES[i]) > 0.6) { warnings.push(`${name} step ${i - FIRST[e]}: ${frames.toFixed(2)} frames, wanted ${FRAMES[i]}`); wrongLength += 1; }
-      const wrong = Math.abs(frames - FRAMES[i]) > 0.6 ? ` [${frames.toFixed(1)} of ${FRAMES[i]} frames!]` : '';
-      notes.push(`${tone.hz.toFixed(0)}/${noteHz(NOTE[i]).toFixed(0)}${error <= tolerance ? '' : ` (${error.toFixed(0)}c!)`}${wrong}`);
-    }
-    lines.push(`  ${name.padEnd(6)} ${wrongLength === 0 ? 'lengths ok' : `${wrongLength} length warning`}  ${notes.join(' ')}`);
+/** The web's per-frame voice as notes: a run of frames on one pitch is a tone. `at` is its first frame. */
+export function webTones(timeline) {
+  const tones = [];
+  let open = null;
+  timeline.forEach((frame, index) => {
+    const key = frame.on ? Math.round(frame.hz) : 0;
+    if (open && open.key === key) { open.frames += 1; return; }
+    if (open && open.key !== 0) tones.push({ hz: open.hz, frames: open.frames, at: open.at });
+    open = { key, hz: frame.hz, frames: 1, at: index };
   });
-  lines.push(`  frame ${frame.toFixed(0)} cycles`);
-  for (const warning of warnings) lines.push(`  WARN ${warning}`);
+  if (open && open.key !== 0) tones.push({ hz: open.hz, frames: open.frames, at: open.at });
+  return tones;
+}
+
+/** The tones a register dump or a timeline shows, as { hz, frames, at } (at in frames), in order. */
+export function tonesOf(machine, recorded) {
+  if (machine === 'web') return webTones(recorded.timeline);
+  const { dump } = MACHINES[machine];
+  const tones = dump === 'sid' ? sidTones(recorded) : vicTones(recorded, 12);
+  return tones.map((t) => ({ hz: t.hz, frames: t.cycles / 17090, at: t.at / 17090 }));
+}
+
+// The notes a recording plays, in order: the pitch is measured in short sliding windows, a note is a pitch
+// that holds for three windows in a row, and runs of the same note are one. A recording's time is not the
+// logical frame's (the PET's measures about 58 Hz, the X16's steps are not evenly spaced in the WAV), so a
+// recording is compared by WHICH notes were played in what order, and only notes long enough to span
+// three windows (a note of three frames or more) can be seen at all.
+export function plateaus(analysis, from = 0, to = analysis.seconds) {
+  const notes = [];
+  for (let t = from; t + 0.02 <= to; t += 0.006) {
+    const got = analysis.measure(t, t + 0.02);
+    notes.push(got.cycles >= 2 && got.frequency > 50 ? Math.round(57 + 12 * Math.log2(got.frequency / 440)) : null);
+  }
+  const heard = [];
+  let run = 0;
+  for (let i = 0; i < notes.length; i += 1) {
+    run = i > 0 && notes[i] === notes[i - 1] ? run + 1 : 1;
+    if (notes[i] === null || run !== 3) continue;
+    if (heard.length === 0 || heard.at(-1) !== notes[i]) heard.push(notes[i]);
+  }
+  return heard;
+}
+
+// ---- the check -------------------------------------------------------------------
+
+/** Compare the tones heard with the notes composed: pitch within tolerance, length within a frame or so. */
+export function compareTones(machine, tones, want, label) {
+  const { tolerance } = MACHINES[machine];
+  const lines = [];
+  let bad = 0;
+  if (tones.length !== want.length) {
+    return { lines: [`  FAIL ${label}: heard ${tones.length} notes, composed ${want.length}`], bad: 1 };
+  }
+  const got = [];
+  want.forEach((step, i) => {
+    const error = Math.abs(cents(tones[i].hz, noteHz(step.note)));
+    const slack = 1.3 + step.frames * 0.12;
+    // A note that sounds LONGER than it was composed is the bug this guards (a held tone); one that is
+    // gone sooner is only reported: a fade over integer volumes reaches 0 before its last frames, and
+    // that is the chip, not the song.
+    const tooLong = tones[i].frames > step.frames + slack;
+    const short = tones[i].frames < step.frames - slack;
+    if (error > tolerance) bad += 1;
+    if (tooLong) bad += 1;
+    got.push(`${tones[i].hz.toFixed(0)}/${noteHz(step.note).toFixed(0)}${error <= tolerance ? '' : ` (${error.toFixed(0)}c!)`}${tooLong ? ` [${tones[i].frames.toFixed(1)} frames, composed ${step.frames}: TOO LONG]` : ''}${short ? ` [${tones[i].frames.toFixed(1)} of ${step.frames} frames]` : ''}`);
+  });
+  lines.push(`  ${label.padEnd(8)} ${got.join(' ')}`);
   return { lines, bad };
 }
 
-function check(machine, analysis) {
-  if (MACHINES[machine].dump) return checkDump(machine, analysis);
-  const { frameRate, tolerance } = MACHINES[machine];
+function checkLab(machine, recorded) {
   const lines = [];
   let bad = 0;
-  const fail = (text) => { lines.push(`  FAIL ${text}`); bad += 1; };
-  if (analysis.segments.length < EFFECTS.length) {
-    fail(`heard ${analysis.segments.length} sounds, wanted ${EFFECTS.length}`);
+  if (MACHINES[machine].dump || machine === 'web') {
+    const tones = tonesOf(machine, recorded);
+    const all = EFFECTS.flatMap((name) => expectedFor(machine, name));
+    // The tones come in the order the lab plays the effects; walk them effect by effect.
+    let at = 0;
+    for (const name of EFFECTS) {
+      const want = expectedFor(machine, name);
+      const result = compareTones(machine, tones.slice(at, at + want.length), want, name);
+      lines.push(...result.lines);
+      bad += result.bad;
+      at += want.length;
+    }
+    if (tones.length !== all.length) { lines.push(`  FAIL heard ${tones.length} notes in all, composed ${all.length}`); bad += 1; }
     return { lines, bad };
   }
-  EFFECTS.forEach((name, e) => {
-    const segment = analysis.segments[e];
-    const steps = [];
-    for (let i = FIRST[e]; i < FIRST[e + 1]; i += 1) steps.push({ note: NOTE[i], seconds: FRAMES[i] / frameRate });
-    const total = steps.reduce((sum, s) => sum + s.seconds, 0);
-    const longEnough = segment.seconds >= total - 0.05;
-    // A SID's release and a recording's tail run past the last frame; a sound
-    // that rings for more than a third of a second extra is not the one asked for.
-    const notTooLong = segment.seconds <= total + 0.35;
-    const notes = [];
-    let at = segment.start;
-    for (const step of steps) {
-      const pad = step.seconds * 0.2;
-      const got = analysis.measure(at + pad, at + step.seconds - pad);
-      const want = noteHz(step.note);
-      if (got.cycles >= 3) {
-        const error = Math.abs(cents(got.frequency, want));
-        const allowed = Math.max(tolerance, 1200 * Math.log2(1 + 1 / got.cycles));
-        notes.push(`${got.frequency.toFixed(0)}/${want.toFixed(0)}${error <= allowed ? '' : ` (${error.toFixed(0)}c!)`}`);
-        if (error > allowed) bad += 1;
-      } else {
-        notes.push(`?/${want.toFixed(0)}`);
-      }
-      at += step.seconds;
-    }
-    lines.push(`  ${name.padEnd(6)} ${segment.seconds.toFixed(2)}s (wanted ${total.toFixed(2)}s) ${longEnough && notTooLong ? 'ok' : 'LENGTH!'}  ${notes.join(' ')}`);
-    if (!(longEnough && notTooLong)) bad += 1;
-  });
+  // A recording: the notes of the effects long enough to see, in order.
+  const seen = (name) => expectedFor(machine, name).filter((n) => n.frames >= 3).map((n) => n.note);
+  const wantAll = EFFECTS.flatMap((name) => seen(name));
+  const collapsed = wantAll.filter((n, i, all) => i === 0 || n !== all[i - 1]);
+  const heard = plateaus(recorded);
+  // Every composed note, in order, and not much else: a recording shows the odd transient between
+  // two notes, and the one-frame ticks a speaker with no volume plays as full notes.
+  let at = 0;
+  for (const note of heard) {
+    if (at < collapsed.length && note === collapsed[at]) at += 1;
+  }
+  const extras = heard.length - at;
+  const ok = at === collapsed.length && extras <= 4;
+  lines.push(`  notes heard   ${heard.join(' ')}`);
+  lines.push(`  notes wanted  ${collapsed.join(' ')}  ${ok ? 'ok' : `FAIL (found ${at} of ${collapsed.length} in order, ${extras} extra)`}`);
+  if (!ok) bad += 1;
   return { lines, bad };
 }
 
@@ -204,7 +252,7 @@ function check(machine, analysis) {
 export function skipReason(machine) {
   const m = MACHINES[machine];
   if (m.emulator && !haveBinary(m.emulator)) return `${m.emulator} is not installed`;
-  if ((machine === 'pet' || machine === 'vic20' || machine === 'c64') && process.platform !== 'darwin') {
+  if (machine === 'pet' && process.platform !== 'darwin') {
     return "recording VICE's audio needs the macOS sound device";
   }
   return null;
@@ -247,8 +295,8 @@ const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href =
 if (isMain) {
   const failed = await eachMachine((machine) => attempt(async () => {
     build(machine);
-    return check(machine, await record(machine));
+    return checkLab(machine, await record(machine));
   }));
-  console.log(failed === 0 ? 'sound: every note of every effect is the pitch it names' : `sound: ${failed} problem(s)`);
+  console.log(failed === 0 ? 'sound: every note of every sound is the pitch the .8ba composes' : `sound: ${failed} problem(s)`);
   process.exit(failed === 0 ? 0 : 1);
 }

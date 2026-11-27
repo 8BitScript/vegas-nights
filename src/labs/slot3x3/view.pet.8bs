@@ -17,6 +17,10 @@ export namespace view {
     const MESSAGE_ROW: utinyint = 24;
     const MESSAGE_COL: utinyint = 0;
     const MESSAGE_WIDTH: utinyint = 22;
+    // Where the volume setting goes (beside the title).
+    const VOLUME: bool = true;
+    const VOLUME_COL: utinyint = 17;
+    const VOLUME_ROW: utinyint = 0;
 
     function statics(): void {
         text.print(layout.cell(0, 0), "VEGAS NIGHTS 3X3");

@@ -18,6 +18,10 @@ export namespace view {
     const MESSAGE_ROW: utinyint = 0;
     const MESSAGE_COL: utinyint = 11;
     const MESSAGE_WIDTH: utinyint = 11;
+    // Where the volume setting goes (none: every row outside the block is taken).
+    const VOLUME: bool = false;
+    const VOLUME_COL: utinyint = 0;
+    const VOLUME_ROW: utinyint = 0;
 
     function statics(): void {
         text.print(layout.cell(0, 0), "WIN");

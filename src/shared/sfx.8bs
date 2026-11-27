@@ -1,121 +1,158 @@
-// The slot machines' sounds: a reel tick, a reel stop, a small win, a big win
-// and the bonus fanfare, on whatever the machine has (the SID, the VIC-I, the
-// PET's one-bit speaker, the X16's PSG, the web's oscillator) through
-// @8bitscript/audio's `audio.tone`.
+// When the slot machines make their sounds. HOW they sound is composed in
+// assets/audio/classic.8ba (one `song` per sound, notes and rests and instruments); this file
+// only decides which one plays, and when, through @8bitscript/audio's `audio.play(song)`.
 //
-//     sfx.update();      // once a frame, from the game loop, instead of audio.update()
-//     sfx.tick();        // a reel steps
-//     sfx.stop();        // a reel lands
-//     sfx.win();         // a line pays
-//     sfx.big();         // a big pay
-//     sfx.bonus();       // the bonus round starts
+//     sfx.update();      // once a frame, from the game loop
+//     sfx.tick();        // a reel passes a symbol
+//     sfx.stop();        // a reel comes to rest
+//     sfx.win();         // a line pays          sfx.big();  // a big pay
+//     sfx.jackpot();     // the jackpot
+//     sfx.bonus();       // the bonus round begins          sfx.over();  // ...and ends
+//     sfx.cycle();       // off -> low -> normal -> off     sfx.volume();  // 0 off, 1 low, 2 normal
 //     sfx.silence();     // stop now
 //
-// A jingle is a run of steps, a note and how many frames it sounds; it plays
-// without blocking, one step at a time from `sfx.update()`, and a new effect
-// cuts the old one off (a reel tick must not wait for a fanfare). The data is
-// a pair of const arrays, so it is in the program image and not in RAM, and
-// the notes are all inside C4..B5 (the .8ba index 48..71, C0 = 0, A4 = 57):
-// the range every machine with a sound chip here plays without moving a note
-// by an octave, the PET's narrow VIA shift register being the limit.
-//
-// On a machine with no driver `audio.NOTE_HIGH` is 0, a constant, and every
-// call here folds to nothing.
+// The rules, so that a machine left running is not a nuisance:
+//   * Nothing plays on top of something of more importance (a tick never cuts a stop short, a
+//     stop never cuts a win), and a sound of equal or more importance replaces what is playing.
+//   * A tick is only ever played into silence, and no oftener than every TICK_GAP frames, however
+//     many reels are turning.
+//   * The volume starts LOW. A one-bit speaker (the PET) cannot be turned down, so at LOW it
+//     plays everything but the ticks.
+//   * Every sound is a song that ends: when the last row is done the voice is let go.
+// On a machine with no sound driver `audio.NOTE_HIGH` is 0 and all of this folds away.
 import { audio } from "@8bitscript/audio";
+import {
+    tickSound, stopSound, winSound, bigSound, jackpotSound, bonusSound, overSound,
+} from "@assets/audio/classic.8ba";
 
-// Effect numbers, and where each one's steps are in NOTE and FRAMES.
-const TICK: utinyint = 0;
-const STOP: utinyint = 1;
-const WIN: utinyint = 2;
-const BIG: utinyint = 3;
-const BONUS: utinyint = 4;
-const NONE: utinyint = 255;
+// How important each sound is: a lesser one never cuts a greater one off.
+const TICK: utinyint = 1;
+const STOP: utinyint = 2;
+const CUE: utinyint = 3;
+const WIN: utinyint = 4;
+const BIG: utinyint = 5;
+const JACKPOT: utinyint = 6;
 
-// tick | stop | win | big | bonus, back to back.
-const NOTE: array<u8, 30> = [
-    67,
-    48,
-    60, 64, 67, 64, 67,
-    48, 52, 55, 60, 64, 67, 71, 67, 71,
-    55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 69, 71, 69, 71,
-];
-const FRAMES: array<u8, 30> = [
-    2,
-    5,
-    3, 3, 3, 3, 8,
-    4, 4, 4, 4, 4, 4, 4, 4, 12,
-    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 10,
-];
-// The first step of each effect, and one past its last.
-const FIRST: array<u8, 6> = [0, 1, 2, 7, 16, 30];
+// The least gap, in frames, between one tick and the next.
+const TICK_GAP: utinyint = 5;
 
-let current: utinyint = 255;
-let at: utinyint = 0;
-let end: utinyint = 0;
-let left: utinyint = 0;
+// The player's volume setting: 0 off, 1 low, 2 normal. The audio level each plays at (0..15).
+const OFF: utinyint = 0;
+const LOW: utinyint = 1;
+const NORMAL: utinyint = 2;
+const LOW_LEVEL: utinyint = 6;
+const NORMAL_LEVEL: utinyint = 11;
 
-// Sound the step at `at`, or end the effect when there are none left.
-function step(): void {
-    if (at >= end) {
-        current = NONE;
-        return;
+let setting: utinyint = 1;
+let importance: utinyint = 0;
+let gap: utinyint = 0;
+let applied: bool = false;
+
+// Put the chip's level where the setting says.
+function apply(): void {
+    applied = true;
+    if (setting == 0) {
+        audio.setLevel(0);
+    } else if (setting == 1) {
+        audio.setLevel(LOW_LEVEL);
+    } else {
+        audio.setLevel(NORMAL_LEVEL);
     }
-    audio.tone(NOTE[at], FRAMES[at]);
-    left = FRAMES[at];
-    at = at + 1;
 }
 
-function begin(effect: utinyint): void {
-    if (audio.NOTE_HIGH == 0) {
+// Play `song` if nothing more important is sounding.
+function begin(song: utinyint, weight: utinyint): void {
+    if (audio.NOTE_HIGH == 0 || setting == 0) {
         return;
     }
-    current = effect;
-    at = FIRST[effect];
-    end = FIRST[effect + 1];
-    step();
+    if (!applied) {
+        apply();
+    }
+    if (!audio.busy()) {
+        importance = 0;
+    }
+    if (weight < importance) {
+        return;
+    }
+    importance = weight;
+    audio.play(song);
 }
 
 export namespace sfx {
     function tick(): void {
-        begin(TICK);
+        if (audio.NOTE_HIGH == 0 || gap != 0 || setting == 0) {
+            return;
+        }
+        // A speaker with one level plays no ticks at the low setting.
+        if (audio.LEVEL_MAX < 2 && setting == 1) {
+            return;
+        }
+        if (!applied) {
+            apply();
+        }
+        if (audio.busy()) {
+            return;
+        }
+        gap = TICK_GAP;
+        importance = TICK;
+        audio.play(tickSound);
     }
 
     function stop(): void {
-        begin(STOP);
+        begin(stopSound, STOP);
     }
 
     function win(): void {
-        begin(WIN);
+        begin(winSound, WIN);
     }
 
     function big(): void {
-        begin(BIG);
+        begin(bigSound, BIG);
+    }
+
+    function jackpot(): void {
+        begin(jackpotSound, JACKPOT);
     }
 
     function bonus(): void {
-        begin(BONUS);
+        begin(bonusSound, CUE);
+    }
+
+    function over(): void {
+        begin(overSound, CUE);
+    }
+
+    // Off -> low -> normal -> off... The new level is heard at once, and a sound playing is cut.
+    function cycle(): void {
+        setting = setting + 1;
+        if (setting > 2) {
+            setting = 0;
+        }
+        audio.silence();
+        importance = 0;
+        apply();
+    }
+
+    // 0 off, 1 low, 2 normal.
+    function volume(): utinyint {
+        return setting;
     }
 
     function silence(): void {
-        current = NONE;
         audio.silence();
+        importance = 0;
     }
 
-    // True while an effect is still sounding.
+    // True while a sound (a song's rests too) is playing.
     function busy(): bool {
-        return current != NONE;
+        return audio.busy();
     }
 
-    // Once a frame. Counts the sounding step down (this is `audio.update()`)
-    // and starts the next one when it has run out.
+    // Once a frame: the song's next step, and the tick gap.
     function update(): void {
         audio.update();
-        if (current == NONE) {
-            return;
-        }
-        left = left - 1;
-        if (left == 0) {
-            step();
+        if (gap != 0) {
+            gap = gap - 1;
         }
     }
 }

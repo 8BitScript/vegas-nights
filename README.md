@@ -43,7 +43,7 @@ says which emulators this computer has. `--screenshot file.png` captures a
 still through the emulator's own API without opening a window; that is what
 `pnpm run shot:*` does.
 
-The PET is built as the 32K 4032 and the VIC-20 with the 8K expansion (see
+The PET is built as the 32K 4032 and the VIC-20 with the 16K expansion (see
 `8bitscript.config.8bs`): the stock 4K PET 2001 and the unexpanded VIC-20 are
 below what a lab needs.
 
@@ -455,7 +455,7 @@ there is nothing to copy and a reel is redrawn whole.
   0.24.0. (Its 5×5 and the C64-in-wasm still need an 8BitScript newer than the release.) The cost is the
   look: block graphics are blockier than the C64's and X16's pixel art, and the BAR symbols are told apart
   by how many bars they have, not by their lettering (the 12×12 grid cannot hold a word).
-- **The VIC-20 has no RAM character set** here: the 8K program is linked from
+- **The VIC-20 has no RAM character set** here: the expanded machine's program is linked from
   `$1201` upward over `$1C00`–`$1FFF`, the only RAM the video chip can read glyphs
   from, and there is no way yet to reserve a hole in the image. It uses the PET's
   quadrant blocks instead, with colour — recognisable, scrolling in 4-pixel steps,
@@ -680,10 +680,10 @@ against the 127 codes free on the C64 and X16; the 16x16 art (two cells a symbol
 the frame. The web has 80 redefinable glyphs, 20 short of that, so it takes the quadrant route instead — which
 needs no glyphs at all.
 
-**Floors.** The VIC-20 build needs the 8K expansion (9,686 B of program against an 11,775-byte ceiling;
-the unexpanded machine's 3,583 and the +3K's 6,655 are short by 6,103 and 3,031 bytes); the PET needs 16K
-or more (9,077 B against the 15,359 of the 16K model; the 8K model's 7,167 is 1,910 short). These are arithmetic against the catalog's
-`memory.ram`; the config builds the PET as the 32K 4032 and the VIC-20 with 8K.
+**Floors.** The VIC-20 build needs the 16K expansion: with its composed sounds the 5x5 is 12,954 B of program
+against the 8K expansion's 11,775-byte ceiling (the unexpanded machine's 3,583 and the +3K's 6,655 are further short);
+the PET needs 16K or more (the 5x5 is 13,077 B against the 15,359 of the 16K model; the 8K model's 7,167 is short).
+These are arithmetic against the catalog's `memory.ram`; the config builds the PET as the 32K 4032 and the VIC-20 with 16K.
 
 ### Where it is not what it should be
 
@@ -803,77 +803,74 @@ re-reading the proof.
 
 ## Sound
 
-`src/shared/sfx.8bs` is the slot machines' sounds — a reel tick, a reel stop,
-a small win, a big win and the bonus fanfare — through `@8bitscript/audio`'s
-`audio.tone`. Call `sfx.update()` once a frame instead of `audio.update()`, and
-`sfx.tick()`, `sfx.stop()`, `sfx.win()`, `sfx.big()`, `sfx.bonus()` when
-something happens. A jingle is a run of (note, frames) steps in two const arrays,
-so it is data in the program image; a new effect cuts the one sounding off. All
-notes are inside C4..B5 (the `.8ba` index 48..71), the range the PET's one-bit
-speaker, the VIC-I, the SID and the X16's PSG all play without moving a note by
-an octave. A sound is timed in calls of `sfx.update()`: a loop that overruns a
-frame stretches a sound by that frame.
+The slot machines' sounds are **composed**, in `assets/audio/classic.8ba`: eight
+instruments (waveform, volume, decay) and seven songs, one per moment a slot makes
+a noise: `tickSound`, `stopSound`, `winSound`, `bigSound`, `jackpotSound`,
+`bonusSound`, `overSound`. That file is how the machines sound; edit a note there
+and rebuild. `src/shared/sfx.8bs` only decides *when* each song plays, through
+`@8bitscript/audio`'s `audio.play(song)`, and `src/shared/sound.8bs` is the
+game's hooks onto it. Call `sound.update()` once a frame (a loop that never does
+leaves a note sounding for ever, which is how the 5x5 once droned).
 
-`pnpm run start:sound-test:<machine>` is the lab: it plays all five effects once
-as it starts, then up/down choose and confirm plays. `pnpm run sound` is the
-check: it builds the lab, records each machine's audio headlessly (VICE in
-console mode at 2% volume, x16emu on SDL's dummy drivers, the web as the
-rendered register timeline of the compiled program) and measures the pitch of
-every note of every effect against the note it names. No window opens and
-nothing worth hearing plays. It needs an 8BitScript checkout that has
-`audio.tone` (`EIGHTBS_CHECKOUT`, default `../8bitscript`); the recording of
-VICE's audio needs macOS.
+The rules, so a machine left running is not a nuisance:
 
-What that check found: every note of every effect is the pitch it names on the
-C64 (it reads the SID's registers: exact), the X16 and the web (exact), the PET
-(a recorded WAV; a 50 ms note has only a few cycles to count, so those read to
-about 40 cents and the long ones to within a few), and within the VIC-I's own
-7-bit divisor on the VIC-20 (up to 50 cents flat or sharp; its table is NTSC and
-a PAL VIC-20 plays about a semitone and a half sharp). The web's sound has **not been heard**: no
-browser tab was available. One VIC-20 step is a frame long: the first step of
-`big` measures 4.95 frames where its neighbours measure 4.00, and the cause is
-not found.
+- **Nothing cuts off something more important**: a tick never cuts a stop short,
+  a stop never cuts a win; an equal or greater sound replaces what is playing.
+- **A tick is a symbol going by**, not a pixel: the game ticks only when a reel's
+  symbol changes, into silence, no oftener than every five frames however many
+  reels turn.
+- **Low by default.** The cancel key cycles the volume OFF, LOW, MID (`VOL ...`
+  beside the title where the screen has a row for it: the 3x3 on the C64, X16,
+  PET and web, the 5x5 where it shows a title). A one-bit speaker cannot be
+  turned down, so the PET plays everything but the ticks at LOW.
+- **Every sound ends**: every instrument decays, and a song lets its voice go
+  after its last row.
 
-`audio.tone` and `audio.NOTE_HIGH` are in 8BitScript's trunk, not in the
-released 0.24.0, so `sound-test` does not build with the pinned CLI until the
-release after that. CI builds with 8BitScript's trunk until then (the comment
-in `.github/workflows/ci.yml` says how to go back); on a developer machine set
-`EIGHTBITSCRIPT_CHECKOUT` to an 8BitScript checkout.
+`pnpm run start:sound-test:<machine>` is the lab: it plays all seven once a
+second after it starts, then up/down choose, confirm plays and cancel cycles
+the volume. `pnpm run sound` is the check that each machine plays what is
+composed: it reads the `.8ba` through the compiler, builds the lab, records each
+machine's audio headlessly (VICE's register dump for the SID and the VIC-I, a
+WAV for the PET and x16emu on SDL's dummy drivers, the web as the rendered
+register timeline) and compares every note. The PET's recording goes through
+the computer's sound device at VICE's 2% volume; the others make no sound. The
+web's sound has **not been heard**: no browser tab was available.
 
-### Sound in the slot
+The composed songs need 8BitScript's `.8ba` songs (8BitScript PR #316, not
+in a release yet); CI builds with 8BitScript's trunk, so this builds there once
+that is merged. On a developer machine set `EIGHTBITSCRIPT_CHECKOUT` (and
+`EIGHTBS_CHECKOUT` for the scripts) to a checkout that has it. The PET is built
+with its speaker fitted (`speaker: 'attached'` in the config): a build with no
+speaker omits a song (8BS2211).
 
-`slot3x3` plays its sounds through `src/shared/sound.8bs`, which is `sfx` behind
-a mute switch. What you hear: a tick as the reels step (once a frame, however many
-reels moved), a stop as a reel comes to rest, and when the spin settles a win
-jingle for a pay, a longer one for a big pay (twenty bets or more, `BIG_WIN` in
-`game.8bs`), the fanfare for the jackpot, and for a loss the last reel's stop.
-The cancel key mutes and unmutes. A frame plays at most one effect, and the frame
-that settles the spin plays only its result: a stop struck under the jingle would
-leave the SID's gate open, so the jingle's first note would not retrigger.
+### What the composed sounds cost
 
-What it costs (`8bs build --target <t> --program slot3x3`, program bytes /
-variable bytes, before sound, after):
+`8bs build --target <t> --program <p>`, program bytes / variable bytes, the
+tone-table sounds before and the composed ones after, both with the same
+8BitScript checkout (PR #316 at `dd186b54`):
 
-| machine | before | with sound | added |
-| --- | --- | --- | --- |
-| PET 4032 32K | 6008 / 100 | 6689 / 108 | +681 / +8 |
-| VIC-20 8K | 6376 / 99 | 7172 / 108 | +796 / +9 |
-| C64 | 7768 / 103 | 9241 / 114 | +1473 / +11 |
-| X16 | 8290 / 197 | 9334 / 197 | +1044 / 0 |
-| web (const data) | 732 / 68 | 798 / 74 | +66 / +6 |
+| machine | slot3x3 before | slot3x3 after | slot5x5 before | slot5x5 after |
+| --- | --- | --- | --- | --- |
+| PET 4032 32K | 8,235 / 121 | 9,999 / 128 (+1,764) | 11,232 / 112 | 13,077 / 121 (+1,845) |
+| VIC-20 | 9,141 / 133 | 11,120 / 139 (+1,979) | 10,773 / 111 | 12,954 / 119 (+2,181) |
+| C64 | 10,432 / 115 | 12,517 / 126 (+2,085) | 13,146 / 128 | 15,406 / 139 (+2,260) |
+| X16 | 15,317 / 174 | 17,246 / 198 (+1,929) | 23,746 / 197 | 25,866 / 214 (+2,120) |
+| web (const data) | 1,331 / 407 | 1,447 / 409 (+116) | 1,244 / 503 | 1,360 / 507 (+116) |
+
+The 5x5 on the VIC-20 is 12,954 bytes with them, past the 8K expansion's
+11,775, so the config now builds the VIC-20 with 16K.
 
 `pnpm run sound:slot` is the check that a spin sounds right. It builds the four
 headless slot programs (a loss, a small win, a big win, the jackpot), whose last
 spin's result the odds oracle knows, records each machine's audio, and compares
-the LAST sound with the effect that result calls for, note by note (and that
-reel ticks and stops came before it). The SID and the VIC-I are read from VICE's
-register dump, the web from its per-frame voice, and the PET and X16 from the
-WAV: there the notes are the pitches that hold for a few milliseconds, in order,
-because a recording's time is not the logical frame (the PET's frame measures
-about 58 Hz, the X16's steps are not evenly spaced in the WAV). Like `pnpm run
-sound` it needs an 8BitScript checkout with `audio.tone` (`EIGHTBS_CHECKOUT`,
-default `../8bitscript`, and `EIGHTBITSCRIPT_CHECKOUT` for the cli) and macOS for
-VICE's audio. The on-screen tests (`pnpm run test:machines`) take the same
+the LAST sound with the song that result calls for, note by note (and that reel
+ticks and stops came before it), then that the run ends silent. The SID and the
+VIC-I are read from VICE's register dump, the web from its per-frame voice, and
+the PET and X16 from the WAV: there the notes are the pitches that hold for a
+few milliseconds, in order, because a recording's time is not the logical frame.
+A sound whose every note is under three frames (the stop) is too short to read a
+pitch from a recording; there the check only asks that it was heard. The
+on-screen tests (`pnpm run test:machines`) take the same
 `EIGHTBITSCRIPT_CHECKOUT`.
 
 ## The baseline

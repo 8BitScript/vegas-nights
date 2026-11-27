@@ -1,0 +1,181 @@
+// The classic slot machine's sounds: seven short songs, one for each moment a slot machine makes
+// a noise. This file is the source of truth for how the machines SOUND; src/shared/sfx.8bs only
+// decides WHEN each one plays. Edit a note here and rebuild: `pnpm run build` (or run a lab).
+//
+// How to read one. A song is rows, `speed` frames each (60 or 50 to the second); a row that has
+// a `note` starts that note, and the note lets go after its `length` rows (default 1); a row with
+// nothing on it is a rest. An instrument gives a note its `waveform`, its `volume` (0..15, of the
+// player's level) and its `decay`: how many frames it takes to die away, so nothing here is held
+// for as long as a key is down. Notes are named like C4 (middle C) and sharps are CS4, DS4...
+//
+// The ground rules this bank is written to, because the machines are small and the player is
+// tired of hearing them:
+//   * Low and short. Most of it sits between C3 and C5, a tick is one frame, a win is a quarter of a second.
+//   * Nothing sustains. Every instrument decays; nothing is a held tone.
+//   * What the PET cannot do is not here: its one-bit speaker plays C4..B5 only (a lower note
+//     is moved up by whole octaves), and has no volume or decay, so a note there is a plain
+//     square wave for as long as the decay says. The rests and the rhythm are what carry over.
+//   * Small wins are quiet and brief; the louder and longer a sound is, the more it paid.
+// The whole bank is 158 bytes; a machine's audio bank holds 255 (8BS2216 if a program binds more).
+
+// ---- the instruments ----------------------------------------------------------------
+
+// A reel passing a symbol: a click, not a note.
+instrument click {
+  waveform pulse
+  volume 6
+  decay 2
+}
+
+// A reel coming to rest: a low thud.
+instrument thud {
+  waveform pulse
+  volume 12
+  decay 5
+}
+
+// A small win: a short bright pluck, quiet.
+instrument pluck {
+  waveform triangle
+  volume 8
+  decay 3
+}
+
+// A bigger win: the same pluck, louder, with a longer tail.
+instrument chime {
+  waveform triangle
+  volume 11
+  decay 4
+}
+
+// The last note of a big sound, left to ring a little.
+instrument ring {
+  waveform triangle
+  volume 12
+  decay 10
+}
+
+// The jackpot: a pulse so it cuts through, and a long ring at the end.
+instrument fanfare {
+  waveform pulse
+  volume 11
+  decay 5
+}
+
+instrument finale {
+  waveform pulse
+  volume 13
+  decay 16
+}
+
+// The bonus round beginning and ending: soft, two notes, nothing else.
+instrument soft {
+  waveform triangle
+  volume 7
+  decay 6
+}
+
+// ---- the sounds ---------------------------------------------------------------------
+
+// A reel passes a symbol. One frame; the game plays it at most every few frames.
+song tickSound {
+  speed 1
+  loop false
+  order { main }
+  pattern main length 2 {
+    track voice {
+      row 0 { note E3; instrument click; }
+    }
+  }
+}
+
+// A reel stops. Low, and as long as it takes to feel like landing.
+song stopSound {
+  speed 2
+  loop false
+  order { main }
+  pattern main length 4 {
+    track voice {
+      row 0 { note C3; instrument thud; }
+    }
+  }
+}
+
+// A small win: three rising notes with a rest between, C major. A quarter of a second.
+song winSound {
+  speed 3
+  loop false
+  order { main }
+  pattern main length 6 {
+    track voice {
+      row 0 { note C4; instrument pluck; }
+      row 2 { note E4; }
+      row 4 { note G4; }
+    }
+  }
+}
+
+// A big win: the same arpeggio climbing an octave and a half, the last note ringing.
+song bigSound {
+  speed 3
+  loop false
+  order { main }
+  pattern main length 15 {
+    track voice {
+      row 0 { note C4; instrument chime; }
+      row 2 { note E4; }
+      row 4 { note G4; }
+      row 6 { note C5; }
+      row 8 { note E5; }
+      row 10 { note G5; instrument ring; length 4; }
+    }
+  }
+}
+
+// The jackpot: a run up, a trill, and a long final note. The longest sound there is.
+song jackpotSound {
+  speed 4
+  loop false
+  order { main }
+  pattern main length 28 {
+    track voice {
+      row 0 { note C4; instrument fanfare; }
+      row 2 { note E4; }
+      row 4 { note G4; }
+      row 6 { note C5; }
+      row 9 { note G4; }
+      row 10 { note C5; }
+      row 11 { note G4; }
+      row 12 { note C5; }
+      row 14 { note E5; }
+      row 16 { note G5; }
+      row 18 { note C6; instrument finale; length 8; }
+    }
+  }
+}
+
+// The bonus round begins: two soft notes, rising.
+song bonusSound {
+  speed 4
+  loop false
+  order { main }
+  pattern main length 7 {
+    track voice {
+      row 0 { note E4; instrument soft; length 2; }
+      row 3 { note B4; length 3; }
+    }
+  }
+}
+
+// ...and ends: the same two, falling.
+song overSound {
+  speed 4
+  loop false
+  order { main }
+  pattern main length 7 {
+    track voice {
+      row 0 { note B4; instrument soft; length 2; }
+      row 3 { note E4; length 3; }
+    }
+  }
+}
